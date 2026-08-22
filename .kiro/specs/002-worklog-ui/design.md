@@ -56,6 +56,7 @@ graph TD
 | `Change_Preview` | `fetch` to `/api/…` with `dryRun: true` | needs a result *before* submitting, so it cannot be a form action |
 | Timer refresh on tab focus | `fetch` to `/api/sessions/current` | no navigation, no page data invalidation needed |
 | Project creation from inside the `Project_Picker` | `fetch` to `/api/projects` | must not navigate away from the open dialog |
+| `Quick_Log` | form action posting in `Open_Mode` | the server resolves the interval; the browser sends only the project |
 
 ### The Dialog Flow
 
@@ -195,7 +196,28 @@ export const PALETTE_SIZE = PROJECT_PALETTE.length;
 
 /** CSS custom property carrying a project's colour, set once per project on a wrapper. */
 export function projectColorVar(colorIndex: number): string;
+
+/**
+ * The ink a label must use to sit on a Palette_Slot fill. Measured per slot against
+ * white and #0f172a — a fixed white label fails AA on four of the eight.
+ */
+export function labelInkOn(colorIndex: number): '#ffffff' | '#0f172a';
 ```
+
+Label ink is **per slot, not fixed white**. Measured contrast of a label on each fill:
+
+| Slot | Fill | on white | on `#0f172a` | ink |
+|---|---|---|---|---|
+| 0 blue | `#2a78d6` | 4.42 | 4.04 | white |
+| 1 orange | `#eb6834` | 3.20 | **5.58** | dark |
+| 2 aqua | `#1baf7a` | 2.82 | **6.34** | dark |
+| 3 yellow | `#eda100` | 2.17 | **8.25** | dark |
+| 4 magenta | `#e87ba4` | 2.69 | **6.63** | dark |
+| 5 green | `#008300` | 4.95 | 3.61 | white |
+| 6 violet | `#4a3aa7` | 8.56 | 2.09 | white |
+| 7 red | `#e34948` | 3.95 | **4.52** | dark |
+
+A uniform white label would sit at 2.17 on yellow and 2.82 on aqua — unreadable. `labelInkOn` is therefore not a nicety; a timeline bar without it fails Requirement 14.9.
 
 Validator results, recorded so a future change can be compared rather than re-argued:
 
@@ -289,7 +311,9 @@ type ActivityDialogProps = {
 
 The mode switch between `Explicit_Mode` and `Duration_Mode` is a segmented control, not a hidden toggle — both paths are first class. In `Duration_Mode` with no start given, the dialog shows the anchor the server will use, computed from the day data already loaded, labelled as an inference rather than an input.
 
-Prefill sources, in precedence order: an explicit `prefill` from a clicked gap or `Quick_Log`; then the `Project` and description of the most recent entry of the day; then empty.
+Prefill sources, in precedence order: an explicit `prefill` from a clicked gap; then the `Project` and description of the most recent entry of the day; then empty.
+
+`Quick_Log` does not open this dialog. It is a single control that posts in `Open_Mode` with only the project, and the server resolves the interval from the `Placement_Anchor` to now. The control displays the interval it expects — read from the day data already loaded — but that display is a courtesy, not the value sent; the server decides. This keeps the anchor rule in exactly one place and makes the same quick log available to a shell script.
 
 ### 5. Timer Control (`src/modules/timer/`)
 

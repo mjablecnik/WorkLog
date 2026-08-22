@@ -288,7 +288,7 @@ A `Logical_Day` is not always 24 hours. With `startHour = 3` in `Europe/Prague` 
 The reconciliation core. Pure: it receives every list it needs and returns a description of what should be written. It never decides HTTP status codes — it reports conflicts and leftovers, and the route maps them.
 
 ```ts
-export type ActivityMode = 'explicit' | 'duration';
+export type ActivityMode = 'explicit' | 'duration' | 'open';
 export type UncoveredPolicy = 'clip' | 'extend' | 'reject';   // 'clip' is the default
 
 export type ClipInput = {
@@ -327,7 +327,11 @@ export type ClipResult = {
  */
 export function clip(input: ClipInput): ClipResult;
 
-/** Picks the Duration_Mode placement start per Requirements 5.2–5.5. */
+/**
+ * Picks the Placement_Anchor for Duration_Mode and Open_Mode per Requirements
+ * 5.2–5.5 and 15.2–15.3: the explicit start when given, else the end of the day's
+ * latest segment, else the start of its earliest session.
+ */
 export function resolveAnchor(
   explicit: Date | null,
   segments: Interval[],
@@ -475,7 +479,7 @@ export type ErrorCode =
   | 'VALIDATION_ERROR' | 'INVALID_INTERVAL' | 'AMBIGUOUS_MODE' | 'RANGE_TOO_LARGE'
   | 'UNAUTHORIZED' | 'NOT_FOUND'
   | 'SESSION_ALREADY_RUNNING' | 'NO_SESSION_RUNNING' | 'SESSION_OVERLAP'
-  | 'ACTIVITY_OVERLAP' | 'OUTSIDE_TRACKED_TIME' | 'NO_PLACEMENT_ANCHOR'
+  | 'ACTIVITY_OVERLAP' | 'OUTSIDE_TRACKED_TIME' | 'NO_PLACEMENT_ANCHOR' | 'NOTHING_TO_LOG'
   | 'PROJECT_EXISTS' | 'PROJECT_IN_USE'
   | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED' | 'INTERNAL_ERROR';
 
@@ -540,7 +544,16 @@ export type SessionChangePreview = {
 };
 ```
 
-Mode selection follows Requirement 4.3: `endedAt` present without `durationMinutes` is `Explicit_Mode`; `durationMinutes` without `endedAt` is `Duration_Mode`; both is `AMBIGUOUS_MODE`; neither is `VALIDATION_ERROR`.
+Mode selection:
+
+| `endedAt` | `durationMinutes` | Mode | Start | End |
+|---|---|---|---|---|
+| present | absent | `Explicit_Mode` | `startedAt`, required | `endedAt` |
+| absent | present | `Duration_Mode` | `startedAt`, else the `Placement_Anchor` | walked forward through eligible time |
+| absent | absent | `Open_Mode` | `startedAt`, else the `Placement_Anchor` | now |
+| present | present | — | `AMBIGUOUS_MODE` 400 | |
+
+`Open_Mode` is the one-call quick log: `POST /api/activities` with nothing but `projectId` and a description records everything since the last entry ended. It reuses `resolveAnchor` and then follows the `Explicit_Mode` path with the resolved interval, so it adds no new reconciliation rules. This is deliberately a server mode rather than a client convenience — a shell script or a phone shortcut gets the same behavior as the interface, and the anchor rule stays in one place.
 
 ### 10. Day and Coverage Contracts
 
@@ -643,10 +656,12 @@ CREATE TABLE activity_entries (
     requested_duration_minutes integer,
     created_at                 timestamptz NOT NULL DEFAULT now(),
     updated_at                 timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT activity_entries_mode_valid CHECK (mode IN ('explicit', 'duration')),
+    CONSTRAINT activity_entries_mode_valid CHECK (mode IN ('explicit', 'duration', 'open')),
     CONSTRAINT activity_entries_description_length CHECK (char_length(description) <= 2000),
+    -- Open_Mode stores the resolved interval, so it carries the same fields as
+    -- Explicit_Mode; only `mode` records that the times were inferred.
     CONSTRAINT activity_entries_mode_fields CHECK (
-        (mode = 'explicit'
+        (mode IN ('explicit', 'open')
             AND requested_started_at IS NOT NULL
             AND requested_ended_at IS NOT NULL
             AND requested_started_at < requested_ended_at)
@@ -813,7 +828,8 @@ All error responses use the shape from Requirement 12.1: `{ error, message, deta
 | `SESSION_OVERLAP` | 409 | a session write would overlap another session | `conflicts[]` of `{ sessionId, interval }` |
 | `ACTIVITY_OVERLAP` | 409 | an `Explicit_Mode` request overlaps another entry's segments | `conflicts[]` of `{ entryId, interval }` |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals |
-| `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` without `startedAt` in an empty day | `date` |
+| `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date` |
+| `NOTHING_TO_LOG` | 409 | `Open_Mode` where the resolved start is not before now | `anchor` |
 | `PROJECT_EXISTS` | 409 | duplicate project name | `projectId` |
 | `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount` |
 | `PAYLOAD_TOO_LARGE` | 413 | request body over 1 MiB | `maxBytes` |

@@ -45,12 +45,12 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
   - [ ] 1.6 Implement the palette and formatting helpers
-    - `src/lib/viz/palette.ts` with the eight validated slots from the design, `PALETTE_SIZE`, and `projectColorVar` wrapping the index at eight
+    - `src/lib/viz/palette.ts` with the eight validated slots from the design, `PALETTE_SIZE`, `projectColorVar` wrapping the index at eight, and `labelInkOn` returning the per-slot label ink from the design's contrast table
     - `src/lib/viz/format.ts` with `formatDuration`, `formatTimeOfDay` and `formatDayLabel`, locale aware, never rendering a bare decimal of hours
-    - _Requirements: 11.9, 13.7_
+    - _Requirements: 11.9, 11.11, 13.7_
 
   - [ ] 1.7 Write tests for the palette, formatting and i18n
-    - `tests/lib/viz/palette.test.ts`: eight slots; an index of 8 wraps to 0; the hex values match the design table exactly
+    - `tests/lib/viz/palette.test.ts`: eight slots; an index of 8 wraps to 0; the hex values match the design table exactly; `labelInkOn` returns dark for orange, aqua, yellow, magenta and red and white for blue, green and violet, and every returned pairing measures at least 4:1
     - `tests/lib/viz/format.test.ts`: durations in both locales, zero, under a minute, over a day; `formatDayLabel` says today for the current `Logical_Day`
     - `tests/lib/i18n.test.ts`: `cs.json` and `en.json` hold identical key sets; every error code from the `001` error table has a message in both; no `.svelte` file under `src/` carries a user-facing string literal outside a message call
     - _Requirements: 11.9, 13.1, 13.2, 13.7, 13.8_
@@ -84,8 +84,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 4.9, 4.10, 4.11, 4.14_
 
   - [ ] 3.5 Write component tests for `DayTimeline`
-    - `tests/components/day-timeline.test.ts`: one bar per session and per segment; uncovered stretches marked; bars in chronological DOM order; every bar has an accessible name containing its times; an entry split into two segments shows the shared-identity marker; a running session is marked; the empty day shows the empty state
-    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.13, 4.14_
+    - `tests/components/day-timeline.test.ts`: one bar per session and per segment; uncovered stretches marked; bars in chronological DOM order; every bar has an accessible name containing its times; an entry split into two segments shows the shared-identity marker; a running session is marked; the empty day shows the empty state; a bar's label uses the ink `labelInkOn` returns for its slot
+    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.13, 4.14, 11.11_
 
   - [ ] 3.6 Build the day page and its navigation
     - `src/routes/day/[date]/+page.server.ts` loads the day from the store; `+page.svelte` renders `DayPage`
@@ -126,14 +126,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Require a `Project`, accept an optional description, and default both from the most recent entry of the day unless a prefill overrides
     - Validate in the browser before submitting, showing messages beside the field without clearing input
     - Escape dismisses the dialog and focus returns to the control that opened it
-    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.8, 6.9, 6.12_
+    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.8, 6.9, 6.13_
 
   - [ ] 5.5 Implement activity create, edit and delete actions
     - Form actions in `src/routes/day/[date]/+page.server.ts` using `superValidate` with the shared Zod schemas from `001`, returning message keys rather than prose
     - A metadata-only edit saves without a preview; a change to the interval or duration goes through `Change_Preview` first
     - Deletion sits behind a confirmation naming what will be removed
     - After any write the `Day_Timeline` updates without a full page reload
-    - _Requirements: 6.1, 6.11, 7.4, 7.5, 7.6, 7.7, 7.8_
+    - _Requirements: 6.1, 6.12, 7.4, 7.5, 7.6, 7.7, 7.8_
 
   - [ ] 5.6 Build `SessionDialog` and the frame-editing actions
     - Editable start and end, a delete action, and an add-session action for a stretch that was never tracked
@@ -147,12 +147,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 8.7, 8.8_
 
   - [ ] 5.8 Build the `Quick_Log` action
-    - Opens the `Activity_Dialog` in `Explicit_Mode` prefilled from the end of the last `Activity_Segment` of the day to the current time
-    - _Requirements: 6.10_
+    - A single control posting in `Open_Mode` with only the `projectId` — the server resolves the start from the `Placement_Anchor` and the end from now
+    - Display the interval the control expects from the already-loaded day data, labelled as what the server will use rather than as an input
+    - Offer opening the full `Activity_Dialog` instead, and surface `NOTHING_TO_LOG` and `NO_PLACEMENT_ANCHOR` as plain explanations
+    - _Requirements: 6.10, 6.11_
 
   - [ ] 5.9 Write component tests for `ActivityDialog`
     - `tests/components/activity-dialog.test.ts`: the mode switch changes the required fields; `Duration_Mode` with no start shows the inferred anchor; prefill from a gap fills both times exactly; defaults come from the most recent entry; a validation failure keeps the typed input; Escape closes and returns focus to the opener
-    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.8, 6.9, 6.10, 6.12_
+    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.8, 6.9, 6.13_
 
 - [ ] 6. Timer page
   - [ ] 6.1 Implement the elapsed store in `src/modules/timer/elapsed.svelte.ts`
@@ -183,7 +185,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Create by name, rename, archive and unarchive, hiding archived by default
     - A duplicate name differing only in case or surrounding whitespace shows the error beside the field
     - Delete an unreferenced project; a referenced one explains that it is in use and offers archiving instead
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9_
+    - A colour control on each row opens the eight `Palette_Slot` swatches and saves the chosen one, so the automatic assignment can be overridden
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11_
 
   - [ ] 7.2 Build `ProjectPicker`
     - A combobox over non-archived projects with substring search and keyboard navigation

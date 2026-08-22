@@ -12,7 +12,7 @@ The interface is Czech-first with English as a fallback, works on a phone as wel
 
 ## Glossary
 
-Terms carried over from `001-worklog-domain-api` keep their meaning there: **Work_Session**, **Activity_Entry**, **Activity_Segment**, **Tracked_Time**, **Untracked_Time**, **Covered_Time**, **Uncovered_Time**, **Logical_Day**, **Explicit_Mode**, **Duration_Mode**, **Uncovered_Policy**, **Dry_Run**, **Open_Session**, **Project**.
+Terms carried over from `001-worklog-domain-api` keep their meaning there: **Work_Session**, **Activity_Entry**, **Activity_Segment**, **Tracked_Time**, **Untracked_Time**, **Covered_Time**, **Uncovered_Time**, **Logical_Day**, **Explicit_Mode**, **Duration_Mode**, **Open_Mode**, **Placement_Anchor**, **Uncovered_Policy**, **Dry_Run**, **Open_Session**, **Project**.
 
 - **Worklog_UI**: The browser interface of the application — `src/routes/` excluding `src/routes/api/`, plus `src/modules/` and `src/lib/ui/`
 - **Timer_Control**: The start and stop control together with the elapsed readouts, shown on the timer page
@@ -24,7 +24,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 - **Session_Dialog**: The overlay for editing or deleting a `Work_Session`
 - **Change_Preview**: The part of a dialog that shows the outcome returned by a `Dry_Run` before the user confirms
 - **Project_Picker**: The control for choosing a `Project`, with search and inline creation
-- **Quick_Log**: The shortcut that opens the `Activity_Dialog` prefilled from the end of the last `Activity_Segment` to the current time
+- **Quick_Log**: The one-tap control that records an `Activity_Entry` in `Open_Mode`, letting the server resolve the interval from the `Placement_Anchor` to the current time
+- **Palette_Slot**: One of the eight validated categorical colours a `Project` can hold
 - **Locale_Switcher**: The control that changes the interface language between Czech and English
 - **Design_System**: The shared component library in `src/lib/ui/`
 
@@ -116,7 +117,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 #### Acceptance Criteria
 
 1. THE day page SHALL offer an action that opens the `Activity_Dialog` for a new `Activity_Entry`
-2. THE Activity_Dialog SHALL offer a choice between `Explicit_Mode` and `Duration_Mode`
+2. THE Activity_Dialog SHALL offer a choice between `Explicit_Mode` and `Duration_Mode`, and SHALL reach `Open_Mode` through the `Quick_Log` control rather than as a third choice in the dialog
 3. WHILE in `Explicit_Mode`, THE Activity_Dialog SHALL require a start time and an end time
 4. WHILE in `Duration_Mode`, THE Activity_Dialog SHALL require a duration and SHALL leave the start optional
 5. WHILE in `Duration_Mode` with no start given, THE Activity_Dialog SHALL show which start the server will infer
@@ -124,9 +125,10 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 7. THE Activity_Dialog SHALL offer the `Project_Picker` with search and the ability to create a `Project` without leaving the dialog
 8. THE Activity_Dialog SHALL default the `Project` and description to those of the most recent `Activity_Entry` of the displayed day
 9. THE Activity_Dialog SHALL validate the input in the browser before submitting, showing messages beside the field concerned without clearing what was typed
-10. WHEN the `Quick_Log` action is used, THE Activity_Dialog SHALL open in `Explicit_Mode` prefilled from the end of the last `Activity_Segment` of the day to the current time
-11. WHEN an `Activity_Entry` is created, THE Worklog_UI SHALL update the `Day_Timeline` without a full page reload
-12. THE Activity_Dialog SHALL be dismissable with the Escape key and SHALL return focus to the control that opened it
+10. WHEN the `Quick_Log` action is used, THE Worklog_UI SHALL submit the entry in `Open_Mode`, letting the server resolve the start from the `Placement_Anchor` and the end from the current time, rather than computing either in the browser
+11. THE Quick_Log control SHALL state the interval the server will use before it is activated, and SHALL let the user open the full `Activity_Dialog` instead
+12. WHEN an `Activity_Entry` is created, THE Worklog_UI SHALL update the `Day_Timeline` without a full page reload
+13. THE Activity_Dialog SHALL be dismissable with the Escape key and SHALL return focus to the control that opened it
 
 ### Requirement 7: Activity Editing and Deletion
 
@@ -203,7 +205,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 6. THE Project_Picker SHALL offer only non-archived projects
 7. THE projects page SHALL offer deletion of a `Project` that no `Activity_Entry` references
 8. IF deletion is attempted on a `Project` that is referenced, THEN THE Worklog_UI SHALL explain that it is in use and SHALL offer archiving instead
-9. THE Worklog_UI SHALL assign each `Project` a stable colour used consistently on the `Activity_Lane` and in the statistics
+9. THE Worklog_UI SHALL show each `Project` in the stable colour the server assigned it, used consistently on the `Activity_Lane`, in the `Project_Picker` and in the statistics
+10. THE projects page SHALL let the user change a `Project` colour by choosing from the eight palette slots
+11. THE Worklog_UI SHALL show a `Project` colour beside its name, never as the only way to tell two projects apart
 
 ### Requirement 12: Statistics
 

@@ -176,6 +176,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Under `extend`, append one interval of length `unplacedMs` starting at the later of the anchor and the last tracked instant in the window, return it in `extend`, and reset `unplacedMs` to zero
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9_
 
+  - [ ] 6.2b Implement `Open_Mode`
+    - Resolve the start with the same `resolveAnchor` used by `Duration_Mode`, take the current time as the end, then run the `Explicit_Mode` path with that interval — no new reconciliation rules
+    - Store the resolved interval as the entry's requested start and end so the record stays auditable, with `mode` recording that the times were inferred
+    - Reject with `NOTHING_TO_LOG` when the resolved start is not strictly before now, and with `NO_PLACEMENT_ANCHOR` when the day holds neither a segment nor a session
+    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7_
+
   - [ ] 6.3 Write unit tests for `clip`
     - `tests/lib/server/domain/clipping.test.ts`
     - Named case `worked example, explicit`: tracked `[08:00–14:48, 15:12–18:00]`, requested `13:00–16:00` → segments `[13:00–14:48, 15:12–16:00]`
@@ -274,11 +280,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 8.5 Implement the activity routes
     - `src/routes/api/activities/+server.ts` and `activities/[id]/+server.ts` with the Zod schemas from design component 9, using `.strict()` so unknown fields are rejected
-    - Select the mode per Requirement 4.3 and reject naive timestamps
+    - Select the mode from the design's mode-selection table: `endedAt` alone is `Explicit_Mode`, `durationMinutes` alone is `Duration_Mode`, neither is `Open_Mode`, both is `AMBIGUOUS_MODE`; reject naive timestamps
+    - `Open_Mode` needs only `projectId`, so `POST /api/activities -d '{"projectId":"…"}'` is a complete quick log from a shell script or a phone shortcut
     - Run each write in one `withTx` call: load tracked and covered intervals, call `clip`, persist the entry, its segments and any extended sessions; pass `dryRun` straight through to `withTx`
     - Return `ACTIVITY_OVERLAP`, `OUTSIDE_TRACKED_TIME` and `NO_PLACEMENT_ANCHOR` as specified, always reporting `discarded`, `extendedSessions`, `unplacedMinutes` and `dryRun`
     - A PATCH touching only description or project skips re-clipping; one touching the interval or duration replaces the segments while ignoring the entry's own segments for overlap
-    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 5.1, 5.5, 5.8, 5.9, 6.5, 6.6, 6.7, 6.8, 6.9, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 10.2, 12.3, 14.1, 14.3, 14.4, 14.7_
+    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 5.1, 5.5, 5.8, 5.9, 6.5, 6.6, 6.7, 6.8, 6.9, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 10.2, 12.3, 14.1, 14.3, 14.4, 14.7, 15.1, 15.6, 15.7, 15.8_
 
   - [ ] 8.6 Write tests for the activity routes
     - `tests/api/activities.test.ts`, seeding the frame `[08:00–14:48, 15:12–18:00]` before each case
@@ -287,9 +294,10 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Both `endedAt` and `durationMinutes` returns 400 `AMBIGUOUS_MODE`; neither returns 400; a naive timestamp returns 400; an unknown field returns 400
     - An overlapping explicit request returns 409 `ACTIVITY_OVERLAP`; policy `reject` outside tracked time returns 409 and writes nothing; policy `extend` creates the covering session and reports it
     - A duration exceeding the remaining eligible time reports `unplacedMinutes` under the default policy
+    - `Open_Mode` with only a `projectId` records from the last segment's end to now; with an empty day it returns `NO_PLACEMENT_ANCHOR`; when the last segment already reaches now it returns `NOTHING_TO_LOG`
     - The same create with `dryRun` returns the identical body plus `dryRun: true` and leaves every table unchanged
     - PATCH of description alone leaves segments untouched; PATCH of the interval replaces them; DELETE returns 204
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.8, 6.5, 6.6, 6.7, 6.9, 7.4, 7.5, 7.6, 7.8, 10.2, 12.3, 14.1, 14.3, 14.5_
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.8, 6.5, 6.6, 6.7, 6.9, 7.4, 7.5, 7.6, 7.8, 10.2, 12.3, 14.1, 14.3, 14.5, 15.1, 15.2, 15.5, 15.6, 15.7, 15.8_
 
   - [ ] 8.7 Implement the day, coverage and health routes
     - `days/[date]/+server.ts` returns bounds, sessions, entries with segments, coverage and totals including the per-project breakdown; an empty day returns 200 with zeroes, never 404

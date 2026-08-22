@@ -28,6 +28,8 @@ The application is single-user and has no accounts. The browser authenticates wi
 - **Clipping**: The write-time operation that turns a requested interval or duration into `Activity_Segment` records aligned to `Tracked_Time`
 - **Explicit_Mode**: Creating an `Activity_Entry` from a known start and end
 - **Duration_Mode**: Creating an `Activity_Entry` from a duration of net worked time, with the start inferred
+- **Open_Mode**: Creating an `Activity_Entry` from no times at all — the start is inferred like `Duration_Mode` and the end is the current time
+- **Placement_Anchor**: The start inferred for a `Duration_Mode` or `Open_Mode` entry — the end of the latest `Activity_Segment` of the target `Logical_Day`, or the start of its earliest `Work_Session` when no segment exists
 - **Uncovered_Policy**: The caller-selected rule for what happens to the part of a request that falls outside `Tracked_Time` — one of `clip`, `extend`, `reject`
 - **Project**: A named entity an `Activity_Entry` is attributed to
 - **Logical_Day**: The day window used for grouping, running from `DAY_START_HOUR` on one calendar date to `DAY_START_HOUR` on the next, evaluated in `TIMEZONE`
@@ -254,3 +256,18 @@ The application is single-user and has no accounts. The browser authenticates wi
 5. THE Worklog_Server SHALL leave `Work_Session`, `Activity_Entry` and `Activity_Segment` records byte-identical after a `Dry_Run`
 6. THE Worklog_Server SHALL report in a `Dry_Run` response the total duration in seconds that would be removed from existing `Activity_Segment` records
 7. IF `dry_run` is absent from a request, THEN THE Worklog_Server SHALL perform the write
+
+### Requirement 15: Activity Logging in Open Mode
+
+**User Story:** As a user who has just finished something, I want to log it by naming the project and nothing else, so that a quick record costs one call and no arithmetic.
+
+#### Acceptance Criteria
+
+1. WHEN a POST request is received at `/api/activities` with a `project_id` and neither `ended_at` nor `duration_minutes`, THE Worklog_Server SHALL create an `Activity_Entry` in `Open_Mode`
+2. WHEN creating an `Open_Mode` entry, THE Worklog_Server SHALL use the `Placement_Anchor` as the start and the current time as the end
+3. IF `started_at` is supplied in `Open_Mode`, THEN THE Worklog_Server SHALL use that value as the start instead of the `Placement_Anchor`
+4. THE Worklog_Server SHALL apply `Clipping` to an `Open_Mode` entry exactly as it does to an `Explicit_Mode` entry
+5. THE Worklog_Server SHALL record the resolved start and the current time as the requested interval of an `Open_Mode` entry, so the entry remains auditable
+6. IF the resolved start is not strictly before the current time, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NOTHING_TO_LOG`
+7. IF the target `Logical_Day` contains neither an `Activity_Segment` nor a `Work_Session`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NO_PLACEMENT_ANCHOR`
+8. THE Worklog_Server SHALL support `dry_run` in `Open_Mode` on the same terms as the other modes
