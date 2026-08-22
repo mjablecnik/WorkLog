@@ -1,0 +1,30 @@
+# Environment files — never commit real values
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+
+# Go build output
+*.exe
+*.test
+*.out
+/worklog-server/worklog-server
+/worklog-server/bin/
+
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+build/
+.vercel/
+.output/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Scratch
+tmp/
+*.log
