@@ -2,17 +2,21 @@
 
 ## Introduction
 
-`worklog-server` is a Go HTTP service that records how the user spends a working day. It lives at `worklog/worklog-server/` and is the single source of truth for two independent kinds of data that are reconciled against each other.
+Worklog records how the user spends a working day. It is a single SvelteKit application at `worklog/`; this specification covers its **server-side half** — the domain logic, the PostgreSQL data layer and the REST API under `/api`. The browser interface that consumes it is specified separately in `002-worklog-ui`.
+
+The server side is the single source of truth for two independent kinds of data that are reconciled against each other.
 
 The first kind is the **timer frame**: during the day the user only presses play and stop. Each play/stop pair produces a `Work_Session` — a contiguous interval during which the user was actually working. Everything between two sessions is a break (lunch, snack, end of the day), and the server never needs to be told what a break was for.
 
 The second kind is the **activity log**: at the end of the day, or the next morning, the user says what they were doing and on which project. This may arrive as an exact interval ("13:00–14:45 on project A") or as a bare duration ("two hours on project B"). Activity data is always reconciled against the timer frame at write time, so a three-hour entry that spans a 15-minute break is stored as two intervals with the break preserved between them. An audit read a week later therefore shows the break, not three unbroken hours.
 
-The service also answers which parts of the tracked time already have an activity record and which do not, so the client can highlight the day's unexplained stretches. Access is protected by a single static bearer token; the service is single-user and has no accounts. A separate SvelteKit client (`worklog/worklog-app/`) will consume this API and is specified separately.
+The server side also answers which parts of the tracked time already have an activity record and which do not, so the interface can highlight the day's unexplained stretches, and it can evaluate any write without performing it so the interface can show the consequence before the user commits to it.
+
+The application is single-user and has no accounts. The browser authenticates with a session cookie established from a shared passphrase; external callers such as shell scripts or phone shortcuts authenticate with a static bearer token against the same endpoints.
 
 ## Glossary
 
-- **Worklog_Server**: The Go HTTP service at `worklog/worklog-server/`
+- **Worklog_Server**: The server-side half of the SvelteKit application at `worklog/` — the domain logic in `src/lib/server/domain/`, the data layer in `src/lib/server/store/`, and the REST routes under `src/routes/api/`
 - **Work_Session**: A contiguous interval during which the timer was running, produced by one play/stop pair. Has a start and an end; the end is absent while the timer is running.
 - **Open_Session**: The single `Work_Session` whose end is absent, i.e. the timer is currently running
 - **Tracked_Time**: The union of all `Work_Session` intervals in a given range — the time the user was working
@@ -27,8 +31,11 @@ The service also answers which parts of the tracked time already have an activit
 - **Uncovered_Policy**: The caller-selected rule for what happens to the part of a request that falls outside `Tracked_Time` — one of `clip`, `extend`, `reject`
 - **Project**: A named entity an `Activity_Entry` is attributed to
 - **Logical_Day**: The day window used for grouping, running from `DAY_START_HOUR` on one calendar date to `DAY_START_HOUR` on the next, evaluated in `TIMEZONE`
-- **Auth_Middleware**: The HTTP middleware that validates the static bearer token on every request except the health endpoint
-- **Health_Endpoint**: The unauthenticated HTTP endpoint at `GET /health`
+- **Dry_Run**: A request that is validated and evaluated in full but writes nothing, returning the outcome the same write would have produced
+- **Auth_Hook**: The SvelteKit `handle` hook in `src/hooks.server.ts` that authenticates every request before it reaches a route
+- **Browser_Session**: The authenticated state of the browser, carried by an HttpOnly session cookie
+- **API_Token**: The static bearer token used by non-browser callers such as shell scripts and phone shortcuts
+- **Health_Endpoint**: The unauthenticated HTTP endpoint at `GET /api/health`
 
 ## Requirements
 
@@ -38,13 +45,13 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a POST request is received at `/sessions/start` and no `Open_Session` exists, THE Worklog_Server SHALL create a `Work_Session` with its start set to the current time and its end absent, and return HTTP 201 with the created `Work_Session`
-2. IF a POST request is received at `/sessions/start` and an `Open_Session` already exists, THEN THE Worklog_Server SHALL return HTTP 409 with error code `SESSION_ALREADY_RUNNING` and SHALL NOT create a second `Work_Session`
-3. WHEN a POST request is received at `/sessions/start` with an explicit `started_at` value, THE Worklog_Server SHALL use that value instead of the current time
-4. WHEN a POST request is received at `/sessions/stop` and an `Open_Session` exists, THE Worklog_Server SHALL set that session's end to the current time and return HTTP 200 with the closed `Work_Session`
-5. IF a POST request is received at `/sessions/stop` and no `Open_Session` exists, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NO_SESSION_RUNNING`
-6. WHEN a POST request is received at `/sessions/stop` with an explicit `ended_at` value, THE Worklog_Server SHALL use that value instead of the current time
-7. WHEN a GET request is received at `/sessions/current`, THE Worklog_Server SHALL return HTTP 200 with the `Open_Session` and its elapsed duration in seconds, or with a null session when no `Open_Session` exists
+1. WHEN a POST request is received at `/api/sessions/start` and no `Open_Session` exists, THE Worklog_Server SHALL create a `Work_Session` with its start set to the current time and its end absent, and return HTTP 201 with the created `Work_Session`
+2. IF a POST request is received at `/api/sessions/start` and an `Open_Session` already exists, THEN THE Worklog_Server SHALL return HTTP 409 with error code `SESSION_ALREADY_RUNNING` and SHALL NOT create a second `Work_Session`
+3. WHEN a POST request is received at `/api/sessions/start` with an explicit `started_at` value, THE Worklog_Server SHALL use that value instead of the current time
+4. WHEN a POST request is received at `/api/sessions/stop` and an `Open_Session` exists, THE Worklog_Server SHALL set that session's end to the current time and return HTTP 200 with the closed `Work_Session`
+5. IF a POST request is received at `/api/sessions/stop` and no `Open_Session` exists, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NO_SESSION_RUNNING`
+6. WHEN a POST request is received at `/api/sessions/stop` with an explicit `ended_at` value, THE Worklog_Server SHALL use that value instead of the current time
+7. WHEN a GET request is received at `/api/sessions/current`, THE Worklog_Server SHALL return HTTP 200 with the `Open_Session` and its elapsed duration in seconds, or with a null session when no `Open_Session` exists
 8. THE Worklog_Server SHALL permit at most one `Open_Session` to exist at any time
 
 ### Requirement 2: Work Session Listing and Correction
@@ -53,12 +60,12 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/sessions` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with all `Work_Session` records overlapping that range, ordered by start ascending
-2. IF a GET request is received at `/sessions` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
-3. WHEN a PATCH request is received at `/sessions/{id}` with a new start, a new end, or both, THE Worklog_Server SHALL update the `Work_Session` and return HTTP 200 with the updated record
+1. WHEN a GET request is received at `/api/sessions` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with all `Work_Session` records overlapping that range, ordered by start ascending
+2. IF a GET request is received at `/api/sessions` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
+3. WHEN a PATCH request is received at `/api/sessions/{id}` with a new start, a new end, or both, THE Worklog_Server SHALL update the `Work_Session` and return HTTP 200 with the updated record
 4. IF a PATCH or POST request would produce a `Work_Session` whose start is not strictly before its end, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INVALID_INTERVAL`
 5. IF a PATCH or POST request would produce a `Work_Session` overlapping another `Work_Session`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `SESSION_OVERLAP` and SHALL include the conflicting session identifiers in the error details
-6. WHEN a DELETE request is received at `/sessions/{id}`, THE Worklog_Server SHALL remove the `Work_Session` and return HTTP 204
+6. WHEN a DELETE request is received at `/api/sessions/{id}`, THE Worklog_Server SHALL remove the `Work_Session` and return HTTP 204
 7. WHEN a `Work_Session` is modified or deleted, THE Worklog_Server SHALL re-apply `Clipping` to every `Activity_Entry` holding an `Activity_Segment` that overlapped the affected interval, so that stored segments continue to match the new `Tracked_Time`
 8. WHEN re-applying `Clipping` leaves an `Activity_Entry` with no `Activity_Segment`, THE Worklog_Server SHALL retain the `Activity_Entry` with zero segments rather than deleting it
 
@@ -68,14 +75,17 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a POST request is received at `/projects` with a name, THE Worklog_Server SHALL create a `Project` and return HTTP 201 with the created record
-2. IF a POST request is received at `/projects` with a name that already exists, ignoring case and surrounding whitespace, THEN THE Worklog_Server SHALL return HTTP 409 with error code `PROJECT_EXISTS`
-3. IF a POST or PATCH request is received at `/projects` with a name that is empty or longer than 200 characters, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
-4. WHEN a GET request is received at `/projects`, THE Worklog_Server SHALL return HTTP 200 with all non-archived `Project` records ordered by name ascending
-5. WHEN a GET request is received at `/projects` with `include_archived=true`, THE Worklog_Server SHALL additionally return archived `Project` records
-6. WHEN a PATCH request is received at `/projects/{id}`, THE Worklog_Server SHALL update the name, the archived state, or both, and return HTTP 200
-7. IF a DELETE request is received at `/projects/{id}` and the `Project` is referenced by at least one `Activity_Entry`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `PROJECT_IN_USE`
-8. WHEN a DELETE request is received at `/projects/{id}` and the `Project` is referenced by no `Activity_Entry`, THE Worklog_Server SHALL remove it and return HTTP 204
+1. WHEN a POST request is received at `/api/projects` with a name, THE Worklog_Server SHALL create a `Project` and return HTTP 201 with the created record
+2. IF a POST request is received at `/api/projects` with a name that already exists, ignoring case and surrounding whitespace, THEN THE Worklog_Server SHALL return HTTP 409 with error code `PROJECT_EXISTS`
+3. IF a POST or PATCH request is received at `/api/projects` with a name that is empty or longer than 200 characters, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
+4. WHEN a GET request is received at `/api/projects`, THE Worklog_Server SHALL return HTTP 200 with all non-archived `Project` records ordered by name ascending
+5. WHEN a GET request is received at `/api/projects` with `include_archived=true`, THE Worklog_Server SHALL additionally return archived `Project` records
+6. WHEN a PATCH request is received at `/api/projects/{id}`, THE Worklog_Server SHALL update the name, the archived state, or both, and return HTTP 200
+7. IF a DELETE request is received at `/api/projects/{id}` and the `Project` is referenced by at least one `Activity_Entry`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `PROJECT_IN_USE`
+8. WHEN a DELETE request is received at `/api/projects/{id}` and the `Project` is referenced by no `Activity_Entry`, THE Worklog_Server SHALL remove it and return HTTP 204
+9. WHEN a `Project` is created, THE Worklog_Server SHALL assign it a colour index that is the lowest value not currently held by a non-archived `Project`, wrapping around when every value is taken
+10. THE Worklog_Server SHALL keep a `Project` colour index unchanged when the project is renamed, archived or unarchived
+11. WHEN a PATCH request at `/api/projects/{id}` supplies a colour index within range, THE Worklog_Server SHALL store it even when another `Project` already holds it
 
 ### Requirement 4: Activity Logging in Explicit Mode
 
@@ -83,9 +93,9 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a POST request is received at `/activities` with `started_at`, `ended_at`, a `project_id` and a description, THE Worklog_Server SHALL create an `Activity_Entry` in `Explicit_Mode`, apply `Clipping`, and return HTTP 201 with the entry and its resulting `Activity_Segment` records
+1. WHEN a POST request is received at `/api/activities` with `started_at`, `ended_at`, a `project_id` and a description, THE Worklog_Server SHALL create an `Activity_Entry` in `Explicit_Mode`, apply `Clipping`, and return HTTP 201 with the entry and its resulting `Activity_Segment` records
 2. THE Worklog_Server SHALL store the originally requested start and end on the `Activity_Entry` unchanged, regardless of how `Clipping` alters the stored segments
-3. IF a POST request at `/activities` supplies both an explicit interval and a duration, THEN THE Worklog_Server SHALL return HTTP 400 with error code `AMBIGUOUS_MODE`
+3. IF a POST request at `/api/activities` supplies both an explicit interval and a duration, THEN THE Worklog_Server SHALL return HTTP 400 with error code `AMBIGUOUS_MODE`
 4. IF `started_at` is not strictly before `ended_at`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INVALID_INTERVAL`
 5. IF the requested interval overlaps an `Activity_Segment` belonging to a different `Activity_Entry`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `ACTIVITY_OVERLAP` and SHALL include the conflicting entry identifiers and overlapping intervals in the error details
 6. IF `project_id` does not reference an existing `Project`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
@@ -98,7 +108,7 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a POST request is received at `/activities` with `duration_minutes`, a `project_id` and a description, and without `ended_at`, THE Worklog_Server SHALL create an `Activity_Entry` in `Duration_Mode`, apply `Clipping`, and return HTTP 201 with the entry and its resulting `Activity_Segment` records
+1. WHEN a POST request is received at `/api/activities` with `duration_minutes`, a `project_id` and a description, and without `ended_at`, THE Worklog_Server SHALL create an `Activity_Entry` in `Duration_Mode`, apply `Clipping`, and return HTTP 201 with the entry and its resulting `Activity_Segment` records
 2. IF `started_at` is supplied together with `duration_minutes`, THEN THE Worklog_Server SHALL use that value as the placement start
 3. IF `started_at` is not supplied, THEN THE Worklog_Server SHALL use the end of the latest `Activity_Segment` within the target `Logical_Day` as the placement start
 4. IF `started_at` is not supplied and the target `Logical_Day` contains no `Activity_Segment`, THEN THE Worklog_Server SHALL use the start of the earliest `Work_Session` of that `Logical_Day` as the placement start
@@ -130,14 +140,14 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/activities` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with every `Activity_Entry` holding at least one `Activity_Segment` overlapping that range, each with its segments, ordered by earliest segment start ascending
-2. IF a GET request is received at `/activities` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
-3. WHEN a GET request is received at `/activities` with a `project_id` query parameter, THE Worklog_Server SHALL return only entries attributed to that `Project`
-4. WHEN a GET request is received at `/activities/{id}`, THE Worklog_Server SHALL return HTTP 200 with that `Activity_Entry` and its `Activity_Segment` records
-5. WHEN a PATCH request is received at `/activities/{id}` changing the description or the `project_id`, THE Worklog_Server SHALL update the `Activity_Entry` without re-applying `Clipping`
-6. WHEN a PATCH request is received at `/activities/{id}` changing the requested interval or duration, THE Worklog_Server SHALL replace all existing `Activity_Segment` records of that entry by re-applying `Clipping`
+1. WHEN a GET request is received at `/api/activities` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with every `Activity_Entry` holding at least one `Activity_Segment` overlapping that range, each with its segments, ordered by earliest segment start ascending
+2. IF a GET request is received at `/api/activities` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
+3. WHEN a GET request is received at `/api/activities` with a `project_id` query parameter, THE Worklog_Server SHALL return only entries attributed to that `Project`
+4. WHEN a GET request is received at `/api/activities/{id}`, THE Worklog_Server SHALL return HTTP 200 with that `Activity_Entry` and its `Activity_Segment` records
+5. WHEN a PATCH request is received at `/api/activities/{id}` changing the description or the `project_id`, THE Worklog_Server SHALL update the `Activity_Entry` without re-applying `Clipping`
+6. WHEN a PATCH request is received at `/api/activities/{id}` changing the requested interval or duration, THE Worklog_Server SHALL replace all existing `Activity_Segment` records of that entry by re-applying `Clipping`
 7. WHILE re-applying `Clipping` for a PATCH request, THE Worklog_Server SHALL ignore the entry's own existing `Activity_Segment` records when testing for overlap
-8. WHEN a DELETE request is received at `/activities/{id}`, THE Worklog_Server SHALL remove the `Activity_Entry` together with all its `Activity_Segment` records and return HTTP 204
+8. WHEN a DELETE request is received at `/api/activities/{id}`, THE Worklog_Server SHALL remove the `Activity_Entry` together with all its `Activity_Segment` records and return HTTP 204
 
 ### Requirement 8: Day Overview
 
@@ -145,13 +155,13 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/days/{date}`, THE Worklog_Server SHALL return HTTP 200 with the `Logical_Day` boundaries, all `Work_Session` records, all `Activity_Entry` records with their `Activity_Segment` records, the `Uncovered_Time` intervals and the `Untracked_Time` intervals of that day
+1. WHEN a GET request is received at `/api/days/{date}`, THE Worklog_Server SHALL return HTTP 200 with the `Logical_Day` boundaries, all `Work_Session` records, all `Activity_Entry` records with their `Activity_Segment` records, the `Uncovered_Time` intervals and the `Untracked_Time` intervals of that day
 2. THE Worklog_Server SHALL include in the day response the total `Tracked_Time` in seconds, the total `Covered_Time` in seconds and the total `Uncovered_Time` in seconds
 3. THE Worklog_Server SHALL include in the day response a per-`Project` breakdown giving the total `Covered_Time` in seconds attributed to each `Project`
 4. IF `{date}` is not a valid `YYYY-MM-DD` date, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
-5. WHEN a GET request is received at `/days/{date}` for a day holding no records, THE Worklog_Server SHALL return HTTP 200 with empty collections and zero totals rather than HTTP 404
-6. WHEN a GET request is received at `/days` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with one summary object per `Logical_Day` in the range, each carrying the totals defined in criteria 2 and 3
-7. IF the range requested at `/days` spans more than 366 `Logical_Day` values, THEN THE Worklog_Server SHALL return HTTP 400 with error code `RANGE_TOO_LARGE`
+5. WHEN a GET request is received at `/api/days/{date}` for a day holding no records, THE Worklog_Server SHALL return HTTP 200 with empty collections and zero totals rather than HTTP 404
+6. WHEN a GET request is received at `/api/days` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with one summary object per `Logical_Day` in the range, each carrying the totals defined in criteria 2 and 3
+7. IF the range requested at `/api/days` spans more than 366 `Logical_Day` values, THEN THE Worklog_Server SHALL return HTTP 400 with error code `RANGE_TOO_LARGE`
 
 ### Requirement 9: Coverage and Gaps
 
@@ -159,11 +169,11 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/coverage` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with the `Tracked_Time` intervals, the `Covered_Time` intervals, the `Uncovered_Time` intervals and the `Untracked_Time` intervals of that range
+1. WHEN a GET request is received at `/api/coverage` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with the `Tracked_Time` intervals, the `Covered_Time` intervals, the `Uncovered_Time` intervals and the `Untracked_Time` intervals of that range
 2. THE Worklog_Server SHALL return each interval collection as a normalized list — sorted by start ascending, with adjacent and overlapping intervals merged
 3. THE Worklog_Server SHALL guarantee that the returned `Covered_Time` and `Uncovered_Time` intervals together reconstruct exactly the returned `Tracked_Time` intervals
-4. WHEN a GET request is received at `/coverage` with a `min_gap_seconds` query parameter, THE Worklog_Server SHALL omit `Uncovered_Time` intervals shorter than that value
-5. IF a GET request is received at `/coverage` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
+4. WHEN a GET request is received at `/api/coverage` with a `min_gap_seconds` query parameter, THE Worklog_Server SHALL omit `Uncovered_Time` intervals shorter than that value
+5. IF a GET request is received at `/api/coverage` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
 6. IF `from` is not strictly before `to`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INVALID_INTERVAL`
 
 ### Requirement 10: Logical Day and Time Zone Handling
@@ -182,17 +192,25 @@ The service also answers which parts of the tracked time already have an activit
 
 ### Requirement 11: Authentication
 
-**User Story:** As the sole user of the service, I want a single shared token to guard the API, so that I can expose the server without building an account system.
+**User Story:** As the sole user of the application, I want the browser to stay logged in without holding a token it could leak, while scripts and phone shortcuts can still reach the same endpoints with a bearer token.
 
 #### Acceptance Criteria
 
-1. THE Auth_Middleware SHALL require an `Authorization: Bearer <token>` header on every request except `GET /health`
-2. IF the header is absent or malformed, THEN THE Auth_Middleware SHALL return HTTP 401 with error code `UNAUTHORIZED`
-3. IF the supplied token does not equal the value of the `WORKLOG_API_TOKEN` environment variable, THEN THE Auth_Middleware SHALL return HTTP 401 with error code `UNAUTHORIZED`
-4. THE Auth_Middleware SHALL compare the supplied token against the configured token in constant time
-5. THE Auth_Middleware SHALL NOT write the supplied token, or any part of it, to the logs
-6. IF `WORKLOG_API_TOKEN` is unset or shorter than 32 characters, THEN THE Worklog_Server SHALL log an error and exit with a non-zero status at startup
-7. THE Worklog_Server SHALL restrict cross-origin requests to the origins listed in the `CORS_ORIGINS` environment variable, and SHALL reject a wildcard value when `APP_ENV` is not `development`
+1. THE Auth_Hook SHALL authenticate every request except `GET /api/health` and the login route
+2. WHEN a request carries a `Browser_Session` cookie that matches an unexpired stored session, THE Auth_Hook SHALL admit the request
+3. WHEN a request carries an `Authorization: Bearer <token>` header equal to the `API_Token`, THE Auth_Hook SHALL admit the request
+4. IF a request to a path under `/api` carries neither a valid `Browser_Session` nor a valid `API_Token`, THEN THE Auth_Hook SHALL return HTTP 401 with error code `UNAUTHORIZED`
+5. IF a request to any other path carries no valid `Browser_Session`, THEN THE Auth_Hook SHALL redirect to the login route
+6. THE Auth_Hook SHALL compare the `API_Token` and the login passphrase in constant time
+7. THE Auth_Hook SHALL NOT write the `API_Token`, the login passphrase or the session identifier to the logs
+8. WHEN the correct passphrase is submitted at the login route, THE Worklog_Server SHALL create a stored session and set a cookie carrying its identifier
+9. THE Worklog_Server SHALL set the session cookie with `HttpOnly`, `SameSite=Strict`, an explicit `Path`, an explicit `Max-Age`, and `Secure` whenever `APP_ENV` is not `development`
+10. IF the submitted passphrase is wrong, THEN THE Worklog_Server SHALL return a message that does not reveal whether any credential exists
+11. IF more than 5 login attempts arrive from one client address within 15 minutes, THEN THE Worklog_Server SHALL reject further attempts with HTTP 429
+12. WHEN the user logs out, THE Worklog_Server SHALL delete the stored session so the cookie can no longer authenticate
+13. THE Worklog_Server SHALL delete stored sessions once they expire
+14. IF `WORKLOG_API_TOKEN` is unset or shorter than 32 characters, or `WORKLOG_PASSPHRASE` is unset or shorter than 12 characters, THEN THE Worklog_Server SHALL log an error and refuse to start
+15. THE Worklog_Server SHALL restrict cross-origin requests to the origins listed in the `CORS_ORIGINS` environment variable, and SHALL reject a wildcard value when `APP_ENV` is not `development`
 
 ### Requirement 12: Validation, Errors and Rate Limiting
 
@@ -215,10 +233,24 @@ The service also answers which parts of the tracked time already have an activit
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/health`, THE Health_Endpoint SHALL return HTTP 200 with a JSON body reporting status `ok` and the service version
+1. WHEN a GET request is received at `/api/health`, THE Health_Endpoint SHALL return HTTP 200 with a JSON body reporting status `ok` and the service version
 2. THE Health_Endpoint SHALL NOT require authentication
 3. IF the database is unreachable, THEN THE Health_Endpoint SHALL return HTTP 503 with status `degraded`
 4. WHEN the process receives SIGTERM or SIGINT, THE Worklog_Server SHALL stop accepting new connections, allow in-flight requests up to 30 seconds to finish, close the database pool and exit with status 0
 5. THE Worklog_Server SHALL apply an explicit timeout to every database query, configurable via `DB_QUERY_TIMEOUT_SECONDS` and defaulting to 5
 6. THE Worklog_Server SHALL read its configuration from environment variables and from a `.env` file when present, and SHALL exit with a non-zero status when a required variable is missing
-7. THE Worklog_Server SHALL listen on the port given by the `PORT` environment variable, defaulting to `8080`
+7. THE Worklog_Server SHALL listen on the port given by the `PORT` environment variable, defaulting to `3000`
+
+### Requirement 14: Dry Run
+
+**User Story:** As a user about to shorten a timer session, I want to see what it will do to my logged activities before I save, so that I never lose recorded work by surprise.
+
+#### Acceptance Criteria
+
+1. WHEN a request to create or modify an `Activity_Entry` carries `dry_run` set to true, THE Worklog_Server SHALL evaluate it in full and return the outcome without writing anything
+2. WHEN a request to modify or delete a `Work_Session` carries `dry_run` set to true, THE Worklog_Server SHALL return every `Activity_Entry` that would be re-clipped, each with its `Activity_Segment` records as they are now and as they would become
+3. THE Worklog_Server SHALL return a `Dry_Run` response in the same shape as the corresponding write response, with an added field marking it as a `Dry_Run`
+4. THE Worklog_Server SHALL apply the same validation to a `Dry_Run` as to the corresponding write, and SHALL return the same error codes for the same reasons
+5. THE Worklog_Server SHALL leave `Work_Session`, `Activity_Entry` and `Activity_Segment` records byte-identical after a `Dry_Run`
+6. THE Worklog_Server SHALL report in a `Dry_Run` response the total duration in seconds that would be removed from existing `Activity_Segment` records
+7. IF `dry_run` is absent from a request, THEN THE Worklog_Server SHALL perform the write

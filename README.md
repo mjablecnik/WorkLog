@@ -8,12 +8,21 @@ Later — at the end of the day, or the next morning — activities are logged: 
 
 The two streams are reconciled at write time. An activity spanning a break is stored as several intervals with the break preserved between them, so a history read a week later shows when work actually happened rather than one unbroken block.
 
-## Services
+## Architecture
 
-| Service | Stack | Status |
+One SvelteKit application backed by PostgreSQL 16. The browser talks to it through load functions and form actions with an HttpOnly session cookie; scripts and phone shortcuts talk to the same data through REST routes under `/api` with a bearer token.
+
+```
+src/lib/server/domain/   pure reconciliation logic — no database, no HTTP
+src/lib/server/store/    PostgreSQL access
+src/routes/api/          REST endpoints for external callers
+src/routes/              the interface
+```
+
+| Spec | Scope | Status |
 |---|---|---|
-| [`worklog-server`](worklog-server/) | Go 1.25, PostgreSQL 16 | specified — see `.kiro/specs/001-worklog-server-api/` |
-| [`worklog-app`](worklog-app/) | SvelteKit | not started |
+| [`001-worklog-domain-api`](.kiro/specs/001-worklog-domain-api/) | domain, data layer, REST API | specified |
+| [`002-worklog-ui`](.kiro/specs/002-worklog-ui/) | timer, day timeline, projects, statistics | in progress |
 
 ## How reconciliation works
 
