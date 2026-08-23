@@ -221,6 +221,21 @@ export async function coveredIntervals(
 	return normalize(rows.map((r) => ({ start: r.startedAt, end: r.endedAt })));
 }
 
+/** Raw segment rows overlapping `window` — the ids the Preview_Token fingerprint needs. */
+export async function segmentsOverlapping(
+	tx: Tx,
+	window: Interval
+): Promise<{ id: string; startedAt: Date; endedAt: Date }[]> {
+	return tx
+		.select({
+			id: activitySegments.id,
+			startedAt: activitySegments.startedAt,
+			endedAt: activitySegments.endedAt
+		})
+		.from(activitySegments)
+		.where(segmentOverlapClause(window));
+}
+
 /**
  * Every Activity_Entry with at least one segment overlapping `window`, UNION every
  * Orphaned_Entry whose requested interval overlaps it (Requirements 7.1, 7.2), joined

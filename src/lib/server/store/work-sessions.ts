@@ -137,8 +137,11 @@ export async function insertSessions(tx: Tx, intervals: Interval[]): Promise<Wor
  * disjoint stretches at once.
  */
 export async function trackedIntervals(tx: Tx, window: Interval[], now: Date): Promise<Interval[]> {
-	if (window.length === 0) return [];
 	const normalizedWindow = normalize(window);
+	// `window` may be non-empty as an array while every interval in it is empty (start
+	// >= end) — normalize() drops those, so the check has to happen after normalizing,
+	// not before.
+	if (normalizedWindow.length === 0) return [];
 	const boundingStart = normalizedWindow[0].start;
 	const boundingEnd = normalizedWindow.reduce(
 		(latest, w) => (w.end.getTime() > latest.getTime() ? w.end : latest),
