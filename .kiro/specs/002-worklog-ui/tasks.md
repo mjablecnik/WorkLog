@@ -411,12 +411,13 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `Uncovered_Time` appears below a divider as a plain accent figure, never as one of the bars
     - Apply the mark specs: 2 pixel surface gaps between adjacent bars, rounded data-ends, recessive gridlines, hover tooltips, and a legend whenever two or more projects appear
     - Present every figure as text beside its bar, and show an empty state rather than an empty chart for a range with no records
-    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.12, 12.13, 12.18_
+    - Below 768 pixels the `KPI_Row` is `repeat(2, 1fr)` at `gap: 12` with the figure at 22/300, the range control spans the full width, and a breakdown row wraps to two lines — per the design's *Statistics and Projects, Mobile* section. Assert no horizontal overflow at 320
+    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.12, 12.13, 12.18, 14.25_
 
   - [ ] 8.3 Build `DayRhythm` and `RhythmPanel`
     - `DayRhythm` draws one 22 pixel strip per `Logical_Day` on a shared axis running from the server's `DAY_START_HOUR` back to it — never a hard-coded `03:00` — with three recessive ticks, the day label in a 58 pixel gutter and the day total in a 62 pixel gutter
     - Label the axis from that hour too: both ends at `DAY_START_HOUR` and interior ticks at 25 %, 50 % and 75 % of the span, so a `DAY_START_HOUR` of 5 reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` is a drawing convenience
-    - Draw the segments from the fields the response carries: each covered interval as a `<rect>` in the `Palette_Slot` of the `colorIndex` beside its `projectId`, each uncovered interval in the same geometry with a **hatch** — a 45° pattern of 1 pixel accent lines 4 pixels apart at 45 % over a 6 % accent fill — so a worked-but-undescribed day is distinguishable at a glance. The hatching is in the artboard and was missing from this spec
+    - Draw the segments from the fields the response carries: each covered interval as a `<rect>` in the `Palette_Slot` of the `colorIndex` beside its `projectId`, each uncovered interval in the same geometry filled with the hatch `<pattern>` the design defines — a 6 × 6 `userSpaceOnUse` pattern rotated 45°, holding one 3 × 6 accent `<rect>` at `fill-opacity: 0.5`, with **no fill beneath** — so a worked-but-undescribed day is distinguishable at a glance. An SVG pattern, not a CSS gradient: the strip is inline SVG
     - Render the strip as an inline `<svg>` with `<rect>` elements, because a percentage offset written as a CSS style would need an inline style attribute
     - Today's row is labelled in the accent and its strip carries the accent inset outline; a day with no `Tracked_Time` renders an empty strip and an em dash; activating a strip navigates to that day page
     - `RhythmPanel` gives days worked, average per working day, longest day, `longestBlockSeconds`, total `Work_Block` groups and `eveningSeconds` — the `Tracked_Time` after the `Evening_Hour` read from context, with that hour named in the label rather than assumed to be 21:00
@@ -427,7 +428,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Each variable is one field of the range payload: `nights` = days with `eveningSeconds > 0`, `workdays` = days with `trackedSeconds > 0`, `longest` = `max(longestBlockSeconds)` and `weekday` its day, `idleDays` = days with `trackedSeconds === 0`, `eveningHour` from context
     - Render `DayRhythm` only when `intervalsIncluded` is true; when it is false the panel keeps its heading and its place and its body is one sentence naming the range over which the strip is available — no empty strip, no partial strip, no error state. `RhythmPanel` and the rest of the page are unaffected, because none of their figures needs an interval
     - Present the same numbers as text so nothing depends on colour
-    - _Requirements: 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.13, 12.17, 12.18, 13.12_
+    - Below 768 pixels the label gutter is 40, the total gutter 46 and the strip 18 tall, and the axis carries **three** labels rather than five — the rule stays even divisions of the span, only the count drops, because five do not fit. Breakdown and rhythm panel stack at `1fr`
+    - _Requirements: 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.13, 12.17, 12.18, 13.12, 14.25_
 
   - [ ] 8.4 Write component tests for the statistics
     - `tests/modules/stats/components/stats.test.ts`: the breakdown sorts descending, folds an eighth project into Other, and draws each bar to its share of the total rather than of the largest; the `KPI_Row` shows overtime with its share; `DayRhythm` places a 21:00–03:00 session in the right part of the strip, marks today, renders an empty day as a dash, and takes its axis from a `dayStartHour` of 4 as readily as 3; activating a strip navigates; the empty range shows the empty state; the window suggestion appears only when it differs by more than 30 minutes
@@ -487,14 +489,16 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/e2e/auth.spec.ts`: log out from the `Settings_Menu` and assert the login page follows; clear the cookie and assert a browser-issued request redirects to login with the session-ended message, while a plain navigation redirect shows no such message; a wrong passphrase shows the generic message
     - _Requirements: 1.16, 1.17, 1.19, 1.20, 1.21, 1.22, 2.3, 2.5, 2.6, 2.7, 13.4, 17.5, 17.6, 17.7_
 
-  - [ ]* 11.5 Write the accessibility pass
+  - [ ] 11.5 Write the accessibility and responsive pass
+    - **Not optional.** This is the only place Requirement 14.1 is verified at all, and the two pages most likely to break it — statistics and projects — have no mobile artboard to compare against, so nothing else would catch an overflow
     - An axe run over the timer, day, projects and statistics pages in **both** themes
     - A keyboard-only walk of the day page reaching every timeline block, opening a dialog and completing a save with no pointer
-    - Assert no horizontal page scrolling at 320 pixels, and that every focused control shows a visible focus ring
-    - _Requirements: 14.1, 14.5, 14.10, 14.11_
+    - Assert no horizontal page scrolling at 320 pixels **on every page**, and that every focused control shows a visible focus ring
+    - Assert a success toast is announced through the live region and that the elapsed readout is not, and that under an emulated `prefers-reduced-motion: reduce` no element carries a transform transition
+    - _Requirements: 14.1, 14.5, 14.10, 14.11, 14.25, 15.13, 15.15_
 
   - [ ] 11.6 Run the visual conformance pass
-    - `canvas.json` is the list — an artboard added later joins the comparison by being in it. It holds **20** today: **15** are screens and every one is compared, at its own frame size, against the matching PNG in `.design/screens/`: `Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`
+    - `canvas.json` is the list — an artboard added later joins the comparison by being in it. It holds **21** today: **16** are screens and every one is compared, at its own frame size, against the matching PNG in `.design/screens/`: `Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`, `SettingsMobileLight`
     - The other **5** — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge rather than showing a screen and are not compared
     - Compare arrangement, relative proportion and palette against `.design/screens/`. **Exact pixel heights are not compared** — the artboard's block heights illustrate the layout algorithm, and the algorithm in the design is what is normative. Copy and example data are not compared either
     - This pass is not optional: nine surfaces are specified in the design's tokens rather than drawn as artboards — confirmation dialogs, toasts, empty states, skeletons, the login, error and offline pages, the timezone notice and the focus ring — and this is the only check that looks at them at all
@@ -537,7 +541,7 @@ below and interleave with `001`'s graph.
 
 ## Notes
 
-- Tasks marked with `*` are optional and can be skipped for a faster first version: the `DayGauge` component test (6.6) and the accessibility pass (11.5). Everything else is load-bearing — in particular the three property tests **and the visual conformance pass**, which is the only check covering the nine surfaces the design specifies in tokens rather than in an artboard.
+- Tasks marked with `*` are optional and can be skipped for a faster first version: the `DayGauge` component test (6.6). Everything else is load-bearing — in particular the three property tests, **the visual conformance pass**, which is the only check covering the surfaces the design specifies in tokens rather than in an artboard, and **the accessibility and responsive pass (11.5)**, which is the only check covering statistics and projects below 768 pixels, where no artboard exists to compare against.
 - **`.design/` is the visual contract.** `DESIGN.md` holds the tokens and the rules, `artboards/` the approved screens, `screens/` their renders. Where this spec states a colour, a size or an arrangement it is transcribing that contract. A disagreement between the two is a defect to be raised, never a choice to be made while implementing.
 - **The browser never computes the reconciliation, and there is no exception.** Every `Change_Preview` renders a server `Dry_Run` response verbatim, down to `lostUncoveredSeconds` and `lostUncovered`. The client could intersect the day's loaded `uncovered` intervals with the removed interval itself, and it deliberately does not: that would be the one figure in the report derived in the browser, and the whole preview rests on the rule that none is. If a preview seems slow, cache it; do not compute it locally.
 - **The server owns the timer.** The elapsed readout ticks locally but is replaced by `sync()` on load, on tab focus and after every start and stop. Never persist timer state in the browser: a cached value that survives a server-side change is worse than no cache.

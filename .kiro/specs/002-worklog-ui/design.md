@@ -707,6 +707,34 @@ Skeletons have exactly three callers, because every first load is server-rendere
 
 Content max 940. Rows of `padding: 16px 18px` separated by 1 px dividers, each with a 32 px icon box of radius 9 tinted from the project's slot and carrying a 13 px rounded swatch, the name, the thirty-day `Covered_Time`, a share bar, and row actions. The colour control belongs to the row it changes: activating the row's swatch expands a strip of eight swatches **inside that row**, each 38 tall at radius 11, the current one ringed with `0 0 0 2px var(--bg), 0 0 0 4px var(--text)`; choosing one saves and collapses the strip. The artboard draws the strip as a standalone panel to show all eight at once, which is a presentation of the control rather than its placement — a page-level picker would have no way of saying which project it is about.
 
+### Statistics and Projects, Mobile
+
+Neither page has a mobile artboard. The rules below are the contract in their place, and
+they are binding exactly as a drawn screen would be — `Stats` and `Projects` are the two
+densest surfaces in the application and the two most likely to overflow a 320 px viewport,
+which is what Requirement 14.1 forbids and Requirement 14.25 pins.
+
+**Statistics.** The `KPI_Row` becomes `grid-template-columns: repeat(2, 1fr)` with
+`gap: 12`, panels padded `14px 16px`, the figure at 22/300 and the caps label at 10. The
+range control spans the full width with its three items 36 tall. The `Day_Rhythm_Strip`
+keeps one row per day and narrows around it: the day-label gutter to 40, the total gutter
+to 46, the strip to 18 tall — and the axis carries **three** labels rather than five,
+`DAY_START_HOUR` at each end with one interior tick at 50 %, because five do not fit at
+this width. The rule is unchanged and still even divisions of the span; only the count
+drops. Breakdown and rhythm panel stack at `grid-template-columns: 1fr`, `gap: 14`. A
+breakdown row wraps onto two lines: swatch and name at 13.5 on the first, duration and
+share at 12 `--text-faint` on the second, the 8 px bar beneath both. The observation line
+stays as it is.
+
+**Projects.** Content padding 16, no 940 cap. A row is two lines inside
+`padding: 12px 14px`: a 28 px icon box, the name at 14/500 and the archived badge on the
+first line; the thirty-day total at 13 tabular, the share bar and a single 32 px overflow
+button on the second. The three row actions collapse behind that button, which opens the
+`Settings_Menu`'s mobile sheet treatment carrying *Přejmenovat*, *Archivovat*, *Smazat*
+and *Změnit barvu*. Choosing the colour expands the eight swatches inside the row as two
+rows of four, each 38 tall at radius 11, the current one ringed — still inside the row it
+changes, for the same reason as on desktop.
+
 ## Project Structure
 
 Files owned by this specification; everything else comes from `001-worklog-domain-api`.
