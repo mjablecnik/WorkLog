@@ -209,8 +209,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 6. WHEN the interval or the duration is changed, THE Worklog_UI SHALL show a `Change_Preview` before saving
 7. THE Worklog_UI SHALL offer deletion of an `Activity_Entry` behind a confirmation that names what will be removed
 8. WHEN an `Activity_Entry` is deleted, THE Worklog_UI SHALL update the `Day_Timeline` without a full page reload
-9. THE day page SHALL show the `Orphan_Panel` listing every `Activity_Entry` that reconciliation emptied, explaining that nothing of it remains inside the timer frame, because an entry with no `Activity_Segment` cannot appear on the `Day_Timeline` at all
-10. THE Worklog_UI SHALL offer deleting an emptied `Activity_Entry` or re-entering its times, so it can never become a record the user cannot reach
+9. WHEN the displayed day holds at least one `Orphaned_Entry`, THE day page SHALL show the `Orphan_Panel` listing each of them with its `Project` and its originally requested interval, explaining that nothing of it remains inside the timer frame, because an entry with no `Activity_Segment` cannot appear on the `Day_Timeline` at all
+10. IF the displayed day holds no `Orphaned_Entry`, THEN THE day page SHALL NOT render the `Orphan_Panel` at all, rather than rendering it empty
+11. THE Orphan_Panel SHALL offer, for each listed entry, re-entering its times or deleting it, so it can never become a record the user cannot reach
 
 ### Requirement 8: Timer Frame Editing
 
@@ -294,7 +295,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 
 #### Acceptance Criteria
 
-1. THE statistics page SHALL offer a day, a week and a month range through a segmented control, naming the resolved date range beside it
+1. THE statistics page SHALL offer exactly three ranges — a day, a week and a month — through a segmented control, naming the resolved date range beside it, and SHALL offer no range longer than a month
 2. THE statistics page SHALL present a `KPI_Row` of four figures: the total `Tracked_Time`, the total `Covered_Time`, the described share of `Tracked_Time` as a percentage over a meter, and the total `Overtime` with its share of `Tracked_Time` beneath it
 3. THE statistics page SHALL show the `Covered_Time` per `Project` for the selected range, sorted descending, each row carrying the project's swatch, its name, its duration and its share of the range's total `Covered_Time`
 4. THE statistics page SHALL draw each project's bar as its share of the range's total `Covered_Time`, so the bar and the printed percentage state the same quantity and a full track means the whole range
@@ -311,7 +312,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 15. WHEN the server reports a suggested window that differs from the configured `Gauge_Window` by more than 30 minutes at either end, THE Worklog_UI SHALL show it as a suggestion, so the window can be fitted to real habits rather than guessed
 16. THE Worklog_UI SHALL request the per-day work intervals explicitly when it needs the `Day_Rhythm_Strip`, and IF the server reports them omitted because the range exceeds `MAX_INTERVAL_RANGE_DAYS`, THEN THE statistics page SHALL render every other panel in full, draw no `Day_Rhythm_Strip`, and treat the response as a success rather than an error
 17. THE Day_Rhythm_Strip SHALL draw the uncovered intervals the server returns with a hatched fill, so a day whose work was logged but never described is distinguishable from one that was described
-18. THE statistics page SHALL close its rhythm panel with at most one observation sentence, chosen from a closed set of at most three templates by a fixed priority, and SHALL omit the sentence entirely when no template applies
+18. THE statistics page SHALL close its rhythm panel with exactly one observation line, being the first of the three defined templates whose condition holds, and SHALL omit the line entirely — not substitute other text and not leave blank space — when none of them holds
 19. WHEN the suggested window is shown, THE Worklog_UI SHALL present it as a value to set in the server's configuration and restart with, not as a control the interface can apply, because the `Gauge_Window` has no write endpoint
 
 ### Requirement 13: Internationalization
@@ -331,8 +332,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 9. IF the browser expresses no preference the interface supports, THEN THE Worklog_UI SHALL use Czech, the same fallback criterion 3 states, so the two cannot diverge
 10. THE Locale_Switcher SHALL indicate the active language
 11. THE Worklog_UI SHALL render the `messageKey` field of a server error and SHALL never display the raw `error` code to the user
-12. THE Worklog_UI SHALL render every message carrying a count through a plural rule for the active language, so Czech selects between its one, few and many forms — `2 záznamy`, `5 záznamů`, `část 2 ze 3`, `6 ze 7 dnů`
-13. WHEN a page is server-rendered, THE Worklog_UI SHALL resolve the active language before rendering it, from the cookie criterion 4 persists, and SHALL emit the document `lang` attribute already correct, so hydration never switches the language visibly
+12. THE Worklog_UI SHALL render every message carrying a count through a plural rule for the active language, so Czech selects between its one, few and other forms — `2 záznamy`, `5 záznamů`, `část 2 ze 3`, `6 ze 7 dnů`
+13. THE Worklog_UI SHALL place no verb after a number in any message, because Czech verb agreement would then depend on the count as well as the noun
+14. WHEN a page is server-rendered, THE Worklog_UI SHALL resolve the active language before rendering it, from the cookie criterion 4 persists, and SHALL emit the document `lang` attribute already correct, so hydration never switches the language visibly
 
 ### Requirement 14: Responsiveness, Interaction and Accessibility
 

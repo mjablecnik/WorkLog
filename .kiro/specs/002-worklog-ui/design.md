@@ -200,11 +200,12 @@ Transcribed from `.design/DESIGN.md` §§ 1–4. Declared once in `src/lib/theme
 | `--accent-hover` | `#8A4724` |
 | `--ink-on-accent` | `#FBF7F1` |
 | `--panel` | `rgba(0,0,0,0.045)` |
-| `--dialog` | `#FBF7F1` *(derived — no light dialog is drawn)* |
-| `--scrim` | `rgba(43,36,32,0.42)` *(derived)* |
-| `--field` | `rgba(0,0,0,0.05)` *(derived)* |
-| `--field-active-bg` | `rgba(165,82,46,0.10)` *(derived)* |
-| `--field-active-ring` | `inset 0 0 0 1px rgba(165,82,46,0.45)` *(derived)* |
+| `--dialog` | `#FBF7F1` |
+| `--scrim` | `rgba(43,36,32,0.38)` |
+| `--field` | `rgba(0,0,0,0.05)` |
+| `--field-active-bg` | `rgba(165,82,46,0.10)` |
+| `--field-active-ring` | `inset 0 0 0 1px rgba(165,82,46,0.45)` |
+| `--segment-active` | `rgba(165,82,46,0.14)` — dark `rgba(209,138,106,0.16)` |
 | `--divider` | `rgba(0,0,0,0.07)` |
 | `--hairline` | `rgba(0,0,0,0.20)` — dark `rgba(255,255,255,0.14)` |
 | `--meter-track` | `rgba(0,0,0,0.09)` — dark `rgba(255,255,255,0.07)` |
@@ -216,7 +217,17 @@ Transcribed from `.design/DESIGN.md` §§ 1–4. Declared once in `src/lib/theme
 | `--dial-numeral` | `rgba(43,36,32,0.24)` |
 | `--uncovered-dash` | `rgba(165,82,46,0.75)` |
 
-Five light tokens are marked *derived*: no light-theme dialog, scrim or field is drawn in the artboards, so those values are computed to the same relationships the dark theme uses and measured against `#F3EEE6`. They are the one part of the palette a later artboard may overrule. `--destructive` is **not** among them — the `Design_Contract` fixes it at `#A8321F` (5.79:1 on the light ground, `#E06A5E` at 5.67:1 on the dark one), and it is never derived from a `Palette_Slot`.
+**Every token above is drawn and measured. None is derived.** `AddTaskLight` paints the light dialog, so the six values that were once computed — dialog, scrim, field, active field, divider and destructive — are now taken from an artboard and measured against the surface they actually sit on:
+
+| Token | Value | On `#FBF7F1` |
+|---|---|---|
+| `--text` | `#2B2420` | 14.30:1 |
+| `--text-dim` | `rgba(43,36,32,0.78)` | 7.18:1 |
+| `--text-faint` | `rgba(43,36,32,0.66)` | 4.85:1 |
+| `--accent` | `#A5522E` | 5.12:1 |
+| `--destructive` | `#A8321F` | 6.26:1 |
+
+The active segmented item is the one place the two themes take different alphas for the same job: `rgba(209,138,106,0.16)` dark against `rgba(165,82,46,0.14)` light. The light accent is the darker colour, so it needs less of itself to reach the same weight. `--destructive` is its own token in both themes — 5.67:1 on the dark ground, 6.26:1 on the light dialog — and is never derived from a `Palette_Slot`.
 
 **Both themes reached AA with their own numbers, and neither set may be copied onto the other.**
 
@@ -409,7 +420,7 @@ A `Work_Block` whose session has any part at or after the `Evening_Hour` of its 
 
 ### The Split Marker
 
-Requirement 4.6 has no artboard, so it is specified here. When one `Activity_Entry` produced several `Activity_Segment` records, **every** `Segment_Block` of that entry carries all three of:
+The `Split_Marker` is specified here in full rather than in an artboard. When one `Activity_Entry` produced several `Activity_Segment` records, **every** `Segment_Block` of that entry carries all three of:
 
 1. **A part counter in text** — `část 2 ze 3` appended to the meta line at 12 `--text-faint` (`· 2/3` on a collapsed block). Text, so the marker survives greyscale, colour blindness and a screen reader; the same phrase goes into the `aria-label`.
 2. **A continuation notch** — a 7 px triangle in `--pj` centred on the edge facing the break: on the bottom edge of every part but the last, on the top edge of every part but the first. It reads as "this block continues past the gap" without a legend.
@@ -427,11 +438,27 @@ One treatment — the `Uncovered_Marker` — in four variants, all built from th
 | short block | desktop, at the floor | `Bez popisu` 13/500 accent · times 12 `--text-faint` · flexible gap · `doplnit` 12 accent at the right edge |
 | mobile pill | mobile | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
 
-### Dialogs (`AddTask`, `SessionEdit`)
+### Dialogs (`AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`)
 
 Scrim `--scrim` over the page, dialog `--dialog` at radius 20 with `0 28px 70px rgba(0,0,0,0.6)`, header `22px 26px 18px` with the title at 17/500 and a 32 px round close button, body `0 26px 22px` with `gap: 18`, footer `16px 26px` on `rgba(255,255,255,0.02)` carrying a hint at 12 `--text-faint`, a ghost pill and a primary pill, both 42 tall.
 
-**Below 768 px both dialogs fill the screen.** Neither artboard shows it — both are drawn at 820 px — so the rule is stated here: the panel becomes the viewport, the radius drops to 0, the field grid collapses to one field per row at full width, the description field keeps its 66 px, the body scrolls, and the footer is pinned to the bottom edge with the primary action full width and the ghost action beside it. The `Change_Preview` keeps its position — under the form for `ActivityDialog`, replacing the body for `SessionDialog`. A floating dialog at 375 px would leave 20 px of scrim on each side and gain nothing.
+**Below 768 px both dialogs fill the screen** (`AddTaskMobile`, 390 × 844). There is no scrim and no radius: the dialog *is* the viewport, so nothing shows through behind it.
+
+| | desktop | mobile |
+|---|---|---|
+| header | `22px 26px 18px`, close button 32 | **58 px** tall, `padding: 0 20px`, close button 34 |
+| body padding | `0 26px 22px` | `0 20px`, scrolls |
+| field height / type | 44 / 14 | **48 / 15** |
+| caps label | 11 | 10 |
+| field layout | grid per mode | **one field per row**, `gap: 14` |
+| description field | 66 | **62** |
+| segmented item | 36, 13 px | **40, 12.5 px** |
+| footer | one row: hint, ghost pill, primary pill | pinned to the bottom, `padding: 14px 20px 24px`, separated by a `--divider` hairline over `rgba(255,255,255,0.02)` |
+| footer buttons | side by side | **stacked**: primary 50 px on top, `Zrušit` 46 px beneath, `gap: 10` |
+
+The bigger fields and type are a touch decision, not a scaling accident: 48 px clears the activation floor by itself and 15 px is the smallest comfortable value in a field a thumb is aiming at. The mode labels shorten to fit (`Od–do` for `Přesně od–do`).
+
+**The `Change_Preview` keeps its full form on mobile** — the resulting blocks, the warning and the `Uncovered_Policy` control, all of it. It is the reason the dialog exists; shrinking it away on the smaller screen would remove the point of the screen. `SessionDialog` follows the same rules, with its preview replacing the body as it does on desktop.
 
 **Add task.** Segmented control of three modes (`Přesně od–do` / `Jen délka` / `Od posledního`), items 36 tall and radius 9 inside a radius-12 group on `rgba(255,255,255,0.04)`; the active item is `rgba(209,138,106,0.16)` with accent 13/500 text. The field row is a grid whose columns follow the mode, because the modes need different fields: `Explicit_Mode` shows day, from, to and project (`1fr 0.8fr 0.8fr 1.4fr`), `Duration_Mode` shows day, duration and project (`1fr 1fr 1.2fr`, the layout the artboard draws), and `Open_Mode` shows day and project alone (`1fr 1.6fr`) since the server resolves both ends. The day field appears in all three — `Explicit_Mode` composes its timestamps from it, and the other two send it as the `Target_Day`. Fields are `gap: 12`, each 44 tall at radius 11 on `--field`; the field the active mode derives is drawn with `--field-active-bg` and `--field-active-ring`. The description field is 66 tall. An inference is explained in a tinted note with an info icon. The live preview panel is radius 14 on `--panel`, headed by an eye icon and the caps label `uloží se takto` in accent, and renders the resulting segments as miniature blocks, then a dashed accent warning for anything that does not fit, then the `Untracked_Policy` segmented control (`Zahodit` / `Prodloužit timer`). Footer hint: `Esc zavře · nic se neuloží, dokud nepotvrdíš`.
 
@@ -448,18 +475,33 @@ The row is rendered last, marked as `Uncovered_Time` rather than as an entry, de
 Heading row: `Statistiky` 20/500, the range segmented control, the resolved range at 13 `--text-faint`. Then, `gap: 22`:
 
 - **`KPI_Row`** — `repeat(4, 1fr)`, `gap: 18`, panels of radius 14 padded `18px 20px`, each a caps label over a 30/300 tabular figure. The four are: `odpracováno` (`Tracked_Time`), `popsáno` (`Covered_Time`), `podíl popsaného` (percentage plus a 4 px meter), `mimo obvyklé hodiny` (`Overtime`, summed from `overtimeSeconds`, with its share of `Tracked_Time` at 11.5 `--text-faint` beneath). The artboard's fourth card showed the `Evening_Hour` figure; that number moves to the rhythm panel, and the card's shape is unchanged.
-- **`Day_Rhythm_Strip`** — a panel headed `Kam v čase práce padla` with the sub-line `každý řádek je jeden logický den, 03:00 → 03:00` (rendered from the server's `DAY_START_HOUR`, not from a literal) and the project legend at the right. One row per day: the day label in a 58 px gutter, a 22 px strip of radius 5 on `rgba(255,255,255,0.05)` with three recessive tick lines, the day's segments in their slot colours, and the day total in a 62 px right gutter. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis line of five labels from `DAY_START_HOUR` back to `DAY_START_HOUR`. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
-- **Breakdown and rhythm panel** — `grid-template-columns: 1.4fr 1fr`. The breakdown lists projects descending: a 9 × 9 swatch, the name at 14, the duration at 14/300 tabular, the share at 12 `--text-faint` in a 42 px gutter, and beneath each a 8 px track of radius 4 filled to that project's **share of the range's total `Covered_Time`**. Below a divider, `Bez popisu` as a plain figure in `--accent` — never a bar. The rhythm panel lists days worked, average per working day, longest day, longest unbroken block, total blocks, and time after the `Evening_Hour`, closing with a prose observation at 12.5 `--text-faint`.
+- **`Day_Rhythm_Strip`** — a panel headed `Kam v čase práce padla` with the sub-line `každý řádek je jeden logický den, 03:00 → 03:00` (rendered from the server's `DAY_START_HOUR`, not from a literal) and the project legend at the right. One row per day: the day label in a 58 px gutter, a 22 px strip of radius 5 on `rgba(255,255,255,0.05)` with three recessive tick lines, the day's segments, and the day total in a 62 px right gutter.
+
+**What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**: a 45° `<pattern>` of 1 px accent lines 4 px apart at 45 % over a 6 % accent fill, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis line of five labels from `DAY_START_HOUR` back to `DAY_START_HOUR`. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
+- **Breakdown and rhythm panel** — `grid-template-columns: 1.4fr 1fr`. The breakdown lists projects descending: a 9 × 9 swatch, the name at 14, the duration at 14/300 tabular, the share at 12 `--text-faint` in a 42 px gutter, and beneath each a 8 px track of radius 4 filled to that project's **share of the range's total `Covered_Time`**. Below a divider, `Bez popisu` as a plain figure in `--accent` — never a bar. The rhythm panel lists days worked, average per working day, longest day, longest unbroken block, total blocks, and time after the `Evening_Hour`, closing with the observation line at 12.5 `--text-faint`.
+
+**The observation line is three fixed templates.** Exactly one renders — the first whose condition holds — and when none holds the line is **omitted**, not replaced by filler and not left as blank space.
+
+| # | Condition | Key | Czech | English |
+|---|---|---|---|---|
+| 1 | `nights ≥ 1` | `stats_observation_nights` | `Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}.` | `Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}.` |
+| 2 | `longest ≥ 2 h` | `stats_observation_longest` | `Nejdelší nepřerušený úsek: {duration}, {weekday}.` | `Longest unbroken stretch: {duration}, {weekday}.` |
+| 3 | `idleDays ≥ 1` | `stats_observation_idle` | `Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}.` | `No work on {idleDays, plural, one {# day} other {# days}}.` |
+
+Two rules these templates follow deliberately, and both hold for **every** message in the interface, not only these three:
+
+1. **A countable noun always goes through a plural form.** Czech needs one / few / other, and a noun interpolated beside a bare number is wrong for two of the three.
+2. **No verb ever follows a number.** Czech verb agreement would then depend on the count as well, turning one plural choice into two coupled ones. Every template above is a noun phrase for exactly that reason — `Nejdelší nepřerušený úsek: …`, never `Nejdelší úsek trval …`.
 
 The bar and the printed percentage state the same quantity. The artboard drew bars relative to the largest project (100/54/14 %) while printing shares of the total (59/32/9 %); two scales in one row is a misreading waiting to happen, and the share is the number the reader is being given.
 
-**When the server omits the intervals.** `GET /api/days` returns per-day intervals only for `include=intervals`, and only while the range is at most `MAX_INTERVAL_RANGE_DAYS` — 62 `Logical_Day` values. Beyond that it answers **HTTP 200** with the summaries, drops the intervals and says so with `intervalsIncluded: false`.
+**The ranges are a day, a week and a month — deliberately, and there is no year.** A year on the rhythm strip would be 365 rows of two-pixel marks, which is unreadable, and that is the same reason the server caps interval payloads at `MAX_INTERVAL_RANGE_DAYS` (62 days). This is a closed decision, not a gap waiting to be filled.
 
-The interface's three ranges are a day, a week and a month, so at most 31 days: **the flag can never be false through the interface today.** It is handled anyway, in one place and cheaply — the strip is not rendered, everything else is, and nothing treats the response as an error — because the same endpoint serves scripts, and because a year range is the obvious next range to add. It gets one criterion and no dedicated test; when a year range is added, the strip's replacement copy is designed then rather than guessed now.
+**The cap is still not dead code.** `GET /api/days` returns per-day intervals only for `include=intervals` and only inside that cap; beyond it the server answers **HTTP 200** with the summaries, drops the intervals and says so with `intervalsIncluded: false`. That branch protects a route the interface is not the only caller of — scripts and phone shortcuts hit `/api/days` too, and a year-long request from a shell script has to come back with summaries rather than fail. The interface simply never asks for more than a month, so it never sees the flag set; it handles it in one place anyway, because a public route's contract is not conditional on who calls it. One criterion, no dedicated test.
 
 ### Surfaces the artboards do not draw
 
-Nine surfaces exist in the requirements and in no artboard. Three of them appear often enough that leaving them to the implementer would produce three different visual languages, so they are fixed here in tokens; the rest follow the patterns already established on this page.
+Nine surfaces are specified here in tokens rather than as artboards. All nine are fully pinned below — there is nothing left to choose while implementing them.
 
 **Confirmation dialog.** The dialog shell at its smallest: `--dialog` at radius 20, `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, footer as the write dialogs have it — a ghost pill and, for a destructive confirmation, a filled pill in `--destructive` with `--ink-on-accent` text rather than the accent. Never a bare "are you sure": the body names the record and the duration.
 
@@ -467,7 +509,13 @@ Nine surfaces exist in the requirements and in no artboard. Three of them appear
 
 **Empty state.** Centred in the space its content would have filled: a 20 px icon in `--text-faint`, a line at 14 `--text-dim`, and where there is an obvious next step, one filled accent pill. `padding: 48px 24px`, `gap: 12`. Every empty state in this interface has a next step — start the timer, create the first project, pick another range.
 
-Skeletons take the shape and the radius of the block they stand in on `--panel` with a 1.2 s shimmer; the login page, the error page and the offline page use the page shell with a centred column at `max-width: 420`; the timezone notice is one line at 12 `--text-faint` under the top bar.
+**Skeleton.** The shape and radius of the block it stands in, on `--panel`, with a 1.2 s shimmer sweeping left to right; never a spinner.
+
+**Login, error and offline pages.** The page shell with a centred column at `max-width: 420`, `gap: 16`: a 20/500 heading, a line at 14 `--text-dim`, then the form or the single action as a filled accent pill. The login page adds the passphrase field at the standard 44 px (48 on mobile); the offline page adds a ghost *retry* pill beside the primary action.
+
+**Timezone notice.** One line at 12 `--text-faint` directly under the top bar, centred on the page width, shown only while the device zone differs from the server's.
+
+**Focus ring.** As defined under *The Focus Ring* above — `0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)`.
 
 ### Projects (`Projects`)
 
@@ -1086,4 +1134,4 @@ A write that succeeds but reports `discarded` intervals or `unplacedMinutes` is 
 
 **Accessibility checks** — the Playwright suite runs an axe pass on the timer, day, projects and statistics pages in **both themes**, and a keyboard-only walk of the day page that reaches every block, opens a dialog, and completes a save without a pointer.
 
-**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference: each implemented screen is rendered at the artboard's frame size and compared with the matching PNG in `.design/screens/`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.
+**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` holds 19; **14 are screens and all 14 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.

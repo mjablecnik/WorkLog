@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter Tight', system-ui, sans-serif; background: #171B22; color: #E6EAF2; -webkit-font-smoothing: antialiased; }
+    .dim   { color: rgba(230,234,242,0.62); }
+    .faint { color: rgba(230,234,242,0.50); }
+    .lbl { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(230,234,242,0.50); }
+    .field { height: 48px; border-radius: 11px; background: rgba(255,255,255,0.05); display: flex; align-items: center; padding: 0 14px; font-size: 15px; box-sizing: border-box; }
+    .seg { flex-grow: 1; height: 40px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px; border-radius: 9px; color: rgba(230,234,242,0.62); }
+    .seg.on { background: rgba(209,138,106,0.16); color: #D18A6A; font-weight: 500; }
+    .rbtn { border-radius: 9999px; display: flex; align-items: center; justify-content: center; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden;">
+
+  <div style="height: 58px; display: flex; align-items: center; padding: 0 20px; flex-shrink: 0;">
+    <span style="font-size: 17px; font-weight: 500; flex-grow: 1;">Přidat úkol</span>
+    <div class="rbtn" style="width: 34px; height: 34px; background: rgba(255,255,255,0.06);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(230,234,242,0.62)" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; padding: 0 20px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">jak to zadáš</span>
+      <div style="display: flex; gap: 3px; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 4px;">
+        <div class="seg">Od–do</div>
+        <div class="seg on">Jen délka</div>
+        <div class="seg">Od posledního</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">den</span>
+      <div class="field">
+        <span style="flex-grow: 1;">pá 21. 8.</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(230,234,242,0.50)" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">jak dlouho</span>
+      <div class="field" style="background: rgba(209,138,106,0.10); box-shadow: inset 0 0 0 1px rgba(209,138,106,0.40);">
+        <span style="font-weight: 500;">2 h 00 min</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">projekt</span>
+      <div class="field" style="gap: 10px;">
+        <span style="width: 10px; height: 10px; border-radius: 3px; background: #3899EA; display: block; flex-shrink: 0;"></span>
+        <span style="flex-grow: 1;">Worklog</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(230,234,242,0.50)" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">co jsi dělal</span>
+      <div class="field" style="height: 62px; align-items: flex-start; padding-top: 12px; font-size: 14px; line-height: 1.4;">Dopsání property testů</div>
+    </div>
+
+    <div style="border-radius: 14px; background: rgba(255,255,255,0.043); padding: 14px; display: flex; flex-direction: column; gap: 11px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D18A6A" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+        <span class="lbl" style="color: #D18A6A;">uloží se takto</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(56,153,234,0.16); border-left: 3px solid #3899EA;">
+        <span style="font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; flex-grow: 1;">01:30 – 03:00</span>
+        <span style="font-size: 12px;" class="dim">1 h 30 min</span>
+      </div>
+      <span style="font-size: 12px; line-height: 1.5;" class="dim"><strong style="color: #D18A6A; font-weight: 500;">30 min se nevejde.</strong> Po 03:00 už timer neběžel.</span>
+      <div style="display: flex; gap: 3px; background: rgba(255,255,255,0.04); border-radius: 9px; padding: 3px;">
+        <span style="flex-grow: 1; text-align: center; font-size: 12.5px; padding: 9px 0; border-radius: 7px; background: rgba(209,138,106,0.16); color: #D18A6A; font-weight: 500;">Zahodit</span>
+        <span style="flex-grow: 1; text-align: center; font-size: 12.5px; padding: 9px 0;" class="dim">Prodloužit timer</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="flex-shrink: 0; padding: 14px 20px 24px; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; flex-direction: column; gap: 10px;">
+    <div style="height: 50px; border-radius: 9999px; background: #D18A6A; color: #1A0F0A; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;">Uložit úkol</div>
+    <div style="height: 46px; border-radius: 9999px; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 14px;" class="dim">Zrušit</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

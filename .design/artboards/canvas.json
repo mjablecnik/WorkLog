@@ -37,7 +37,7 @@
       "x": 0,
       "y": 1020,
       "w": 1440,
-      "h": 1080,
+      "h": 1260,
       "title": "Den · tmavý"
     },
     {
@@ -135,6 +135,22 @@
       "w": 390,
       "h": 844,
       "title": "Nastavení · mobil"
+    },
+    {
+      "file": "AddTaskLight.dc.html",
+      "x": 2060,
+      "y": 5250,
+      "w": 820,
+      "h": 780,
+      "title": "Přidat úkol · světlý"
+    },
+    {
+      "file": "AddTaskMobile.dc.html",
+      "x": 2980,
+      "y": 5250,
+      "w": 390,
+      "h": 844,
+      "title": "Přidat úkol · mobil"
     }
   ],
   "annotations": [
@@ -186,6 +202,13 @@
       "y": 5250,
       "w": 900,
       "text": "NASTAVENÍ\n\nMotiv, jazyk a odhlášení za jednou ikonou vpravo v liště. Odhlášení do teď nemělo v celém návrhu kde být, přestože ho požadavky vyžadují — tahle nabídka zavírá tři díry najednou.\n\nNa desktopu rozbalovací nabídka pod ikonou, na mobilu spodní sheet. Stejný obsah, jiná forma; v mobilní horní liště pro dvě samostatná ovládání není místo.\n\nCenou je, že jazyk už nepřepneš jedním klikem jako dřív. U věci, kterou nastavíš jednou za rok, je to správná výměna."
+    },
+    {
+      "id": "note-closing",
+      "x": 3470,
+      "y": 5250,
+      "w": 900,
+      "text": "POSLEDNÍ TŘI PŘEDLOHY\n\nSvětlý dialog existuje proto, že šest světlých tokenů — dialog, scrim, pole, aktivní pole, oddělovač a destruktivní barva — se do té doby jen dopočítávalo ze vztahů tmavého motivu. Teď jsou nakreslené a změřené.\n\nMobilní dialog je celoobrazovkový: jedno pole na řádek, náhled zůstává, patička je ukotvená dole a tlačítka jsou pod sebou, aby se palcem trefila.\n\nPanel „mimo výkaz\" na stránce Den drží zápisy, kterým po zkrácení timeru nezbyl žádný čas. Na ose je vidět nejde — nikde neleží — a bez tohohle místa by zůstaly navždy neviditelné a blokovaly mazání projektu. Zobrazuje se jen tehdy, když nějaký takový zápis existuje."
     }
   ],
   "launch": {

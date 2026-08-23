@@ -103,14 +103,25 @@ Integration tests need PostgreSQL. `scripts/test-e2e.sh` starts one, migrates it
 
 ## Documentation
 
-For more details see [DOCS.md](./DOCS.md).
+Everything needed to build this is written down. Read it in this order:
 
-Specifications live in `.kiro/specs/`:
-
-| Spec | Scope |
+| Where | What it settles |
 |---|---|
-| [`001-worklog-domain-api`](.kiro/specs/001-worklog-domain-api/) | domain, data layer, REST API |
-| [`002-worklog-ui`](.kiro/specs/002-worklog-ui/) | timer, day timeline, projects, statistics |
+| [`.kiro/specs/001-worklog-domain-api/`](.kiro/specs/001-worklog-domain-api/) | the domain, the data layer and the REST API — requirements, design, tasks |
+| [`.kiro/specs/002-worklog-ui/`](.kiro/specs/002-worklog-ui/) | the timer, the day timeline, projects and statistics |
+| [`.design/DESIGN.md`](.design/DESIGN.md) | the visual contract — tokens, typography, dimensions, gauge geometry |
+| [`.design/artboards/`](.design/artboards/) | 19 approved artboards; [`.design/screens/`](.design/screens/) holds their renders |
+
+Each spec is three files: `requirements.md` (numbered acceptance criteria), `design.md`
+(architecture, contracts, correctness properties) and `tasks.md` (an ordered plan with a
+dependency graph). Every criterion is covered by a task and every task cites its criteria,
+so there is no part of the behaviour that nothing implements.
+
+`002` depends on `001`; build the server first.
+
+**The design is a contract, not a mood board.** Where a screen and a criterion disagree,
+that is a defect to be raised — not a choice to be made while implementing. Regenerate the
+renders with `node .design/render.mjs` after changing an artboard.
 
 ## Author
 

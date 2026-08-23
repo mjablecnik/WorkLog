@@ -491,7 +491,7 @@ Ordering is by `requestedStartedAt` then `createdAt`, which is a **total** order
 ### 5. Transaction Helper (`src/lib/server/store/tx.ts`)
 
 ```ts
-export const WORKLOG_ADVISORY_LOCK = 4919372001;
+import { WORKLOG_ADVISORY_LOCK } from '$lib/server/core/config';   // declared once, in config.ts
 
 export type Tx = PostgresJsTransaction<typeof schema, ExtractTablesWithRelations<typeof schema>>;
 
@@ -641,10 +641,16 @@ export const SESSION_COOKIE = 'worklog_session';
 /** Constant-time comparison of two secrets. */
 export function secretsMatch(a: string, b: string): boolean;
 
-/** argon2id check against WORKLOG_PASSPHRASE_HASH; the plaintext is never stored. */
+/** argon2id check against WORKLOG_PASSPHRASE_HASH via Bun.password.verify. Hashes are
+ *  produced with the ARGON2ID parameters from config.ts: memoryCost 65536 (64 MiB),
+ *  timeCost 3. The plaintext is never stored. */
 export function verifyPassphrase(submitted: string): Promise<boolean>;
 
-/** 32 random bytes, returned raw for the cookie together with the hash to store. */
+/**
+ * SESSION_TOKEN_BYTES (32) of `crypto.getRandomValues`, encoded base64url as the raw
+ * cookie value; the stored hash is lowercase-hex sha256 of that string. Two fixed
+ * encodings, because a token that round-trips differently on two paths never matches.
+ */
 export function mintSessionToken(): { token: string; tokenHash: string };
 export function hashSessionToken(token: string): string;
 
@@ -720,14 +726,18 @@ export class ApiError extends Error {
   );
 }
 
-/** Serializes to { error, message, messageKey, details }; unknown errors become INTERNAL_ERROR. */
+/**
+ * Serializes to { error, message, messageKey, requestId, details }; unknown errors
+ * become INTERNAL_ERROR. `requestId` is in the body, not only in the header, so the
+ * one thing a user can quote about a 500 is on the screen in front of them.
+ */
 export function errorResponse(err: unknown, requestId: string): Response;
 
 /** `ACTIVITY_OVERLAP` → `errors_activity_overlap`. The one place the mapping lives. */
 export function messageKeyFor(code: ErrorCode): string;
 ```
 
-The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
+Every code's `details` below is chosen so the interface can compose a complete sentence from the response alone — Requirement 12.18. Where the reason is genuinely one of several, the reason is a field rather than something the client infers. The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
 
 ### 9. Security Headers (`src/lib/server/core/security-headers.ts`)
 
@@ -760,7 +770,7 @@ csp: {
 
 `src/app.html` belongs to `002-worklog-ui` and `001` does not touch it: with `kit.csp` in charge there is no `transformPageChunk` injection to write, and `%sveltekit.nonce%` is a placeholder `002` may use if it ever adds an inline script of its own. One owner per file, and no hand-rolled mechanism competing with the framework's.
 
-`style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy through configuration, never through a weakened production code path.
+`style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy in exactly one place and by exactly this much: `svelte.config.js` picks its `csp.directives` from `process.env.APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for the Vite dev server and HMR. `handleSecurityHeaders` additionally omits `Strict-Transport-Security` outside production. Nothing else differs, and the production set is never derived from the development one.
 
 ### 10. REST Route Contracts (`src/routes/api/`)
 
@@ -810,6 +820,15 @@ export const createActivitySchema = z.object({
   ...dryRunFields
 }).strict();   // .strict() satisfies Requirement 12.4 — unknown fields are rejected
 
+/**
+ * PATCH also carries the orphan rescue path (Requirements 7.16–7.19): the day page's
+ * "mimo výkaz" panel offers *Přepsat čas* on an entry reconciliation emptied, which is
+ * this request with a new `startedAt` and `endedAt`. Nothing here requires the entry to
+ * own a segment — an Orphaned_Entry has none, and demanding one would make the panel's
+ * only repair action impossible. Supplying both bounds clears `requestedDurationMinutes`
+ * and sets `mode` to `explicit`; if the rewritten time still yields no segment the
+ * answer is 409 NOTHING_TO_LOG and the entry is left exactly as it was.
+ */
 export const patchActivitySchema = z.object({
   projectId: z.uuid().optional(),
   description: z.string().max(2000).optional(),
@@ -837,7 +856,17 @@ export const patchSessionSchema = z.object({
   ...dryRunFields
 }).strict();
 
-export const deleteSessionSchema = z.object({ ...dryRunFields }).strict();
+/**
+ * DELETE carries its dry-run flags as QUERY parameters, not a body (Requirement 14.12):
+ * a request body on DELETE is not reliably transmitted by every client or proxy. Query
+ * parameters are snake_case per Requirement 12.1, so `?dry_run=true&preview_token=…`.
+ * A dry run of a DELETE answers HTTP 200 with the preview rather than the write's 204,
+ * because a 204 preview would carry nothing to preview (Requirement 14.11).
+ */
+export const deleteSessionQuery = z.object({
+  dry_run: z.enum(['true', 'false']).default('false'),
+  preview_token: z.string().optional()
+}).strict();
 
 export const createProjectSchema = z.object({
   name: z.string().trim().min(1).max(200)
@@ -854,6 +883,24 @@ export const listActivitiesQuery = z.object({
   to: isoOffset.optional(),
   project_id: z.uuid().optional(),
   cursor: z.string().optional(),        // Requirement 7.14
+}).strict();
+
+/**
+ * The cursor is base64url of `${requestedStartedAt.toISOString()}|${createdAt.toISOString()}|${id}`
+ * — the exact sort key of `activity_entries_order`, so paging cannot skip or repeat a
+ * row as entries are written between pages. A cursor that does not decode to those
+ * three parts is a `VALIDATION_ERROR`, never a silently ignored parameter.
+ */
+export const daysQuery = z.object({
+  from: isoOffset.optional(),
+  to: isoOffset.optional(),
+  include: z.literal('intervals').optional()   // the only accepted value; anything else 400
+}).strict();
+
+export const coverageQuery = z.object({
+  from: isoOffset.optional(),
+  to: isoOffset.optional(),
+  min_gap_seconds: z.coerce.number().int().min(0).default(0)   // Requirement 9.9
 }).strict();
 
 export type ActivityResponse = {
@@ -1048,45 +1095,68 @@ export type DayResponse = {
 
 `uncovered` is computed as `subtract(tracked, covered)` and `untracked` as `gaps(tracked, window)`, which is what makes Requirement 9.3 hold by construction.
 
+**The day response is what draws the "mimo výkaz" panel** in `.design/artboards/DayCollapsed.dc.html`. Every `Orphaned_Entry` whose requested interval overlaps the day is in `entries` (Requirement 8.6) with `orphaned: true`, and each carries exactly what the panel renders: `projectName` and `colorIndex` for the coloured row, `requestedStartedAt`/`requestedEndedAt` for "žádáno 17:00 – 18:30", and an empty `segments` array for "zbylo 0 min". The panel's two actions are `PATCH /api/activities/{id}` with a new interval (*Přepsat čas*) and `DELETE /api/activities/{id}` (*Smazat*); nothing else is needed and nothing is fetched twice.
+
 ### 12. Configuration (`src/lib/server/core/config.ts`)
 
 ```ts
+/** Every field: variable, default, and the range outside which the server refuses
+ *  to start (Requirement 13.29). There is no unstated "reasonable value" anywhere. */
 export type Config = {
-  port: number;                 // PORT, default 3000
-  databaseUrl: string;          // DATABASE_URL, required
+  port: number;                 // PORT, default 3000, 1..65535
+  databaseUrl: string;          // DATABASE_URL, required, non-empty
   apiToken: string;             // WORKLOG_API_TOKEN, required, min 32 chars
-  passphraseHash: string;       // WORKLOG_PASSPHRASE_HASH, required, argon2id
-  timezone: string;             // TIMEZONE, default Europe/Prague
-  dayStartHour: number;         // DAY_START_HOUR, default 3
+  passphraseHash: string;       // WORKLOG_PASSPHRASE_HASH, required, parseable argon2id
+  timezone: string;             // TIMEZONE, default Europe/Prague, must be loadable
+  dayStartHour: number;         // DAY_START_HOUR, default 3, 0..23, must exist in TIMEZONE
   gaugeStart: string;           // GAUGE_START, default '06:00' — Requirement 13.11
   gaugeEnd: string;             // GAUGE_END, default '00:00' — wraps past midnight, Req 13.13
-  eveningHour: number;          // EVENING_HOUR, default 21 — Requirement 13.16
+  eveningHour: number;          // EVENING_HOUR, default 21, 0..23 — Requirement 13.16
   allowDayBoundaryChange: boolean; // ALLOW_DAY_BOUNDARY_CHANGE, default false
-  corsOrigins: string[];        // CORS_ORIGINS
-  appEnv: 'development' | 'production';
-  dbQueryTimeoutMs: number;     // DB_QUERY_TIMEOUT_SECONDS, default 5
-  rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120 — Requirement 13.21
-  sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720 — Requirement 13.20
-  maxOpenSessionHours: number;  // MAX_OPEN_SESSION_HOURS, default 12 — Requirement 13.18
-  minIntervalSeconds: number;   // MIN_INTERVAL_SECONDS, default 60 — Requirement 13.19
+  corsOrigins: string[];        // CORS_ORIGINS, default [] — nothing cross-origin (Req 13.28)
+  trustedProxyHops: number;     // TRUSTED_PROXY_HOPS, default 0, 0..8 — Requirement 13.23
+  logLevel: 'debug' | 'info' | 'warn' | 'error';   // LOG_LEVEL, default info — Req 13.26
+  dbPoolMax: number;            // DB_POOL_MAX, default 10, 1..100 — Requirement 13.27
+  appEnv: 'development' | 'production';   // APP_ENV, default production
+  dbQueryTimeoutMs: number;     // DB_QUERY_TIMEOUT_SECONDS, default 5, 1..60
+  rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120, 1..10000 — Req 13.21
+  sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720, 1..8760 — Req 13.20
+  maxOpenSessionHours: number;  // MAX_OPEN_SESSION_HOURS, default 12, 1..24 — Req 13.18
+  minIntervalSeconds: number;   // MIN_INTERVAL_SECONDS, default 60, 1..3600 — Req 13.19
   version: string;              // read from package.json — the single source of truth
 };
+```
 
-/**
- * Fixed limits. They are constants rather than fields because no deployment has a
- * reason to move them, and a magic number repeated across three routes drifts.
- */
-/** The ceiling on any queried range — Requirements 2.4, 7.5, 8.10, 9.6. */
-export const MAX_RANGE_DAYS = 366;
-/** Entries per page from /api/activities — Requirement 7.13. */
-export const ACTIVITY_PAGE_SIZE = 200;
-/**
- * The ceiling on a range that may additionally carry per-day intervals
- * (Requirement 8.18). 62 days covers a month view with room to spare, which is the
- * longest span the day-rhythm strip is legible over.
- */
-export const MAX_INTERVAL_RANGE_DAYS = 62;
+### Fixed Constants
 
+Every `Fixed_Constant` the specification names, with its value. They are constants rather
+than `Config` fields because no deployment has a reason to move them, and a magic number
+repeated across three routes drifts. Each is declared **here and nowhere else** — `tx.ts`
+imports the advisory lock from this file rather than declaring its own copy.
+
+```ts
+export const MAX_RANGE_DAYS = 366;              // any queried range — Req 2.4, 7.5, 8.10, 9.6
+export const MAX_INTERVAL_RANGE_DAYS = 62;      // a range that may carry intervals — Req 8.18
+export const ACTIVITY_PAGE_SIZE = 200;          // entries per page — Requirement 7.13
+export const ERROR_DETAIL_SAMPLE_SIZE = 10;     // conflicting records named in details — Req 3.7
+export const FUTURE_TOLERANCE_SECONDS = 300;    // clock skew allowance — Req 1.13, 4.10
+export const SUGGESTED_WINDOW_COVERAGE = 0.9;   // share the suggestion must cover — Req 8.13
+export const CLEANUP_INTERVAL_MINUTES = 60;     // sweep cadence — Requirements 11.21, 13.30
+export const SERVICE_RETRY_AFTER_SECONDS = 5;   // Retry-After on 503 — Requirement 12.21
+export const LOGIN_ATTEMPT_LIMIT = 5;           // Requirement 11.13, deliberately not config
+export const LOGIN_ATTEMPT_WINDOW_MINUTES = 15; // Requirement 11.13
+export const IDEMPOTENCY_RETENTION_HOURS = 24;  // Requirement 12.9
+export const SESSION_TOKEN_BYTES = 32;          // entropy of a Browser_Session token
+export const MAX_BODY_BYTES = 1_048_576;        // 1 MiB — Requirement 12.6
+export const SHUTDOWN_GRACE_SECONDS = 30;       // Requirement 13.5
+export const WORKLOG_ADVISORY_LOCK = 4919372001;// the one write lock — component 5
+
+/** Argon2id parameters for the login passphrase (Requirement 11.6), passed to
+ *  `Bun.password.hash`. Fixed here so every environment produces comparable hashes. */
+export const ARGON2ID = { algorithm: 'argon2id', memoryCost: 65536, timeCost: 3 } as const;
+```
+
+```ts
 /** Validates at module load and throws listing every problem, not just the first. */
 export function loadConfig(): Config;
 
@@ -1541,33 +1611,33 @@ Re-clipping applies `clip` to entries that were already clipped, so anything but
 
 ## Error Handling
 
-All error responses use the shape from Requirement 12.2: `{ error, message, messageKey, details }`. `error` is the UPPER_SNAKE_CASE code, `message` is an **English sentence** for whoever is reading a shell script's output, `messageKey` is the Paraglide key the interface renders instead, and `details` is optional and code-specific. `message` is never a key and `messageKey` is never prose — see component 8.
+All error responses use the shape from Requirement 12.2: `{ error, message, messageKey, requestId, details }`. `error` is the UPPER_SNAKE_CASE code, `message` is an **English sentence** for whoever is reading a shell script's output, `messageKey` is the Paraglide key the interface renders instead, and `details` is optional and code-specific. `message` is never a key and `messageKey` is never prose — see component 8.
 
 | Code | HTTP | Trigger | Details payload |
 |---|---|---|---|
-| `VALIDATION_ERROR` | 400 | malformed body, unknown field, bad query parameter, missing required field, naive timestamp, unknown `projectId` | `fields` map of field name to reason |
+| `VALIDATION_ERROR` | 400 | malformed body, unknown field, bad query parameter, missing required field, naive timestamp, unknown `projectId`, future `Target_Day` | `fields`: map of field name to `{ reason, value }` |
 | `INVALID_INTERVAL` | 400 | start not strictly before end; `from` not before `to` | `start`, `end` |
 | `AMBIGUOUS_MODE` | 400 | both `endedAt` and `durationMinutes` supplied | — |
-| `RANGE_TOO_LARGE` | 400 | `/api/days` range exceeds 366 days | `maxDays` |
+| `RANGE_TOO_LARGE` | 400 | a queried range exceeds `MAX_RANGE_DAYS` | `maxDays`, `requestedDays` |
 | `UNAUTHORIZED` | 401 | no valid session cookie and no valid bearer token | — |
-| `NOT_FOUND` | 404 | path identifier matches no record | `resource` |
-| `SESSION_ALREADY_RUNNING` | 409 | start while an `Open_Session` exists | `sessionId` |
+| `NOT_FOUND` | 404 | path identifier matches no record | `resource`, `id` |
+| `SESSION_ALREADY_RUNNING` | 409 | start while an `Open_Session` exists | `sessionId`, `startedAt` — so the message can say since when |
 | `NO_SESSION_RUNNING` | 409 | stop with no `Open_Session` | — |
-| `SESSION_OVERLAP` | 409 | a session write would overlap another session | `conflicts[]` of `{ sessionId, interval }` |
-| `ACTIVITY_OVERLAP` | 409 | an `Explicit_Mode` request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }` — Requirement 4.5 wants the entry named, not only identified |
-| `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals |
-| `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date` |
-| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `anchor`, `requested` |
-| `PROJECT_ARCHIVED` | 400 | a new entry targets an archived `Project` | `projectId` |
-| `FUTURE_TIMESTAMP` | 400 | any supplied instant lies more than five minutes ahead | `field`, `value` |
-| `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds` |
-| `STALE_PREVIEW` | 409 | a write carries a `previewToken` the frame no longer matches | `expected` |
-| `PROJECT_EXISTS` | 409 | duplicate project name | `projectId` |
-| `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryIds[]` from `entryIdsForProject` — Requirement 3.7 wants the referencing records identified, not counted |
-| `PAYLOAD_TOO_LARGE` | 413 | request body over 1 MiB | `maxBytes` |
-| `RATE_LIMITED` | 429 | over the configured limit; login has a stricter bucket | `retryAfterSeconds` |
-| `SERVICE_UNAVAILABLE` | 503 | database unreachable, query past `DB_QUERY_TIMEOUT_SECONDS`, or a startup check still failing | `retryAfterSeconds` |
-| `INTERNAL_ERROR` | 500 | any unhandled failure | — |
+| `SESSION_OVERLAP` | 409 | a session write would overlap another session, the `Open_Session` included | `conflicts[]` of `{ sessionId, interval, open }` — `open: true` marks the running timer, which the user must be told about differently from a closed row |
+| `ACTIVITY_OVERLAP` | 409 | a request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }`, at most `ERROR_DETAIL_SAMPLE_SIZE` of them, plus `conflictCount` — Requirement 4.5 wants the entry named, not only identified |
+| `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals, `outsideSeconds` |
+| `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date`, `dayBounds` — the message names the day and can offer to start the timer |
+| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'`, plus `anchor` and `requested`. Three different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described" — and the client must not have to guess which (Requirement 12.19) |
+| `PROJECT_ARCHIVED` | 400 | a new entry, or a PATCH, targets an archived `Project` | `projectId`, `projectName` |
+| `FUTURE_TIMESTAMP` | 400 | a supplied instant lies further ahead than `FUTURE_TOLERANCE_SECONDS` | `field`, `value`, `maxAllowed` |
+| `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds`, `actualSeconds` |
+| `STALE_PREVIEW` | 409 | a write carries a `Preview_Token` the stored rows no longer match | `submittedToken`, `currentToken` (Requirement 12.20). The client's response is to re-run the `Dry_Run` and show the new outcome; it is never asked to work out what changed |
+| `PROJECT_EXISTS` | 409 | duplicate project name, ignoring case and surrounding whitespace | `projectId`, `projectName` — the existing project, so the client can offer to use it instead |
+| `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount`, and `entries[]` of `{ entryId, description, requestedStartedAt, requestedEndedAt }` for at most `ERROR_DETAIL_SAMPLE_SIZE` of them (Requirement 3.7). A bare count cannot tell the user *which* records block the delete, and a bare list of ids makes the client fetch them |
+| `PAYLOAD_TOO_LARGE` | 413 | request body over `MAX_BODY_BYTES` | `maxBytes` |
+| `RATE_LIMITED` | 429 | over `RATE_LIMIT_PER_MINUTE`, or over `LOGIN_ATTEMPT_LIMIT` on the login route | `retryAfterSeconds`, `scope`: `'request'` \| `'login'` — the two need different wording |
+| `SERVICE_UNAVAILABLE` | 503 | database unreachable, query past `DB_QUERY_TIMEOUT_SECONDS`, or a startup check still failing | `retryAfterSeconds` = `SERVICE_RETRY_AFTER_SECONDS` |
+| `INTERNAL_ERROR` | 500 | any unhandled failure | — (the envelope's `requestId` is what a user quotes when reporting it) |
 
 `SERVICE_UNAVAILABLE` exists so that "the database is down" and "this request is malformed in a way we did not anticipate" are not the same answer. Both were 500 before, which tells a shell script to give up on a condition it should retry.
 

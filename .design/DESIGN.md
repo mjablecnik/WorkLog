@@ -26,23 +26,26 @@ so a browser renders them faithfully. `support.js` is absent and unnecessary.
 
 ## 0. What is settled
 
-Everything below was decided in conversation and is settled. Four decisions were taken
-after the first version of this file and are already reflected in the artboards:
+Everything here is decided. Nothing in this file is a proposal, a placeholder or a value
+awaiting an artboard — where a number appears, it was taken from a drawing or measured, and
+where two readings were possible, one was chosen and the other recorded in § 9.
+
+Eight decisions were taken after the first version of this file, and the artboards and both
+specifications already carry them:
 
 1. The **corrected project palette** (§ 2) replaces the drawn one, which failed the
-   data-viz validator. The artboards now carry the corrected hexes.
-2. The **add-task dialog keeps its third mode** (`Od posledního`). Requirement 6.2, which
-   forbade it, is being rewritten.
-3. **Timeline blocks stay at 36px** desktop / 26px mobile, as an explicit exception to the
-   44×44 touch-target rule.
-4. **The gauge gap stays bare even when the circle closes.** `GaugeNonstop` was redrawn:
-   the arc runs all the way round, but no graduation or numeral is ever added to the gap.
-5. **Theme, language and logout live behind one control** in the top bar — see § 6a. Two new
-   artboards, `Settings` and `SettingsMobile`, and the right-hand cluster of every other
-   artboard was updated to match.
-
-Several acceptance criteria in `.kiro/specs/002-worklog-ui/` still **contradict** these
-artboards. They are listed in § 9 and are being reconciled.
+   data-viz validator.
+2. The **add-task dialog keeps its third mode** (`Od posledního`).
+3. **Timeline blocks stay at 36px** desktop / 26px mobile, an explicit exception to the
+   44×44 rule — which itself became "activation area ≥ 44px, painted shape may be smaller".
+4. **The gauge gap stays bare even when the circle closes.** `GaugeNonstop` was redrawn.
+5. **Theme, language and logout live behind one control** in the top bar — § 6a.
+6. **Dark dim and faint rose to 0.62 and 0.50.** Faint measured 3.38:1 while the
+   specification demanded 4.5:1, and it carries block times and every caps label.
+7. **The light dialog is drawn** (`AddTaskLight`), so no token is computed any more, and the
+   **mobile dialog** (`AddTaskMobile`) is drawn full-screen.
+8. **The orphan panel is drawn** into the day page — entries left with no time after a timer
+   edit, which the timeline cannot show because they no longer sit anywhere.
 
 ---
 
@@ -356,13 +359,15 @@ The bar widths in the breakdown are relative to the **largest** project while th
 are shares of the **total** — 100/54/14 % against 59/32/9 %. That needs deciding.
 
 `DayStack` (a stacked bar per day) is in the spec but not in the design; the rhythm strip
-replaced it. Overtime (12.12) has no home in the design.
+replaced it. Overtime took the fourth KPI card, and the evening figure moved into the
+rhythm panel to make room for it.
 
 ---
 
 ## 9. Where the design and the specification disagree
 
-These are contradictions, not omissions. Each needs a decision before implementation.
+These were contradictions, not omissions. All ten are decided; the table records how, so
+that nobody re-opens a settled question by reading only one side of it.
 
 | # | Design says | Spec says | Resolution |
 |---|---|---|---|
@@ -374,7 +379,7 @@ These are contradictions, not omissions. Each needs a decision before implementa
 | 6 | Timer page shows the gauge | Req 3.10 requires a compact timeline there | design wins — 3.10 dropped |
 | 7 | Rhythm strip, no stacked bars | Req 12.5/12.7 require `DayStack`; 12.12 requires overtime | design wins — overtime moves into the KPI row |
 | 8 | Circle closes at 24 h | Req 16.7 says the gap is never graduated | **spec wins** — artboard redrawn |
-| 9 | Session edit lists uncovered time among affected entries | Uncovered time is not an `Activity_Entry`; the preview does not return it | open — needs a data decision |
+| 9 | Session edit lists uncovered time among affected entries | Uncovered time is not an `Activity_Entry` | resolved — the server returns it as `lostUncovered`, and the dialog renders it as its own row, outside the entry count |
 | 10 | Spacing off the 4/8/12… scale | Req 14.6 mandates that scale | design wins |
 
 Every one of these was missing from the specification and has since been written into it:
@@ -387,7 +392,45 @@ stale-session and conflict states, the activity list, drag handles on session ed
 states, toasts, skeletons, confirmation dialogs, and the focus ring. Logout used to be on
 this list; § 6a gave it a home.
 
-Six light-theme tokens are **derived rather than drawn** — dialog, scrim, field, active
-field, divider and destructive. No light dialog exists among the artboards, so they were
-computed from the dark theme's relationships and their contrast measured. A light-theme
-dialog artboard would overrule them.
+Nothing is derived any more. `AddTaskLight` draws the light dialog, so the six tokens that
+used to be computed — dialog, scrim, field, active field, divider and destructive — are now
+painted and measured against the surface they actually sit on:
+
+| Token | Light value | On `#FBF7F1` |
+|---|---|---|
+| `--dialog` | `#FBF7F1` | — |
+| `--scrim` | `rgba(43,36,32,0.38)` | — |
+| `--field` | `rgba(0,0,0,0.05)` | — |
+| `--field-active` | `rgba(165,82,46,0.10)` + inset `1px rgba(165,82,46,0.45)` | — |
+| `--divider` | `rgba(0,0,0,0.07)` | — |
+| `--text` | `#2B2420` | 14.30:1 |
+| `--text-dim` | `rgba(43,36,32,0.78)` | 7.18:1 |
+| `--text-faint` | `rgba(43,36,32,0.66)` | 4.85:1 |
+| `--accent` | `#A5522E` | 5.12:1 |
+| `--destructive` | `#A8321F` | 6.26:1 |
+
+## 11. The statistics observation line
+
+The rhythm panel closes with one sentence. It is **not** free-form: exactly one line is
+rendered, the first template below whose condition holds, and when none holds the line is
+omitted rather than replaced by filler.
+
+| # | Condition | Czech | English |
+|---|---|---|---|
+| 1 | `nights ≥ 1` | `Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}.` | `Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}.` |
+| 2 | `longest ≥ 2 h` | `Nejdelší nepřerušený úsek: {duration}, {weekday}.` | `Longest unbroken stretch: {duration}, {weekday}.` |
+| 3 | `idleDays ≥ 1` | `Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}.` | `No work on {idleDays, plural, one {# day} other {# days}}.` |
+
+Two rules the wording follows on purpose: the countable noun always goes through a plural
+form, because Czech needs one / few / other; and no template puts a verb after a number,
+because the agreement would then depend on the count too.
+
+## 12. Ranges the statistics offer
+
+Day, week and month — those three, deliberately, and no year. A year of days on the rhythm
+strip would be 365 rows and unreadable, which is the same reason the server caps interval
+payloads at 62 days.
+
+The cap is **not** dead code just because the interface cannot trip it: `/api/days` is a
+public route that scripts and shortcuts also call, and it has to answer a year-long request
+with summaries rather than fail. The interface simply never asks.
