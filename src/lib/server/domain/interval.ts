@@ -104,20 +104,30 @@ export function total(input: Interval[]): number {
  *
  * `total(taken) + remainder === ms` always; `total(taken) === min(total(input), ms)`
  * only when no piece was refused by the floor.
+ *
+ * `slivers` names the stretches of `input` skipped for being already below
+ * `minIntervalMs`, in the order encountered, for callers that need to report them
+ * specifically (`NOTHING_TO_LOG`'s `all-slivers` reason names the exact intervals).
+ * Only stretches actually visited while `remaining > 0` are collected — anything past
+ * where the walk stopped for another reason was never reached and is not a sliver.
  */
 export function take(
 	input: Interval[],
 	ms: number,
 	minIntervalMs: number
-): { taken: Interval[]; remainder: number } {
+): { taken: Interval[]; remainder: number; slivers: Interval[] } {
 	const sorted = normalize(input);
 	const taken: Interval[] = [];
+	const slivers: Interval[] = [];
 	let remaining = Math.max(0, ms);
 
 	for (const interval of sorted) {
 		if (remaining <= 0) break;
 		const available = duration(interval);
-		if (available < minIntervalMs) continue; // skip a stretch already below the floor
+		if (available < minIntervalMs) {
+			slivers.push(interval); // skip a stretch already below the floor
+			continue;
+		}
 
 		if (available <= remaining) {
 			// Whole interval fits (and is itself at least the floor).
@@ -140,7 +150,7 @@ export function take(
 		break;
 	}
 
-	return { taken: normalize(taken), remainder: remaining };
+	return { taken: normalize(taken), remainder: remaining, slivers };
 }
 
 /** The complement of `input` within `window`. */
