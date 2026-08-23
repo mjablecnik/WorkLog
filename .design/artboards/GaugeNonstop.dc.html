@@ -11,9 +11,9 @@
   <style>
     body { margin: 0; font-family: 'Inter Tight', system-ui, sans-serif; background: #0F1319; color: #E6EAF2; -webkit-font-smoothing: antialiased; }
     a { color: #D18A6A; text-decoration: none; }
-    .dim   { color: rgba(230,234,242,0.55); }
-    .faint { color: rgba(230,234,242,0.40); }
-    .lbl { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(230,234,242,0.40); }
+    .dim   { color: rgba(230,234,242,0.62); }
+    .faint { color: rgba(230,234,242,0.50); }
+    .lbl { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(230,234,242,0.50); }
     .rbtn { border-radius: 9999px; display: flex; align-items: center; justify-content: center; }
   </style>
 </helmet>
@@ -21,7 +21,7 @@
 <div style="width: 560px; height: 760px; display: flex; flex-direction: column; align-items: center; padding: 28px 26px; box-sizing: border-box; gap: 12px;">
 
   <div style="align-self: stretch; display: flex; align-items: center; gap: 10px;">
-    <span style="font-size: 12px; padding: 5px 12px; border-radius: 9999px; background: rgba(255,255,255,0.07); color: rgba(230,234,242,0.55); font-weight: 500;">C · nonstop</span>
+    <span style="font-size: 12px; padding: 5px 12px; border-radius: 9999px; background: rgba(255,255,255,0.07); color: rgba(230,234,242,0.62); font-weight: 500;">C · nonstop</span>
     <span style="font-size: 12.5px;" class="faint">08:00 → 08:00 · plný kruh</span>
   </div>
 
@@ -70,13 +70,13 @@
       <path d="M 243.44 243.44 A 118 118 0 0 1 76.56 243.44" fill="none" stroke="#09AF72" stroke-width="6"></path>
     </svg>
 
-    <div class="rbtn" style="position: absolute; left: 170px; top: 170px; transform: translate(-50%, -50%); width: 92px; height: 92px; background: #D18A6A; color: #1A0F0A; box-shadow: 0 0 0 10px rgba(209,138,106,0.09);">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
+    <div class="rbtn" style="position: absolute; left: 170px; top: 170px; transform: translate(-50%, -50%); width: 104px; height: 104px; background: #D18A6A; color: #1A0F0A; box-shadow: 0 0 0 12px rgba(209,138,106,0.09);">
+      <svg width="42" height="42" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
     </div>
   </div>
 
   <div style="align-self: stretch; border-radius: 13px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.10); padding: 15px 16px; display: flex; flex-direction: column; gap: 9px;">
-    <span class="lbl" style="color: rgba(230,234,242,0.55);">krajní případ</span>
+    <span class="lbl" style="color: rgba(230,234,242,0.62);">krajní případ</span>
     <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Kdybys jel <strong style="color:#E6EAF2;font-weight:500;">celých 24 hodin</strong>, oblouk se uzavře do plného kruhu — protože 24 h je přesně 360°.</span>
     <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Oblouk mezeru přejede, ale rysky a čísla se v ní nedokreslí — stupnice zůstává jen na dráze 06:00 – 00:00.</span>
     <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Úhel se odvíjí od času na hodinách, ne od pozice ve dni — a mezera zůstává holá i tady. Kruh se uzavře, stupnice se nedoplní.</span>

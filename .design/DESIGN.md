@@ -37,6 +37,9 @@ after the first version of this file and are already reflected in the artboards:
    44×44 touch-target rule.
 4. **The gauge gap stays bare even when the circle closes.** `GaugeNonstop` was redrawn:
    the arc runs all the way round, but no graduation or numeral is ever added to the gap.
+5. **Theme, language and logout live behind one control** in the top bar — see § 6a. Two new
+   artboards, `Settings` and `SettingsMobile`, and the right-hand cluster of every other
+   artboard was updated to match.
 
 Several acceptance criteria in `.kiro/specs/002-worklog-ui/` still **contradict** these
 artboards. They are listed in § 9 and are being reconciled.
@@ -53,8 +56,8 @@ Two themes, both first-class. Every value below is lifted from the artboards.
 |---|---|
 | `--bg` | `#0F1319` |
 | `--text` | `#E6EAF2` |
-| `--text-dim` | `rgba(230,234,242,0.55)` |
-| `--text-faint` | `rgba(230,234,242,0.40)` |
+| `--text-dim` | `rgba(230,234,242,0.62)` |
+| `--text-faint` | `rgba(230,234,242,0.50)` |
 | `--accent` | `#D18A6A` |
 | `--accent-hover` | `#E2A88D` |
 | `--ink-on-accent` | `#1A0F0A` |
@@ -80,10 +83,18 @@ Two themes, both first-class. Every value below is lifted from the artboards.
 | `--panel` | `rgba(0,0,0,0.045)` |
 | `--destructive` | `#A8321F` |
 
-The dim and faint opacities are **deliberately higher in the light theme** (0.78 / 0.66
-against 0.55 / 0.40). At the dark theme's values they computed to contrast ratios of 4.17
-and 2.99 against `#F3EEE6` — under AA. They are not a copy of the dark theme's numbers and
-must not be "unified" back.
+Every text token clears AA (4.5:1) against its own ground, and each theme reached that
+with its own numbers — they are not copies of one another and must not be "unified".
+
+| | dim | faint |
+|---|---|---|
+| dark on `#0F1319` | 0.62 → 6.44:1 | 0.50 → 4.63:1 |
+| light on `#F3EEE6` | 0.78 → 6.84:1 | 0.66 → 4.69:1 |
+
+Both started lower and were raised after measurement: the light pair computed to 4.17 and
+2.99, and dark faint — carrying block times, break labels and every caps label — sat at
+**3.38:1**, under AA while the specification demanded it. Dark dim moved with it so the two
+levels stay visibly apart rather than collapsing into one.
 
 **One collision the implementation must not accidentally merge.** `--accent` carries both
 *primary action* and *uncovered time / attention*. That is deliberate.
@@ -248,9 +259,34 @@ because the DST transition happens between 02:00 and 03:00, which is inside the 
 ## 6. Screen layouts
 
 **Top bar** — `grid-template-columns: 1fr auto 1fr`: brand left, **navigation centred**,
-running indicator and `CS` right. The running indicator is a 6px accent dot plus the elapsed
-time in tabular figures. The active nav item is full-strength text on desktop but **the
-accent colour on mobile's bottom bar** — two different treatments of "active".
+running indicator and the settings control right. The running indicator is a 6px accent dot
+plus the elapsed time in tabular figures; the timer pages omit it, because their hero *is*
+the elapsed time. The active nav item is full-strength text on desktop but **the accent
+colour on mobile's bottom bar** — two different treatments of "active".
+
+## 6a. Settings
+
+Theme, language and logout sit behind **one control** — a 30px round chip (32 on mobile)
+holding a 16px gear, at the right end of the top bar. It opens a 268px menu anchored under
+it on desktop, and the same content as a bottom sheet on mobile: a 38×4 grabber, `MOTIV` as
+a three-way segmented control (Systém / Světlý / Tmavý), `JAZYK` as a two-way one
+(Čeština / English), a hairline divider, and `Odhlásit se` in `--destructive`.
+
+The sheet is modal — the scrim covers the bottom navigation and the sheet sits over it.
+Neither the content nor the tab bar carries its own opacity; the scrim does all the dimming.
+Giving them an opacity of their own creates a stacking context and the tab bar then paints
+*over* the sheet.
+
+Three reasons this is one control rather than two switchers in the bar:
+
+- The mobile top bar is 56–60px and already carries day navigation. One chip fits; two
+  separate controls do not, and desktop and mobile must not diverge on where settings live.
+- **Logout had nowhere to be.** Requirements demand it, and no artboard had it. One menu
+  closes three gaps instead of one.
+- The four nav destinations are places you work. Theme and language are set once a year and
+  would dilute that hierarchy.
+
+The cost: language is no longer one click. For something set once, that is the right trade.
 
 **Timer page**, in order: hero elapsed time → `běží od 21:00` caption → gauge with the control
 at its exact centre → **three** figures (worked / described / undescribed) → quick-log pill →
@@ -341,10 +377,17 @@ These are contradictions, not omissions. Each needs a decision before implementa
 | 9 | Session edit lists uncovered time among affected entries | Uncovered time is not an `Activity_Entry`; the preview does not return it | open — needs a data decision |
 | 10 | Spacing off the 4/8/12… scale | Req 14.6 mandates that scale | design wins |
 
-Also missing from the specification entirely: the whole colour system, the typography, the
-radii and component heights, the centred navigation, the project legend, the third timer
-figure, the day-page side panels, and the fact that the application has two themes at all.
+Every one of these was missing from the specification and has since been written into it:
+the whole colour system, the typography, the radii and component heights, the centred
+navigation, the project legend, the third timer figure, the day-page side panels, and the
+fact that the application has two themes at all.
 
-And drawn nowhere in the design: login and logout, the error and offline pages, the timezone
-notice, stale-session and conflict states, the activity list, drag handles on session edges,
-empty states, toasts, skeletons, confirmation dialogs, and the focus ring.
+Still drawn nowhere: the login screen, the error and offline pages, the timezone notice,
+stale-session and conflict states, the activity list, drag handles on session edges, empty
+states, toasts, skeletons, confirmation dialogs, and the focus ring. Logout used to be on
+this list; § 6a gave it a home.
+
+Six light-theme tokens are **derived rather than drawn** — dialog, scrim, field, active
+field, divider and destructive. No light dialog exists among the artboards, so they were
+computed from the dark theme's relationships and their contrast measured. A light-theme
+dialog artboard would overrule them.

@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter Tight', system-ui, sans-serif; background: #0F1319; color: #E6EAF2; -webkit-font-smoothing: antialiased; }
+    .dim   { color: rgba(230,234,242,0.62); }
+    .faint { color: rgba(230,234,242,0.50); }
+    .lbl { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(230,234,242,0.50); }
+    .nav { font-size: 14px; color: rgba(230,234,242,0.50); }
+    .nav.on { color: #E6EAF2; font-weight: 500; }
+    .seg { flex-grow: 1; height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; border-radius: 9px; color: rgba(230,234,242,0.62); }
+    .seg.on { background: rgba(209,138,106,0.16); color: #D18A6A; font-weight: 500; }
+    .gear { width: 30px; height: 30px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.07); }
+  </style>
+</helmet>
+
+<div style="min-height: 560px; padding: 0 48px; position: relative;">
+
+  <div style="height: 84px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;">
+    <span style="font-size: 15px; font-weight: 600;">Worklog</span>
+    <div style="display: flex; gap: 30px; justify-self: center;">
+      <span class="nav on">Timer</span><span class="nav">Den</span><span class="nav">Projekty</span><span class="nav">Statistiky</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 14px; justify-self: end;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="width: 6px; height: 6px; border-radius: 9999px; background: #D18A6A; display: block;"></span>
+        <span style="font-size: 13px; font-variant-numeric: tabular-nums;" class="dim">5:12</span>
+      </div>
+      <div class="gear">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E6EAF2" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M19.1 14.4a1.7 1.7 0 0 0 .35 1.87l.06.07a2 2 0 1 1-2.83 2.83l-.06-.07a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.88.34l-.06.07a2 2 0 1 1-2.83-2.83l.06-.07A1.7 1.7 0 0 0 4.9 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.66 8.9a1.7 1.7 0 0 0-.35-1.87l-.06-.07a2 2 0 1 1 2.83-2.83l.06.07A1.7 1.7 0 0 0 9 4.55 1.7 1.7 0 0 0 10.06 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.35l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.35 1.88V9a1.7 1.7 0 0 0 1.56 1.03H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.56 1.03z"></path></svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; top: 78px; right: 48px; width: 268px; background: #171B22; border-radius: 14px; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 18px 44px rgba(0,0,0,0.55); padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="lbl">motiv</span>
+      <div style="display: flex; gap: 4px; background: rgba(255,255,255,0.04); border-radius: 11px; padding: 4px;">
+        <div class="seg on">Systém</div>
+        <div class="seg">Světlý</div>
+        <div class="seg">Tmavý</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span class="lbl">jazyk</span>
+      <div style="display: flex; gap: 4px; background: rgba(255,255,255,0.04); border-radius: 11px; padding: 4px;">
+        <div class="seg on">Čeština</div>
+        <div class="seg">English</div>
+      </div>
+    </div>
+
+    <div style="height: 1px; background: rgba(255,255,255,0.06);"></div>
+
+    <div style="display: flex; align-items: center; gap: 10px; height: 34px;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E06A5E" stroke-width="1.8" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="M16 17l5-5-5-5"></path><path d="M21 12H9"></path></svg>
+      <span style="font-size: 13.5px; color: #E06A5E;">Odhlásit se</span>
+    </div>
+
+  </div>
+
+  <div style="margin-top: 44px; max-width: 620px; display: flex; flex-direction: column; gap: 12px;">
+    <span class="lbl">proč jedna nabídka</span>
+    <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Motiv a jazyk nastavíš jednou za rok — do hlavního menu, kde jsou čtyři místa, ve kterých pracuješ, nepatří.</span>
+    <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Odhlášení do té doby nemělo v celém návrhu kde být, přestože ho požadavky vyžadují. Tahle nabídka zavírá tři díry najednou.</span>
+    <span style="font-size: 12.5px; line-height: 1.6;" class="dim">Na mobilu je stejný obsah jako spodní sheet — v horní liště tam pro dvě ovládání není místo.</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

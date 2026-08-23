@@ -14,6 +14,8 @@ The server side also answers which parts of the tracked time already have an act
 
 The application is single-user and has no accounts. The browser authenticates with a session cookie established from a shared passphrase; external callers such as shell scripts or phone shortcuts authenticate with a static bearer token against the same endpoints.
 
+The visual contract for the interface lives in `.design/DESIGN.md` and is the source of truth for how the data is shown. It matters here only where the server must supply something the drawing needs — the `Gauge_Window` and the `Gauge_Gap`, the per-day work intervals behind the day-rhythm strip, the `Evening_Hour` figure, and the eight `Project` colour slots.
+
 ## Glossary
 
 - **Worklog_Server**: The server-side half of the SvelteKit application at `worklog/` — the domain logic in `src/lib/server/domain/`, the data layer in `src/lib/server/store/`, and the REST routes under `src/routes/api/`
@@ -29,16 +31,20 @@ The application is single-user and has no accounts. The browser authenticates wi
 - **Uncovered_Time**: `Tracked_Time` minus `Covered_Time` — time the user was working but has not yet described
 - **Clipping**: The write-time operation that turns a requested interval or duration into `Activity_Segment` records aligned to `Tracked_Time`
 - **Explicit_Mode**: Creating an `Activity_Entry` from a known start and end
-- **Duration_Mode**: Creating an `Activity_Entry` from a duration of net worked time, with the start inferred
+- **Duration_Mode**: Creating an `Activity_Entry` from a duration of net worked time, with the start inferred and the interval it resolved to stored on the entry
 - **Open_Mode**: Creating an `Activity_Entry` from no times at all — the start is inferred like `Duration_Mode` and the end is the current time
 - **Placement_Anchor**: The start inferred for a `Duration_Mode` or `Open_Mode` entry — the end of the latest `Activity_Segment` of the `Target_Day`, or the start of its earliest `Work_Session` when no segment exists
 - **Target_Day**: The `Logical_Day` a `Duration_Mode` or `Open_Mode` request applies to — the `date` field of the request, defaulting to the current `Logical_Day`
-- **Uncovered_Policy**: The caller-selected rule for what happens to the part of a request that falls outside `Tracked_Time` — one of `clip`, `extend`, `reject`
+- **Untracked_Policy**: The caller-selected rule for what happens to the part of a request that falls in `Untracked_Time`, outside the timer frame — one of `clip`, `extend`, `reject`. It is named after the set it governs; `Uncovered_Time` is a different set and no policy applies to it.
 - **Project**: A named entity an `Activity_Entry` is attributed to
 - **Logical_Day**: The day window used for grouping, running from `DAY_START_HOUR` on one calendar date to `DAY_START_HOUR` on the next, evaluated in `TIMEZONE`
-- **Gauge_Window**: The stretch of the day the interface draws as its expected working hours, given by `GAUGE_START` and `GAUGE_END`
+- **Gauge_Window**: The stretch of the day the interface draws as its expected working hours, given by `GAUGE_START` and `GAUGE_END`. It is a pair of wall-clock times, not a pair of instants — it means the same hours on every date.
+- **Gauge_Gap**: The remainder of the 24-hour clock outside the `Gauge_Window` — with the defaults, `00:00`–`06:00`
 - **Overtime**: `Tracked_Time` falling outside the `Gauge_Window`
+- **Evening_Hour**: The wall-clock hour after which `Tracked_Time` is additionally counted, given by `EVENING_HOUR`
+- **Day_Boundary_Config**: The single stored row recording the `TIMEZONE` and `DAY_START_HOUR` the data was created under
 - **Dry_Run**: A request that is validated and evaluated in full but writes nothing, returning the outcome the same write would have produced
+- **Preview_Token**: The fingerprint of the stored rows a `Dry_Run` was computed against, carried back on the confirming write
 - **Auth_Hook**: The SvelteKit `handle` hook in `src/hooks.server.ts` that authenticates every request before it reaches a route
 - **Browser_Session**: The authenticated state of the browser, carried by an HttpOnly session cookie
 - **API_Token**: The static bearer token used by non-browser callers such as shell scripts and phone shortcuts
@@ -66,6 +72,8 @@ The application is single-user and has no accounts. The browser authenticates wi
 12. WHILE a `Work_Session` is a `Stale_Session`, THE Worklog_Server SHALL exclude the part of it beyond `MAX_OPEN_SESSION_HOURS` from `Tracked_Time`, so an abandoned timer cannot inflate totals or `Uncovered_Time`
 13. IF a `Work_Session` would be created or modified so that any part of it lies more than five minutes in the future, THEN THE Worklog_Server SHALL return HTTP 400 with error code `FUTURE_TIMESTAMP`
 14. IF a `Work_Session` would be shorter than `MIN_INTERVAL_SECONDS`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INTERVAL_TOO_SHORT`
+15. WHEN testing a `Work_Session` write for overlap, THE Worklog_Server SHALL treat an `Open_Session` as occupying the interval from its start to the current time, capped at `MAX_OPEN_SESSION_HOURS`, and SHALL reject a write overlapping it with HTTP 409 and error code `SESSION_OVERLAP`
+16. THE Worklog_Server SHALL perform the overlap test of criterion 15 inside the same transaction as the write it guards, because the database cannot express an exclusion constraint over a session whose end is absent
 
 ### Requirement 2: Work Session Creation, Listing and Correction
 
@@ -81,7 +89,7 @@ The application is single-user and has no accounts. The browser authenticates wi
 6. IF a POST or PATCH request would produce a `Work_Session` whose start is not strictly before its end, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INVALID_INTERVAL`
 7. IF a POST or PATCH request would produce a `Work_Session` overlapping another `Work_Session`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `SESSION_OVERLAP` and SHALL include the conflicting session identifiers in the error details
 8. WHEN a DELETE request is received at `/api/sessions/{id}`, THE Worklog_Server SHALL remove the `Work_Session` and return HTTP 204
-9. WHEN a `Work_Session` is created, modified or deleted, THE Worklog_Server SHALL re-apply `Clipping` to every `Activity_Entry` holding an `Activity_Segment` that overlapped the affected interval, so that stored segments continue to match the new `Tracked_Time`
+9. WHEN a `Work_Session` is created, modified or deleted, THE Worklog_Server SHALL re-apply `Clipping` to every `Activity_Entry` whose `Activity_Segment` records overlap the affected intervals **or** whose requested interval overlaps them, so that an entry an earlier change emptied is reconsidered when the time it asked for becomes tracked again
 10. WHEN re-applying `Clipping` leaves an `Activity_Entry` with no `Activity_Segment`, THE Worklog_Server SHALL retain it as an `Orphaned_Entry` rather than deleting it
 
 ### Requirement 3: Project Management
@@ -98,9 +106,10 @@ The application is single-user and has no accounts. The browser authenticates wi
 6. WHEN a PATCH request is received at `/api/projects/{id}`, THE Worklog_Server SHALL update the name, the archived state, the colour index, or any combination of them, and return HTTP 200
 7. IF a DELETE request is received at `/api/projects/{id}` and the `Project` is referenced by at least one `Activity_Entry`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `PROJECT_IN_USE` and SHALL include the identifiers of the referencing entries in the error details, so the caller can show which records block the deletion
 8. WHEN a DELETE request is received at `/api/projects/{id}` and the `Project` is referenced by no `Activity_Entry`, THE Worklog_Server SHALL remove it and return HTTP 204
-9. WHEN a `Project` is created, THE Worklog_Server SHALL assign it a colour index that is the lowest value not currently held by a non-archived `Project`, wrapping around when every value is taken
+9. WHEN a `Project` is created and at least one colour index is not held by a non-archived `Project`, THE Worklog_Server SHALL assign the lowest such index
 10. THE Worklog_Server SHALL keep a `Project` colour index unchanged when the project is renamed, archived or unarchived
 11. WHEN a PATCH request at `/api/projects/{id}` supplies a colour index within range, THE Worklog_Server SHALL store it even when another `Project` already holds it
+12. IF every colour index is already held by a non-archived `Project` when one is created, THEN THE Worklog_Server SHALL assign the index held by the fewest non-archived `Project` records, choosing the lowest such index when several are tied, so the assignment stays deterministic
 
 ### Requirement 4: Activity Logging in Explicit Mode
 
@@ -135,8 +144,10 @@ The application is single-user and has no accounts. The browser authenticates wi
 8. WHEN placing a `Duration_Mode` entry, THE Worklog_Server SHALL advance forward from the placement start and consume only time that is part of `Tracked_Time` and is not already part of `Covered_Time`, until the requested duration is exhausted
 9. THE Worklog_Server SHALL bound the forward search at the end of the `Target_Day`
 10. THE Worklog_Server SHALL produce `Activity_Segment` records whose total duration equals `durationMinutes` whenever enough eligible time exists after the placement start
-11. IF the eligible time after the placement start is shorter than `durationMinutes`, THEN THE Worklog_Server SHALL apply the `Uncovered_Policy` and SHALL report the unplaced remainder in minutes in the response
+11. IF the eligible time after the placement start is shorter than `durationMinutes`, THEN THE Worklog_Server SHALL apply the `Untracked_Policy` and SHALL report the unplaced remainder in minutes in the response
 12. IF `durationMinutes` is not a positive integer, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
+13. THE Worklog_Server SHALL record the resolved start and end of a `Duration_Mode` entry as its requested interval, alongside the requested duration, so the entry can be ordered, re-placed after a later frame change, and found again when reconciliation empties it
+14. WHEN `Clipping` discards a produced interval for being shorter than `MIN_INTERVAL_SECONDS`, THE Worklog_Server SHALL add its duration to the unplaced remainder reported in the response, so that placed time plus unplaced time always equals the requested duration
 
 ### Requirement 6: Clipping Activity Entries to Tracked Time
 
@@ -148,13 +159,17 @@ The application is single-user and has no accounts. The browser authenticates wi
 2. THE Worklog_Server SHALL NOT produce an `Activity_Segment` that overlaps `Untracked_Time`
 3. WHEN a requested interval spans a break between two `Work_Session` records, THE Worklog_Server SHALL produce one `Activity_Segment` per overlapped `Work_Session` rather than a single spanning segment
 4. THE Worklog_Server SHALL produce `Activity_Segment` records ordered by start ascending, with no two segments of the same `Activity_Entry` overlapping or touching
-5. THE Worklog_Server SHALL discard any `Activity_Segment` shorter than `MIN_INTERVAL_SECONDS` and SHALL report it among the discarded intervals, so that unclickable slivers never reach the interface
-6. WHEN the `Uncovered_Policy` is `clip`, THE Worklog_Server SHALL discard the parts of the request falling outside `Tracked_Time` and SHALL report the discarded intervals in the response
-7. WHEN the `Uncovered_Policy` is `extend`, THE Worklog_Server SHALL create or lengthen `Work_Session` records so that the whole requested interval becomes part of `Tracked_Time`, and SHALL report the created or lengthened sessions in the response
-8. THE Worklog_Server SHALL NOT create or lengthen a `Work_Session` into the future under any `Uncovered_Policy`
-9. IF the `Uncovered_Policy` is `reject` and any part of the request falls outside `Tracked_Time`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `OUTSIDE_TRACKED_TIME` and SHALL create nothing
-10. IF no `Uncovered_Policy` is supplied, THEN THE Worklog_Server SHALL use `clip`
+5. THE Worklog_Server SHALL discard any `Activity_Segment` shorter than `MIN_INTERVAL_SECONDS` and SHALL report it separately from the parts falling outside `Tracked_Time`, so that unclickable slivers never reach the interface and a caller can tell the two kinds of loss apart
+6. WHEN the `Untracked_Policy` is `clip`, THE Worklog_Server SHALL discard the parts of the request falling outside `Tracked_Time` and SHALL report the discarded intervals in the response
+7. WHEN the `Untracked_Policy` is `extend`, THE Worklog_Server SHALL create or lengthen `Work_Session` records so that as much of the request as it may lawfully cover becomes part of `Tracked_Time`, and SHALL report the created or lengthened sessions in the response
+8. THE Worklog_Server SHALL NOT create or lengthen a `Work_Session` into the future under any `Untracked_Policy`
+9. IF the `Untracked_Policy` is `reject` and any part of the request falls outside `Tracked_Time`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `OUTSIDE_TRACKED_TIME` and SHALL create nothing
+10. IF no `Untracked_Policy` is supplied, THEN THE Worklog_Server SHALL use `clip`
 11. THE Worklog_Server SHALL apply the whole write as a single database transaction, so that a rejected request leaves no `Activity_Entry`, no `Activity_Segment` and no modified `Work_Session` behind
+12. IF `Clipping` would produce no `Activity_Segment` at all, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NOTHING_TO_LOG` and SHALL create nothing, in every mode, so that a write never immediately produces an `Orphaned_Entry`
+13. THE Worklog_Server SHALL NOT lengthen or create a `Work_Session` under the `extend` policy beyond the end of the `Target_Day`
+14. IF an interval the `extend` policy would create overlaps an existing `Work_Session`, THEN THE Worklog_Server SHALL leave that interval uncreated and SHALL report the corresponding time as unplaced rather than failing the request
+15. THE Worklog_Server SHALL reduce the unplaced remainder only by the time the `extend` policy actually placed, so that time refused by criteria 8, 13 or 14 is reported rather than silently lost
 
 ### Requirement 7: Activity Listing, Modification and Deletion
 
@@ -173,6 +188,10 @@ The application is single-user and has no accounts. The browser authenticates wi
 9. WHEN a PATCH request is received at `/api/activities/{id}` changing the requested interval or duration, THE Worklog_Server SHALL replace all existing `Activity_Segment` records of that entry by re-applying `Clipping`
 10. WHILE re-applying `Clipping` for a PATCH request, THE Worklog_Server SHALL ignore the entry's own existing `Activity_Segment` records when testing for overlap
 11. WHEN a DELETE request is received at `/api/activities/{id}`, THE Worklog_Server SHALL remove the `Activity_Entry` together with all its `Activity_Segment` records and return HTTP 204
+12. IF a PATCH request at `/api/activities/{id}` sets a `projectId` referencing an archived `Project`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `PROJECT_ARCHIVED`
+13. THE Worklog_Server SHALL return at most `ACTIVITY_PAGE_SIZE` entries from `/api/activities` in one response, together with a cursor for the next page whenever more entries match, so that a year-long query cannot return an unbounded body
+14. WHEN a GET request at `/api/activities` carries a `cursor` query parameter, THE Worklog_Server SHALL continue the listing from it in the order of criterion 1
+15. THE Worklog_Server SHALL return with every `Activity_Entry` the name and the colour index of its `Project`, so that a caller never has to fetch the project list and join it itself to draw the entry
 
 ### Requirement 8: Day Overview
 
@@ -184,16 +203,25 @@ The application is single-user and has no accounts. The browser authenticates wi
 2. THE Worklog_Server SHALL return `Work_Session` and `Activity_Segment` records with their true, unclipped bounds, so the interface can show that a record continues beyond the day
 3. THE Worklog_Server SHALL clamp every duration total and every coverage interval in the day response to the `Logical_Day` boundaries, so that a record crossing a boundary is counted once in each day for only the part belonging to it
 4. THE Worklog_Server SHALL include in the day response the total `Tracked_Time` in seconds, the total `Covered_Time` in seconds and the total `Uncovered_Time` in seconds
-5. THE Worklog_Server SHALL include in the day response a per-`Project` breakdown giving the total `Covered_Time` in seconds attributed to each `Project`, including archived projects that hold time in the range
+5. THE Worklog_Server SHALL include in the day response a per-`Project` breakdown giving, for each `Project`, its identifier, its name, its colour index and the total `Covered_Time` in seconds attributed to it, including archived projects that hold time in the range
 6. THE Worklog_Server SHALL include in the day response every `Orphaned_Entry` whose requested interval overlaps the day
 7. IF `{date}` is not a valid `YYYY-MM-DD` date, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
 8. WHEN a GET request is received at `/api/days/{date}` for a day holding no records, THE Worklog_Server SHALL return HTTP 200 with empty collections and zero totals rather than HTTP 404
-9. WHEN a GET request is received at `/api/days` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with one summary object per `Logical_Day` in the range, each carrying its date, the totals defined in criteria 4 and 5, and the number of `Work_Session` records that began in it
+9. WHEN a GET request is received at `/api/days` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with one summary object per `Logical_Day` in the range, each carrying its date, the totals defined in criteria 4 and 5, and the number of `Work_Session` rows that began in it — a count of records, not of uninterrupted stretches
 10. IF the range requested at `/api/days` spans more than 366 `Logical_Day` values, THEN THE Worklog_Server SHALL return HTTP 400 with error code `RANGE_TOO_LARGE`
-11. THE Worklog_Server SHALL include in every day summary the duration of the longest uninterrupted `Work_Session` of that day
+11. THE Worklog_Server SHALL include in every day summary the duration of the longest uninterrupted stretch of `Tracked_Time` in that day, measured after merging sessions that touch, so that two adjacent `Work_Session` rows count as the one block of work they are
 12. THE Worklog_Server SHALL include in every day summary the amount of `Tracked_Time` that falls outside the `Gauge_Window`, so the interface can report overtime
-13. THE Worklog_Server SHALL include in a multi-day response the earliest and latest instant, expressed as a time of day, between which 90 percent of the range's `Tracked_Time` falls, so the interface can suggest a `Gauge_Window` fitted to real habits
+13. THE Worklog_Server SHALL include in a multi-day response the shortest window on the 24-hour clock, expressed as two times of day and permitted to run past midnight, that contains at least 90 percent of the range's `Tracked_Time`, so the interface can suggest a `Gauge_Window` fitted to real habits
 14. THE Worklog_Server SHALL expose the configured `GAUGE_START` and `GAUGE_END` to clients
+15. WHEN a GET request at `/api/days` carries `include=intervals`, THE Worklog_Server SHALL include in every day summary the `Tracked_Time` intervals of that `Logical_Day`, clamped to its boundaries, so the interface can show where in the day the work fell and not only how much of it there was
+16. WHEN a GET request at `/api/days` carries `include=intervals`, THE Worklog_Server SHALL additionally include in every day summary the `Covered_Time` intervals of that `Logical_Day`, clamped to its boundaries, each carrying the identifier of the `Project` it is attributed to, so each stretch can be drawn in that project's colour
+17. WHEN a GET request at `/api/days` carries `include=intervals`, THE Worklog_Server SHALL additionally include in every day summary the `Uncovered_Time` intervals of that `Logical_Day`, clamped to its boundaries, so undescribed stretches are drawn from returned data rather than derived by the caller
+18. IF a GET request at `/api/days` carries `include=intervals` for a range longer than `MAX_INTERVAL_RANGE_DAYS`, THEN THE Worklog_Server SHALL return HTTP 200 carrying the summaries, SHALL omit every interval collection, and SHALL report in the response body that it omitted them — a range that long is unreadable drawn as a rhythm strip, so the intervals have no reason to travel and a statistics page over a year SHALL NOT fail
+19. THE Worklog_Server SHALL include in every day summary the amount of `Tracked_Time` falling after the `Evening_Hour` of that `Logical_Day`
+20. IF a GET request is received at `/api/days` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`, as the other range routes do
+21. IF the range holds no `Work_Session`, THEN THE Worklog_Server SHALL report no suggested window rather than a computed one
+22. THE Worklog_Server SHALL report a suggested window that would itself satisfy the startup checks of Requirements 13.12, 13.15 and 13.22, so the interface never offers a `Gauge_Window` the server would refuse to start with
+23. IF a GET request at `/api/days` does not carry `include=intervals`, THEN THE Worklog_Server SHALL omit every interval collection and return the summaries alone
 
 ### Requirement 9: Coverage and Gaps
 
@@ -208,6 +236,7 @@ The application is single-user and has no accounts. The browser authenticates wi
 5. IF a GET request is received at `/api/coverage` without `from` and `to`, THEN THE Worklog_Server SHALL default the range to the current `Logical_Day`
 6. IF a range requested at `/api/coverage` spans more than 366 `Logical_Day` values, THEN THE Worklog_Server SHALL return HTTP 400 with error code `RANGE_TOO_LARGE`
 7. IF `from` is not strictly before `to`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `INVALID_INTERVAL`
+8. THE Worklog_Server SHALL include in the coverage response the total seconds of `Tracked_Time`, `Covered_Time`, `Uncovered_Time` and `Untracked_Time` in the range, so a filtered list still reports the full amount
 
 ### Requirement 10: Logical Day and Time Zone Handling
 
@@ -224,7 +253,11 @@ The application is single-user and has no accounts. The browser authenticates wi
 7. THE Worklog_Server SHALL NOT split a `Work_Session` or an `Activity_Segment` that crosses a `Logical_Day` boundary, and SHALL attribute to each day only the part of it that falls inside that day
 8. THE Worklog_Server SHALL expose the effective `TIMEZONE` and `DAY_START_HOUR` to clients, so the interface can render and parse wall-clock times in the same zone the server groups by
 9. IF `TIMEZONE` does not name a loadable time zone or `DAY_START_HOUR` is outside the range 0 to 23, THEN THE Worklog_Server SHALL log an error and exit with a non-zero status at startup
-10. THE Worklog_Server SHALL record the `TIMEZONE` and `DAY_START_HOUR` under which the data was created, and SHALL refuse to start when they differ from the configured values unless `ALLOW_DAY_BOUNDARY_CHANGE` is set, because changing them regroups history retroactively
+10. THE Worklog_Server SHALL record the `TIMEZONE` and `DAY_START_HOUR` under which the data was created as the `Day_Boundary_Config`, and SHALL refuse to start when they differ from the configured values unless `ALLOW_DAY_BOUNDARY_CHANGE` is set, because changing them regroups history retroactively
+11. IF no `Day_Boundary_Config` exists at startup, THEN THE Worklog_Server SHALL write it from the configured `TIMEZONE` and `DAY_START_HOUR` before serving any request, so the check of criterion 10 has something to compare against from the first run onwards
+12. WHEN `ALLOW_DAY_BOUNDARY_CHANGE` is set and the `Day_Boundary_Config` differs from the configured values, THE Worklog_Server SHALL overwrite it with the configured values and log the change at warning level
+13. IF the hour named by `DAY_START_HOUR` fails to exist or is ambiguous on any date in `TIMEZONE`, THEN THE Worklog_Server SHALL log an error and refuse to start, because a day boundary that occurs twice or not at all cannot partition the timeline
+14. THE Worklog_Server SHALL resolve an ambiguous wall-clock time to the same side of the transition everywhere it computes a `Logical_Day`, so that a boundary and the day it belongs to can never disagree
 
 ### Requirement 11: Authentication
 
@@ -232,7 +265,7 @@ The application is single-user and has no accounts. The browser authenticates wi
 
 #### Acceptance Criteria
 
-1. THE Auth_Hook SHALL authenticate every request except `GET /api/health` and the login route
+1. THE Auth_Hook SHALL authenticate every request except `GET /api/health`, the login route, a CORS preflight, and the static assets the framework serves, so that the login page renders with its stylesheet and hydrates
 2. WHEN a request carries a `Browser_Session` cookie that matches an unexpired stored session, THE Auth_Hook SHALL admit the request
 3. WHEN a request carries an `Authorization: Bearer <token>` header equal to the `API_Token`, THE Auth_Hook SHALL admit the request
 4. IF a request to a path under `/api` carries neither a valid `Browser_Session` nor a valid `API_Token`, THEN THE Auth_Hook SHALL return HTTP 401 with error code `UNAUTHORIZED`
@@ -244,12 +277,16 @@ The application is single-user and has no accounts. The browser authenticates wi
 10. WHEN the correct passphrase is submitted at the login route, THE Worklog_Server SHALL create a stored session and set a cookie carrying its identifier
 11. THE Worklog_Server SHALL set the session cookie with `HttpOnly`, `SameSite=Strict`, an explicit `Path`, an explicit `Max-Age`, and `Secure` whenever `APP_ENV` is not `development`
 12. IF the submitted passphrase is wrong, THEN THE Worklog_Server SHALL return a message that does not reveal whether any credential exists
-13. IF more than 5 login attempts arrive from one client address within 15 minutes, THEN THE Worklog_Server SHALL reject further attempts with HTTP 429
+13. IF more than 5 login attempts arrive from one client address within 15 minutes, THEN THE Worklog_Server SHALL reject further attempts with HTTP 429, and THE Worklog_Server SHALL NOT expose this limit as configuration, because a deployment must not be able to weaken it
 14. WHEN the user logs out, THE Worklog_Server SHALL delete the stored session so the cookie can no longer authenticate
 15. THE Worklog_Server SHALL delete stored sessions once they expire
 16. IF `WORKLOG_API_TOKEN` is unset or shorter than 32 characters, or `WORKLOG_PASSPHRASE_HASH` is unset, THEN THE Worklog_Server SHALL log an error and refuse to start
 17. THE Worklog_Server SHALL restrict cross-origin requests to the origins listed in the `CORS_ORIGINS` environment variable, and SHALL reject a wildcard value when `APP_ENV` is not `development`
 18. THE Worklog_Server SHALL NOT accept a `Browser_Session` cookie on a cross-origin request, so that `SameSite=Strict` remains sufficient protection against cross-site request forgery
+19. WHEN a CORS preflight `OPTIONS` request is received, THE Worklog_Server SHALL answer it before authentication runs, so a preflight is never met with HTTP 401
+20. THE Worklog_Server SHALL derive the client address used for rate limiting by discarding exactly `TRUSTED_PROXY_HOPS` entries from the right of `X-Forwarded-For` and taking the next one, and SHALL use the socket address when `TRUSTED_PROXY_HOPS` is zero or the header is absent, so that a caller cannot choose its own identity by prepending addresses
+21. THE Worklog_Server SHALL delete expired `Browser_Session` records on a periodic sweep as well as when one is presented, so a session nobody returns to does not outlive its expiry
+22. WHEN redirecting after a successful login, THE Worklog_Server SHALL accept only a local path — one beginning with a single `/` and not with `//` — and SHALL redirect to the application root otherwise
 
 ### Requirement 12: Validation, Errors and Rate Limiting
 
@@ -263,13 +300,17 @@ The application is single-user and has no accounts. The browser authenticates wi
 4. WHEN a request body is not valid JSON or carries an unknown field, THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`
 5. WHEN a path identifier does not reference an existing record, THE Worklog_Server SHALL return HTTP 404 with error code `NOT_FOUND`
 6. THE Worklog_Server SHALL reject a request body larger than 1 MiB with HTTP 413 and error code `PAYLOAD_TOO_LARGE`
-7. WHEN more than 120 requests arrive from one client address within 60 seconds, THE Worklog_Server SHALL return HTTP 429 with error code `RATE_LIMITED` and a `Retry-After` header
+7. WHEN more requests arrive from one client address within 60 seconds than `RATE_LIMIT_PER_MINUTE` permits, THE Worklog_Server SHALL return HTTP 429 with error code `RATE_LIMITED` and a `Retry-After` header
 8. WHEN a POST request to `/api/activities` carries an `Idempotency-Key` header that a previous request already used, THE Worklog_Server SHALL return the original response without creating a second `Activity_Entry`
 9. THE Worklog_Server SHALL retain an `Idempotency-Key` for at least 24 hours
 10. THE Worklog_Server SHALL emit one structured JSON log line per request carrying `timestamp`, `level`, `message`, `requestId`, method, path, status and duration
 11. THE Worklog_Server SHALL propagate an incoming `X-Request-Id` header as the `requestId`, and SHALL generate one when the header is absent
 12. THE Worklog_Server SHALL set `Content-Security-Policy`, `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and a directive denying framing on every response
 13. THE Worklog_Server SHALL serve a `Content-Security-Policy` carrying neither `unsafe-inline` nor `unsafe-eval` when `APP_ENV` is not `development`
+14. IF the database is unreachable or a query exceeds `DB_QUERY_TIMEOUT_SECONDS`, THEN THE Worklog_Server SHALL return HTTP 503 with error code `SERVICE_UNAVAILABLE`, so a caller can tell a transient failure from a defect and retry
+15. THE Worklog_Server SHALL enforce the body size limit while reading the request stream, so that a chunked request carrying no `Content-Length` cannot exceed it
+16. THE Worklog_Server SHALL retain the HTTP status of the original response alongside its body for an `Idempotency-Key`, and SHALL replay both
+17. THE Worklog_Server SHALL retain an `Idempotency-Key` for its full lifetime even when the `Activity_Entry` it created is deleted, so that a retry after a deletion does not create a second entry
 
 ### Requirement 13: Operational Behavior
 
@@ -277,7 +318,7 @@ The application is single-user and has no accounts. The browser authenticates wi
 
 #### Acceptance Criteria
 
-1. WHEN a GET request is received at `/api/health`, THE Health_Endpoint SHALL return HTTP 200 with a JSON body reporting status `ok`, the service version, the effective `TIMEZONE` and the effective `DAY_START_HOUR`
+1. WHEN a GET request is received at `/api/health`, THE Health_Endpoint SHALL return HTTP 200 with a JSON body reporting status `ok`, the service version, the effective `TIMEZONE`, the effective `DAY_START_HOUR`, the effective `GAUGE_START`, the effective `GAUGE_END`, the effective `EVENING_HOUR` and the effective `MAX_OPEN_SESSION_HOURS`, because this is the one unauthenticated place a client reads them from and none of them may be inferred from returned data
 2. THE Health_Endpoint SHALL NOT require authentication
 3. IF the database is unreachable, THEN THE Health_Endpoint SHALL return HTTP 503 with status `degraded`
 4. IF the database is reachable but has unapplied migrations, THEN THE Health_Endpoint SHALL return HTTP 503 with status `degraded` and THE Worklog_Server SHALL refuse to serve any other route
@@ -289,6 +330,19 @@ The application is single-user and has no accounts. The browser authenticates wi
 10. THE Worklog_Server SHALL listen on the port given by the `PORT` environment variable, defaulting to `3000`
 11. THE Worklog_Server SHALL read the `Gauge_Window` from `GAUGE_START` and `GAUGE_END`, defaulting to `06:00` and `00:00`
 12. IF `GAUGE_START` and `GAUGE_END` do not describe a window between 1 and 24 hours long, THEN THE Worklog_Server SHALL log an error and refuse to start
+13. IF `GAUGE_END` is less than or equal to `GAUGE_START`, THEN THE Worklog_Server SHALL take `GAUGE_END` as falling on the following calendar date, so that the default `06:00`–`00:00` describes eighteen hours rather than none
+14. THE Worklog_Server SHALL require the hour named by `DAY_START_HOUR` to fall inside the `Gauge_Gap`, so that the `Gauge_Window` lies wholly inside one `Logical_Day` and can be described by a single start and a single end
+15. IF the hour named by `DAY_START_HOUR` falls inside the `Gauge_Window`, THEN THE Worklog_Server SHALL log an error and refuse to start, because the window would then be split into two disjoint stretches belonging to different `Logical_Day` values
+16. THE Worklog_Server SHALL read the `Evening_Hour` from `EVENING_HOUR`, defaulting to `21`
+17. IF `EVENING_HOUR` is outside the range 0 to 23, THEN THE Worklog_Server SHALL log an error and refuse to start
+18. THE Worklog_Server SHALL read `MAX_OPEN_SESSION_HOURS` from the environment, defaulting to `12`
+19. THE Worklog_Server SHALL read `MIN_INTERVAL_SECONDS` from the environment, defaulting to `60`
+20. THE Worklog_Server SHALL read `SESSION_DURATION_HOURS` from the environment, defaulting to `720`
+21. THE Worklog_Server SHALL read `RATE_LIMIT_PER_MINUTE` from the environment, defaulting to `120`
+22. IF the `Gauge_Window` contains an hour at which `TIMEZONE` changes its offset, THEN THE Worklog_Server SHALL log an error and refuse to start, so that the window is the same number of hours on every date
+23. THE Worklog_Server SHALL read `TRUSTED_PROXY_HOPS` from the environment, defaulting to `0`
+24. THE Worklog_Server SHALL complete every startup check in one initialization that each request awaits before it is served, and SHALL answer HTTP 503 with error code `SERVICE_UNAVAILABLE` while a check has failed, because an asynchronous check cannot be awaited as a module is loaded
+25. THE Worklog_Server SHALL run as a single instance, because rate-limit state is held in process memory, is lost on restart and is not shared between processes
 
 ### Requirement 14: Dry Run
 
@@ -297,14 +351,15 @@ The application is single-user and has no accounts. The browser authenticates wi
 #### Acceptance Criteria
 
 1. WHEN a request to create or modify an `Activity_Entry` carries `dryRun` set to true, THE Worklog_Server SHALL evaluate it in full and return the outcome without writing anything
-2. WHEN a request to create, modify or delete a `Work_Session` carries `dryRun` set to true, THE Worklog_Server SHALL return every `Activity_Entry` that would be re-clipped, each with its project name, its description, and its `Activity_Segment` records as they are now and as they would become
+2. WHEN a request to create, modify or delete a `Work_Session` carries `dryRun` set to true, THE Worklog_Server SHALL return every `Activity_Entry` that would be re-clipped, each with its project name, its project colour index, its description, and its `Activity_Segment` records as they are now and as they would become
 3. THE Worklog_Server SHALL return a `Dry_Run` response in the same shape and with the same HTTP status code as the corresponding write, with an added field marking it as a `Dry_Run`
 4. THE Worklog_Server SHALL apply the same validation to a `Dry_Run` as to the corresponding write, and SHALL return the same error codes for the same reasons
 5. THE Worklog_Server SHALL leave `Work_Session`, `Activity_Entry` and `Activity_Segment` records byte-identical after a `Dry_Run`
 6. THE Worklog_Server SHALL report in every `Dry_Run` response the total duration in seconds that would be removed from existing `Activity_Segment` records
-7. THE Worklog_Server SHALL include in a `Dry_Run` response a token identifying the state of the timer frame it was computed against
+7. THE Worklog_Server SHALL include in a `Dry_Run` response a token derived from the stored `Work_Session` and `Activity_Segment` rows the outcome was computed against, and SHALL NOT derive it from any elapsed or current time, so that a running timer does not invalidate a preview every second
 8. IF a write carries a `Dry_Run` token that no longer matches the current timer frame, THEN THE Worklog_Server SHALL return HTTP 409 with error code `STALE_PREVIEW`, so a preview cannot be confirmed after another device changed the frame
 9. IF `dryRun` is absent from a request, THEN THE Worklog_Server SHALL perform the write
+10. WHEN a request to create, modify or delete a `Work_Session` carries `dryRun` set to true, THE Worklog_Server SHALL additionally report the `Uncovered_Time` that would stop being part of `Tracked_Time`, both as a total in seconds and as the intervals themselves, so the interface can name the stretch that disappears instead of deriving it from the data it happens to hold
 
 ### Requirement 15: Activity Logging in Open Mode
 
@@ -321,3 +376,4 @@ The application is single-user and has no accounts. The browser authenticates wi
 7. IF the resolved start is not strictly before the resolved end, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NOTHING_TO_LOG`
 8. IF the `Target_Day` contains neither an `Activity_Segment` nor a `Work_Session`, THEN THE Worklog_Server SHALL return HTTP 409 with error code `NO_PLACEMENT_ANCHOR`
 9. THE Worklog_Server SHALL support `dryRun` in `Open_Mode` on the same terms as the other modes
+10. IF the `Target_Day` of an `Open_Mode` request lies in the future, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`, because a day that has not begun has no `Placement_Anchor` and no end to log up to

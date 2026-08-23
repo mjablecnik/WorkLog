@@ -11,10 +11,11 @@ The second idea is that an `Activity_Entry` keeps **both** what the user asked f
 **Key design decisions:**
 
 - **Pure domain**: `src/lib/server/domain/` imports no database client, no SvelteKit runtime and no `$env`. Every reconciliation rule is a total function on sorted, disjoint interval lists, and a test enforces the restriction.
-- **Database-enforced non-overlap**: PostgreSQL `EXCLUDE USING gist` constraints on `tstzrange` make overlapping `Work_Session` rows and overlapping `Activity_Segment` rows unrepresentable, independent of application code. A partial unique index enforces the single-`Open_Session` rule.
+- **Database-enforced non-overlap, with one documented hole**: PostgreSQL `EXCLUDE USING gist` constraints on `tstzrange` make overlapping **closed** `Work_Session` rows and overlapping `Activity_Segment` rows unrepresentable. A partial unique index enforces the single-`Open_Session` rule. The session constraint is declared `WHERE (ended_at IS NOT NULL)` because `tstzrange(start, NULL)` is unbounded and would collide with everything after it — so an `Open_Session` is **not** covered, and a closed session written across the running timer would pass the database. That gap is closed in the application (Requirements 1.15, 1.16), inside the same transaction and under the advisory lock. The invariant is therefore *database-enforced for closed sessions and lock-enforced for the open one*, which is what the code must be written to, rather than the stronger claim that overlap is unrepresentable.
 - **`postgres.js` driver instead of the workspace default**: the template stack uses `drizzle-orm/neon-http`, whose own code notes that `db.transaction()` always throws. Worklog's correctness model requires interactive transactions — for the advisory lock, for atomic entry-plus-segments writes, and for the deferred-constraint reshuffle during re-clipping — so this project uses `drizzle-orm/postgres-js`. Drizzle, the schema DSL and the query style are unchanged; only the driver differs. It also removes the Neon proxy from local and E2E runs.
 - **Serialized writes via advisory lock**: every mutating request runs inside one transaction that first takes `pg_advisory_xact_lock`. The application is single-user, so the cost is irrelevant and it removes every read-modify-write race from `Clipping`.
-- **`Dry_Run` is the same code path**: a dry run runs the identical transaction and rolls it back instead of committing. It cannot drift from the real write, because it *is* the real write.
+- **`Dry_Run` is the same code path**: a dry run runs the identical transaction and rolls it back instead of committing. It cannot drift from the real write, because it *is* the real write. For that to be true it must also see the same constraint failures: `activity_segments_no_overlap` is `DEFERRABLE INITIALLY DEFERRED`, so it is normally checked at `COMMIT` — which a dry run never reaches. The dry-run branch therefore issues `SET CONSTRAINTS ALL IMMEDIATE` **before** rolling back, forcing every deferred constraint to be evaluated. Without that line a dry run reports success for a write that would fail, and Property 13 is worthless.
+- **The server owns every number the interface draws**: the `Gauge_Window`, the `Evening_Hour`, the per-day work intervals behind the day-rhythm strip and the `Project` colour slot all come from here, so the drawing in `.design/DESIGN.md` never has to derive one client-side. `.design/DESIGN.md` is the source of truth for appearance; this document is the source of truth for the values it consumes.
 
 ```mermaid
 graph TD
@@ -112,8 +113,19 @@ flowchart TD
     E -->|yes| G{policy}
     G -->|clip| H["segments = taken<br/>unplacedMs = remainder"]
     G -->|reject| I["409 OUTSIDE_TRACKED_TIME"]
-    G -->|extend| J["append session of length remainder<br/>after last eligible time in window"]
+    G -->|extend| J["place what fits before<br/>min(now, dayBounds.end) and clear of<br/>existing sessions; the rest stays unplaced"]
+    F --> K{"segments empty?"}
+    H --> K
+    J --> K
+    K -->|yes| L["409 NOTHING_TO_LOG"]
+    K -->|no| M["write"]
 ```
+
+Three rules govern the tail of that diagram, and each exists because the obvious implementation gets it wrong:
+
+- **`extend` clears `unplacedMs` only by what it actually placed** (Requirement 6.15). The naive version appends "an interval of length `remainder`" and zeroes the counter. When the last tracked instant is already `now`, that interval is empty, and two hours of the user's work disappear into a counter that was reset anyway.
+- **`extend` never crosses `min(now, dayBounds.end)`** (Requirements 6.8, 6.13) and never overlaps an existing `Work_Session` (Requirement 6.14). A `Target_Day` in the past has no room after its end, and a later session already occupies the time the naive append would claim. Where it cannot place, it reports unplaced — that is not an error.
+- **A write producing zero segments is `NOTHING_TO_LOG`** (Requirement 6.12), in every mode. Previously `Explicit_Mode` wrote an entry with no segments, `Duration_Mode` reported everything unplaced and `Open_Mode` answered 409 — three behaviors for one situation. An accepted write must never manufacture an `Orphaned_Entry`; those exist only because a *later* frame change emptied an entry that was once real.
 
 `take` is what makes the user's example work. Given `eligible = [14:00–14:45, 15:00–17:00]` and `durationMs = 2h`, it consumes the first interval whole (45 min), then takes the first 1h15 of the second, returning `[14:00–14:45, 15:00–16:15]`. The break survives, and the segments still total exactly two hours.
 
@@ -121,8 +133,8 @@ flowchart TD
 
 When a `Work_Session` is patched or deleted, `Tracked_Time` changes and existing segments may no longer be valid. The service recomputes them:
 
-1. Compute `affected = union(old session interval, new session interval)`.
-2. Select every `Activity_Entry` owning an `Activity_Segment` overlapping `affected`.
+1. Compute `affected: Interval[] = normalize([...oldInterval, ...newInterval])`. It is a **list**, not a single interval: moving a session from Monday morning to Friday evening yields two disjoint stretches, and merging them into one span would re-clip a whole week for no reason. The boundary cases are fixed too — for `start` there is no old interval and the new one is `[startedAt, now)`; for `stop` the old interval is the `Open_Session` read as `[startedAt, now)` and the new one is `[startedAt, endedAt)`; for a delete there is no new interval.
+2. Select every `Activity_Entry` whose segments intersect `affected` **or** whose requested interval intersects it. The second half is not optional: an entry emptied by an earlier change owns no segment, so a segment-only query can never find it again, and it would stay an `Orphaned_Entry` for ever even after the user restores the very hour it asked for. Half-open intervals make the same point at the edges — a segment ending exactly at the affected start does not overlap it, while the requested interval that produced it may well.
 3. Order those entries by `requestedStartedAt` ascending, then by `createdAt` ascending — a total order, so the result is deterministic.
 4. Delete all segments of those entries.
 5. Re-run `clip` for each in order with policy `clip`, treating already re-clipped entries as part of `Covered_Time`.
@@ -130,6 +142,19 @@ When a `Work_Session` is patched or deleted, `Tracked_Time` changes and existing
 Policy `extend` is never used here: the service is reacting to a change the user made to the frame, so it must not silently grow the frame back.
 
 Step 4 deletes before step 5 reinserts, which is why `activity_segments_no_overlap` is declared `DEFERRABLE INITIALLY DEFERRED` — the intermediate state inside the transaction may violate it, the committed state may not.
+
+### The Gauge Window, the Logical Day and DST
+
+The `Gauge_Window` is a pair of **wall-clock times**, not a pair of instants, and the interface draws it on a fixed 24-hour dial: `angle(t) = 45° + minutes_since_midnight × 0.25`, so one hour is always 15° and a given clock time sits at the same angle on every date. The dial is **not** a mapping of the `Logical_Day` onto 360°. That distinction is what makes the geometry survive DST: a `Logical_Day` is 23 hours on 2026-03-28 and 25 hours on 2026-10-24, and a dial that stretched to fit it would move every graduation twice a year. The angle is a function of the time on the clock, so nothing moves.
+
+Three rules keep that true, and each is a startup check rather than a convention:
+
+1. **`GAUGE_END` may wrap past midnight** (Requirement 13.13). When `GAUGE_END <= GAUGE_START` the end belongs to the following calendar date. Without this rule the default `06:00`–`00:00` describes zero hours, and `00:00`–`06:00` describes minus eighteen.
+2. **`DAY_START_HOUR` must fall inside the `Gauge_Gap`** (Requirements 13.14, 13.15). The `Gauge_Window` is reported to the client as one start and one end; if the `Logical_Day` boundary cut through it, the window would be two disjoint arcs belonging to two different days, and a single `trackStart`/`trackEnd` pair could not describe it. With the defaults — day start `03:00`, window `06:00`–`00:00`, gap `00:00`–`06:00` — the boundary sits in the middle of the gap.
+3. **The `Gauge_Window` must not contain a transition hour** (Requirement 13.22), checked against `TIMEZONE` rather than assumed. With the defaults this is already true — both Prague transitions happen between 02:00 and 03:00, which rule 2 placed inside the `Gauge_Gap` — so the drawn track is eighteen hours wide on all 365 days. But rules 1 and 2 do **not** imply it in general: `GAUGE_START=00:00`, `GAUGE_END=22:00`, `DAY_START_HOUR=23` satisfies both and still puts 02:00 inside the window. So this is a third check, not a corollary of the second. Saying otherwise — as an earlier draft of this document did — is the kind of claim that survives review precisely because it is true of the defaults.
+4. **`DAY_START_HOUR` must itself exist and be unambiguous** in `TIMEZONE` (Requirement 10.13). `DAY_START_HOUR=2` in `Europe/Prague` names an hour that does not occur in March and occurs twice in October; a day boundary that happens twice does not partition anything.
+
+`Overtime` follows from the same definition: for a given `Logical_Day`, the window is materialised as the interval `[GAUGE_START, GAUGE_END)` on that day's dates in `TIMEZONE`, and `overtimeSeconds = total(subtract(trackedOfDay, gaugeWindowOfDay))`. Property 19 pins the complement.
 
 ## Project Structure
 
@@ -146,7 +171,8 @@ worklog/
 │   ├── build.sh  start-docker.sh  stop-docker.sh  deploy.sh
 │   └── test-e2e.sh
 ├── src/
-│   ├── app.d.ts                          # 001: App.Locals — requestId, auth
+│   ├── app.d.ts                          # 001: App.Locals — requestId, auth, cspNonce
+│   ├── app.html                          # 002 owns the file; 001 only fills %sveltekit.nonce%
 │   ├── hooks.server.ts                   # 001: sequence of handles
 │   ├── db/schema/                        # 001: Drizzle table definitions
 │   │   ├── projects.ts
@@ -155,22 +181,29 @@ worklog/
 │   │   ├── activity-segments.ts
 │   │   ├── auth-sessions.ts
 │   │   └── index.ts                      # barrel
+│   ├── lib/contracts/                    # 001: browser-safe — types and schemas, no runtime
+│   │   ├── models.ts                     # Interval, WorkSession, Project, ActivityEntry, …
+│   │   ├── responses.ts                  # DayResponse, DaySummary, HealthResponse, …
+│   │   └── schemas.ts                    # Zod request schemas
 │   ├── lib/server/
 │   │   ├── domain/                       # 001: PURE — no db, no SvelteKit, no $env
 │   │   │   ├── interval.ts               # normalize, intersect, subtract, take, gaps
 │   │   │   ├── logical-day.ts            # createDayResolver
-│   │   │   ├── clipping.ts               # clip, resolveAnchor
+│   │   │   ├── clipping.ts               # clip, resolveAnchor, NoPlacementAnchorError
 │   │   │   └── reclip.ts                 # reclipAffected, ports interface
 │   │   ├── store/                        # 001: Drizzle queries, one file per aggregate
 │   │   │   ├── tx.ts                     # withTx, advisory lock, constraint mapping
 │   │   │   ├── work-sessions.ts
 │   │   │   ├── projects.ts
 │   │   │   ├── activities.ts
-│   │   │   └── auth-sessions.ts
-│   │   └── core/                         # 001: server infrastructure
+│   │   │   ├── auth-sessions.ts          # session rows: mint, look up, delete, purge
+│   │   │   ├── idempotency.ts            # idempotency_keys: look up, record, purge
+│   │   │   └── day-boundary.ts           # read and write the Day_Boundary_Config row
+│   │   └── core/                         # 001: server infrastructure, no persistence
 │   │       ├── config.ts                 # env validation, fail fast
 │   │       ├── errors.ts                 # ApiError, error codes, json helper
-│   │       ├── auth.ts                   # session cookie + bearer token
+│   │       ├── auth.ts                   # passphrase, token minting, cookie options
+│   │       ├── security-headers.ts       # CSP nonce and the header set
 │   │       ├── rate-limit.ts
 │   │       ├── logger.ts
 │   │       └── request-id.ts
@@ -191,22 +224,49 @@ worklog/
 │       │   ├── days/+server.ts
 │       │   ├── days/[date]/+server.ts
 │       │   └── coverage/+server.ts
+│       ├── login/+page.server.ts         # 001: server half only; 002 builds the page
+│       ├── logout/+page.server.ts        # 001: server half only
 │       └── …                             # 002: the interface
 └── tests/
     ├── lib/server/domain/                # 001: unit + *.property.test.ts
+    │   ├── interval.test.ts  interval.property.test.ts
+    │   ├── logical-day.test.ts  logical-day.property.test.ts
+    │   ├── clipping.test.ts  clipping.property.test.ts
+    │   └── reclip.test.ts  reclip.property.test.ts
     ├── lib/server/store/                 # 001: integration, needs PostgreSQL
-    ├── lib/server/core/                  # 001: config, errors, auth
+    │   ├── schema.test.ts  work-sessions.test.ts  projects.test.ts
+    │   ├── activities.test.ts  tx.test.ts  idempotency.test.ts
+    │   ├── atomicity.property.test.ts    # Properties 10, 16
+    │   └── overlap.property.test.ts      # Properties 7, 8, 15
+    ├── lib/server/core/                  # 001: config, errors, auth, headers
+    ├── lib/server/imports.test.ts        # 001: Module Boundaries guard
     └── api/                              # 001: REST route tests
+        ├── sessions.test.ts  projects.test.ts  activities.test.ts
+        ├── days.test.ts  coverage.test.ts  health.test.ts
+        ├── days.property.test.ts         # Properties 19, 21
+        └── dry-run.property.test.ts      # Properties 13, 14, 18
 ```
 
 ### Module Boundaries
 
-| Module | May import | Must never import |
-|---|---|---|
-| `lib/server/domain` | `@date-fns/tz`, standard library | anything under `store`, `core`, `$env`, `$app`, Drizzle, SvelteKit |
-| `lib/server/store` | `domain`, `core`, Drizzle, `$db` | anything under `routes` |
-| `lib/server/core` | standard library, `$env` | `domain`, `store` |
-| `routes/api` | all of the above | — |
+| Module | May import | Must never import | Owner |
+|---|---|---|---|
+| `lib/contracts` | `zod` — nothing else | anything under `lib/server`, `$env`, `$app`, Drizzle, SvelteKit | 001 |
+| `lib/server/domain` | `contracts`, `@date-fns/tz`, standard library | anything under `store`, `core`, `$env`, `$app`, Drizzle, SvelteKit | 001 |
+| `lib/server/core` | standard library, `$env`, `contracts` | `domain`, `store`, `routes` | 001 |
+| `lib/server/store` | `domain`, `core`, `contracts`, Drizzle, `$db` | anything under `routes` | 001 |
+| `routes/api`, `hooks.server.ts` | all of the above | — | 001 |
+| `routes/login`, `routes/logout` | all of the above | — | `+page.server.ts` 001, `+page.svelte` 002 |
+| `lib/ui`, `modules`, `app.html`, the remaining routes | `contracts`, and each other | anything under `lib/server` | 002 |
+
+`lib/contracts` holds **types as well as schemas**, and that is why it exists. `002`'s components are typed in terms of `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project`; if those live under `lib/server/domain` then nothing in `lib/ui`, `modules` or a route may import them and the interface has nothing to compile against — while duplicating them in `002` guarantees the two drift. So the domain types and every response shape are declared here, `lib/server/domain` imports them like everyone else, and the file stays free of anything that cannot be shipped to a browser: no database, no `$env`, no `$app`, no Drizzle, no SvelteKit.
+
+The server layers are strictly ordered — `domain` → `core` → `store` → `routes` — and each may import only to its left. `lib/contracts` sits beside them and below everything: it may be imported by any layer and by the browser, and it imports nothing but Zod. Task 10.1 enforces exactly this table, including that no file under `lib/contracts` reaches into `lib/server`.
+
+**`core` holds no persistence.** This is the rule that decides where two files live, and both were previously misplaced:
+
+- **Browser sessions.** `core/auth.ts` keeps only what needs no database: the argon2id passphrase check, minting and hashing a session token, constant-time comparison, and the cookie options. Everything that touches `auth_sessions` lives in `store/auth-sessions.ts`. `authenticate(event)` is not in `core` at all — it needs both a `RequestEvent` and a session lookup, so it belongs to the top layer and lives in `hooks.server.ts` as part of the `Auth_Hook`.
+- **Idempotency.** `idempotency_keys` is a table, so its reads and writes are `store/idempotency.ts`, not `core/idempotency.ts`. The route calls it inside the same transaction as the write it is protecting, which is the only way Requirement 12.8 can hold.
 
 `reclip.ts` needs to read and write through the store but must stay pure, so it receives the operations it needs as a `ReclipPorts` object supplied by the caller. This keeps it testable against an in-memory fake with no database.
 
@@ -230,9 +290,10 @@ worklog/
 
 The foundation. Every function takes and returns **normalized** lists: sorted by start, pairwise disjoint, non-touching. Intervals are half-open `[start, end)`, which is why two sessions may touch at 12:00 without overlapping.
 
+The `Interval` **type** is declared in `src/lib/contracts/models.ts`, because `002` types its components with it; this module imports it and contributes the algebra.
+
 ```ts
-/** A half-open time range [start, end). */
-export type Interval = { start: Date; end: Date };
+import type { Interval } from '$lib/contracts/models';   // { start: Date; end: Date }, half-open
 
 export function isEmpty(i: Interval): boolean;
 export function duration(i: Interval): number;          // milliseconds
@@ -277,7 +338,19 @@ export type DayResolver = {
   range(from: Date, to: Date): Interval[];
 };
 
-/** Throws when `timezone` is not loadable or `startHour` is outside 0..23. */
+/**
+ * Throws when `timezone` is not loadable, when `startHour` is outside 0..23, or when
+ * the hour it names fails to exist or is ambiguous on some date in that zone
+ * (Requirement 10.13) — `startHour = 2` in Europe/Prague is exactly that case.
+ *
+ * Fold policy, applied identically by `bounds`, `dateOf` and `range` (Requirement
+ * 10.14): where a wall-clock time is ambiguous the EARLIER offset wins, and where it
+ * does not exist the boundary moves FORWARD to the first instant that does. The two
+ * functions must agree, or an instant can sit outside `bounds(dateOf(t))` and
+ * Property 12 fails on exactly two days a year. The constructor's rejection above
+ * makes this unreachable for the boundary itself; the policy still governs every
+ * other wall-clock conversion the resolver performs.
+ */
 export function createDayResolver(timezone: string, startHour: number): DayResolver;
 ```
 
@@ -289,7 +362,7 @@ The reconciliation core. Pure: it receives every list it needs and returns a des
 
 ```ts
 export type ActivityMode = 'explicit' | 'duration' | 'open';
-export type UncoveredPolicy = 'clip' | 'extend' | 'reject';   // 'clip' is the default
+export type UntrackedPolicy = 'clip' | 'extend' | 'reject';   // 'clip' is the default
 
 export type ClipInput = {
   mode: ActivityMode;
@@ -305,19 +378,42 @@ export type ClipInput = {
   tracked: Interval[];
   /** Normalized Activity_Segment intervals of OTHER entries. */
   covered: Interval[];
-  policy: UncoveredPolicy;
+  policy: UntrackedPolicy;
+  /**
+   * MIN_INTERVAL_SECONDS in milliseconds. Passed in rather than read, because the
+   * module may not touch `$env` — a segment shorter than this is discarded
+   * (Requirement 6.5) and the floor has to arrive from the caller.
+   */
+  minIntervalMs: number;
+  /**
+   * The current instant. Policy `extend` may never reach past it (Requirement 6.8),
+   * and `Open_Mode` ends here; without it the pure function cannot tell.
+   */
+  now: Date;
 };
 
 export type ClipResult = {
-  /** What to persist as Activity_Segment rows. */
+  /** What to persist as Activity_Segment rows. Empty means NOTHING_TO_LOG (Req 6.12). */
   segments: Interval[];
-  /** policy=clip: parts of the request dropped as untracked. */
+  /** Parts of the request dropped for lying in Untracked_Time (Requirement 6.6). */
   discarded: Interval[];
-  /** policy=extend: intervals to add to Tracked_Time. */
+  /**
+   * Parts dropped for being shorter than `minIntervalMs` (Requirement 6.5). Kept
+   * apart from `discarded`: under policy `reject` the caller must fail on a
+   * non-empty `discarded` but must NOT fail on a sliver, and one list cannot say
+   * both. Their duration is added to `unplacedMs`, never lost.
+   */
+  slivers: Interval[];
+  /** policy=extend: intervals to add to Tracked_Time. Already bounded by `now`. */
   extend: Interval[];
   /** Explicit mode: overlaps with `covered`. Non-empty means the caller must reject. */
   conflicts: Interval[];
-  /** Duration mode: milliseconds that found no eligible time. */
+  /**
+   * Requested time that reached no segment — eligible time ran out, `extend` could
+   * not lawfully place it, or it was discarded as a sliver. The invariant is
+   * conservation: `total(segments) + unplacedMs === requested duration` in
+   * Duration_Mode (Property 2). It is never zeroed by more than was placed.
+   */
   unplacedMs: number;
 };
 
@@ -329,7 +425,7 @@ export function clip(input: ClipInput): ClipResult;
 
 /**
  * Picks the Placement_Anchor for Duration_Mode and Open_Mode per Requirements
- * 5.2–5.5 and 15.2–15.3: the explicit start when given, else the end of the day's
+ * 5.4–5.7 and 15.2–15.4: the explicit start when given, else the end of the day's
  * latest segment, else the start of its earliest session.
  */
 export function resolveAnchor(
@@ -337,6 +433,16 @@ export function resolveAnchor(
   segments: Interval[],
   sessions: Interval[]
 ): Date;   // throws NoPlacementAnchorError when the day holds neither
+
+/**
+ * Thrown by `resolveAnchor` when the Target_Day holds neither an Activity_Segment
+ * nor a Work_Session (Requirements 5.7, 15.8). It is a domain error, not an
+ * `ErrorCode`: the route catches it and answers 409 `NO_PLACEMENT_ANCHOR`. The
+ * domain never names an HTTP status.
+ */
+export class NoPlacementAnchorError extends Error {
+  constructor(readonly date: string);
+}
 ```
 
 ### 4. Re-clipping (`src/lib/server/domain/reclip.ts`)
@@ -344,9 +450,10 @@ export function resolveAnchor(
 ```ts
 /** The slice of persistence re-clipping needs. The store satisfies it; tests supply a fake. */
 export type ReclipPorts = {
-  trackedIntervals(window: Interval, now: Date): Promise<Interval[]>;
-  entriesOverlapping(window: Interval): Promise<ActivityEntry[]>;
-  coveredIntervals(window: Interval, excludeEntryId: string | null): Promise<Interval[]>;
+  trackedIntervals(window: Interval[], now: Date): Promise<Interval[]>;
+  /** By segment overlap OR requested-interval overlap — Requirement 2.9, both halves. */
+  entriesAffectedBy(window: Interval[]): Promise<ActivityEntry[]>;
+  coveredIntervals(window: Interval[], excludeEntryId: string | null): Promise<Interval[]>;
   replaceSegments(entryId: string, segments: Interval[]): Promise<void>;
 };
 
@@ -354,6 +461,7 @@ export type ReclipOutcome = {
   entryId: string;
   /** Carried so a preview can name the entry even when it belongs to another day. */
   projectName: string;
+  colorIndex: number;           // the preview lists entries in their project colours
   description: string;
   before: Interval[];
   after: Interval[];
@@ -370,12 +478,15 @@ export type ReclipOutcome = {
 export function reclipAffected(
   ports: ReclipPorts,
   days: DayResolver,
-  affected: Interval,
-  now: Date
+  affected: Interval[],          // normalized; a moved session yields two stretches
+  now: Date,
+  minIntervalMs: number
 ): Promise<ReclipOutcome[]>;
 ```
 
 `ReclipOutcome` carries `before` and `after` so that a `Dry_Run` on a session change can show the user exactly which entries lose time and how much, satisfying Requirements 14.2 and 14.6.
+
+Ordering is by `requestedStartedAt` then `createdAt`, which is a **total** order only because every mode now stores a resolved requested interval — `Duration_Mode` included (Requirement 5.13). While that column could be null for a duration entry, the sort key was null for exactly the entries re-clipping most needed to place, and the result was not deterministic.
 
 ### 5. Transaction Helper (`src/lib/server/store/tx.ts`)
 
@@ -385,13 +496,38 @@ export const WORKLOG_ADVISORY_LOCK = 4919372001;
 export type Tx = PostgresJsTransaction<typeof schema, ExtractTablesWithRelations<typeof schema>>;
 
 /**
- * Opens a transaction, takes the advisory lock as its first statement, runs `fn`,
- * then commits — or rolls back when `dryRun` is true, or when `fn` throws.
+ * Opens a transaction, takes the exclusive advisory lock as its first statement, runs
+ * `fn`, then commits — or rolls back when `dryRun` is true, or when `fn` throws.
+ *
+ * When `dryRun` is set it issues `SET CONSTRAINTS ALL IMMEDIATE` immediately after
+ * `fn` resolves and before the rollback. `activity_segments_no_overlap` is DEFERRABLE
+ * INITIALLY DEFERRED, so without that statement it is never evaluated in a
+ * transaction that never commits: the dry run would report success for a write that
+ * fails on the real attempt, and the whole "a dry run that succeeds guarantees the
+ * write will" argument collapses. A violation raised there is translated and returned
+ * exactly as it would be from a committed write.
+ *
+ * For writes only. Reads use `withReadTx`.
  */
 export function withTx<T>(fn: (tx: Tx) => Promise<T>, opts?: { dryRun?: boolean }): Promise<T>;
 
-/** Maps PostgreSQL constraint violations to ApiError codes. */
-export function translateConstraintError(err: unknown): ApiError | null;
+/**
+ * A transaction WITHOUT the exclusive lock, for every read-only path: all GET routes,
+ * the interface's load functions, and the session lookup the Auth_Hook performs on
+ * every single request. `withTx` serializes globally by design, which is right for
+ * writes and catastrophic for reads — with authentication reading through the store,
+ * one slow write would queue every request behind it until the query timeout fired
+ * and healthy traffic started failing. Callers must not write through this handle.
+ */
+export function withReadTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+
+/**
+ * Maps PostgreSQL constraint violations to ApiError codes. `op` is needed because
+ * SQLSTATE and constraint name alone are ambiguous: `activity_entries_project_id_fkey`
+ * is raised both when a project being deleted is still referenced (409 PROJECT_IN_USE)
+ * and when an entry names a project that does not exist (400 VALIDATION_ERROR).
+ */
+export function translateConstraintError(err: unknown, op: 'write-entry' | 'delete-project' | 'write-session'): ApiError | null;
 ```
 
 `withTx` implements `Dry_Run` by throwing a private `RollbackSignal` after `fn` resolves, catching it outside the transaction and returning the value. The database sees an ordinary rollback.
@@ -402,9 +538,10 @@ export function translateConstraintError(err: unknown): ApiError | null;
 | `23P01` | `activity_segments_no_overlap` | `ACTIVITY_OVERLAP` |
 | `23505` | `work_sessions_one_open` | `SESSION_ALREADY_RUNNING` |
 | `23505` | `projects_name_unique` | `PROJECT_EXISTS` |
-| `23503` | `activity_entries_project_id_fkey` | `PROJECT_IN_USE` |
+| `23503` | `activity_entries_project_id_fkey`, op `delete-project` | `PROJECT_IN_USE` (409) |
+| `23503` | `activity_entries_project_id_fkey`, op `write-entry` | `VALIDATION_ERROR` (400) |
 
-The application checks the same conditions before writing, so these translations are a safety net for races, not the primary path.
+The application checks the same conditions before writing, so these translations are a safety net for races, not the primary path. The one condition the database cannot check at all is a closed session overlapping the `Open_Session`; that check lives in `work-sessions.ts` and runs under the lock (Requirements 1.15, 1.16).
 
 ### 6. Stores (`src/lib/server/store/`)
 
@@ -419,7 +556,15 @@ export function updateSession(tx: Tx, id: string, patch: { startedAt?: Date; end
 export function deleteSession(tx: Tx, id: string): Promise<void>;
 export function insertSessions(tx: Tx, intervals: Interval[]): Promise<WorkSession[]>;
 /** Normalized Tracked_Time; an Open_Session is treated as running until `now`. */
-export function trackedIntervals(tx: Tx, window: Interval, now: Date): Promise<Interval[]>;
+export function trackedIntervals(tx: Tx, window: Interval[], now: Date): Promise<Interval[]>;
+/**
+ * Sessions that would overlap `candidate`, INCLUDING the Open_Session read as
+ * [startedAt, min(now, startedAt + MAX_OPEN_SESSION_HOURS)). The exclusion constraint
+ * skips the open session, so this is the only thing standing between a forgotten timer
+ * and a closed session written straight through it (Requirements 1.15, 1.16). Must be
+ * called inside the writing transaction, under the advisory lock.
+ */
+export function sessionsConflictingWith(tx: Tx, candidate: Interval, excludeId: string | null, now: Date): Promise<WorkSession[]>;
 
 // activities.ts
 export function createEntry(tx: Tx, entry: NewActivityEntry, segments: Interval[]): Promise<ActivityEntry>;
@@ -442,6 +587,21 @@ export function orphanedEntriesOverlapping(tx: Tx, window: Interval): Promise<Ac
 /** Entry ids referencing a project, for the PROJECT_IN_USE details (Requirement 3.7). */
 export function entryIdsForProject(tx: Tx, projectId: string): Promise<string[]>;
 
+// aggregates.ts — SQL aggregation, because /api/days must not load a year into memory
+/**
+ * Everything `/api/days` reports, computed by the database over the whole range in
+ * one pass per figure rather than by materialising 366 days of rows in the process.
+ * A year of sessions and segments is not large, but it is not bounded by anything the
+ * request states, and "read it all and reduce in TypeScript" is how a range endpoint
+ * turns into an out-of-memory incident. The day boundaries are passed in from the
+ * DayResolver — the database is never asked to reason about the Logical_Day.
+ */
+export function daySummaries(tx: Tx, days: Interval[], opts: { gaugeWindows: Interval[]; eveningStarts: Date[]; now: Date }): Promise<Omit<DaySummary, 'tracked' | 'covered'>[]>;
+/** Per-day tracked, covered (with projectId) and uncovered lists, only within MAX_INTERVAL_RANGE_DAYS. */
+export function dayIntervals(tx: Tx, days: Interval[], now: Date): Promise<{ tracked: Interval[][]; covered: ProjectInterval[][]; uncovered: Interval[][] }>;
+/** The shortest 24-hour-clock window covering 90 % of the range's Tracked_Time (Req 8.13). */
+export function suggestedWindow(tx: Tx, days: Interval[], now: Date): Promise<{ start: string; end: string } | null>;
+
 // projects.ts
 /** Assigns the lowest colour index not held by a non-archived project, wrapping at 8. */
 export function createProject(tx: Tx, name: string): Promise<Project>;
@@ -449,29 +609,71 @@ export function listProjects(tx: Tx, includeArchived: boolean): Promise<Project[
 export function updateProject(tx: Tx, id: string, patch: { name?: string; archived?: boolean; colorIndex?: number }): Promise<Project>;
 export function deleteProject(tx: Tx, id: string): Promise<void>;
 
-// auth-sessions.ts
-export function createAuthSession(tx: Tx, token: string, expiresAt: Date): Promise<void>;
-export function findAuthSession(tx: Tx, token: string): Promise<{ expiresAt: Date } | null>;
-export function deleteAuthSession(tx: Tx, token: string): Promise<void>;
+// auth-sessions.ts — takes hashes, never raw tokens; core/auth.ts does the hashing
+export function beginBrowserSession(tx: Tx, tokenHash: string, expiresAt: Date): Promise<void>;
+export function findAuthSession(tx: Tx, tokenHash: string): Promise<{ expiresAt: Date } | null>;
+export function deleteAuthSession(tx: Tx, tokenHash: string): Promise<void>;
 export function purgeExpiredAuthSessions(tx: Tx, now: Date): Promise<number>;
+
+// idempotency.ts — Requirements 12.8, 12.9
+export function findIdempotentResponse(tx: Tx, key: string): Promise<unknown | null>;
+export function recordIdempotentResponse(tx: Tx, key: string, entryId: string, response: unknown): Promise<void>;
+export function purgeIdempotencyKeys(tx: Tx, olderThan: Date): Promise<number>;
+
+// day-boundary.ts — Requirements 10.10, 10.11, 10.12
+export type DayBoundaryConfig = { timezone: string; dayStartHour: number };
+export function readDayBoundaryConfig(tx: Tx): Promise<DayBoundaryConfig | null>;
+export function writeDayBoundaryConfig(tx: Tx, value: DayBoundaryConfig): Promise<void>;
 ```
 
-### 7. Authentication (`src/lib/server/core/auth.ts`, `src/hooks.server.ts`)
+### 7. Authentication (`src/lib/server/core/auth.ts`, `src/lib/server/store/auth-sessions.ts`, `src/hooks.server.ts`)
 
 Two credentials reach the same endpoints. The browser carries a `Browser_Session` as an opaque cookie; scripts carry the static `API_Token`. Both are checked by the `Auth_Hook`, which exempts only the `Health_Endpoint` and the login route.
 
+The split follows the Module Boundaries: `core/auth.ts` is stateless, `store/auth-sessions.ts` owns the rows, and `authenticate` — which needs both — is part of the `Auth_Hook` in the top layer.
+
+Expired sessions are purged both when one is presented and by a sweep on an interval (Requirement 11.21) — access-time cleanup alone never reaches a session nobody comes back to, which is precisely the session that lingers.
+
 ```ts
+// core/auth.ts — no database, no RequestEvent
 export const SESSION_COOKIE = 'worklog_session';
 
 /** Constant-time comparison of two secrets. */
 export function secretsMatch(a: string, b: string): boolean;
 
-/** Creates an opaque session token, stores it, and returns it for the cookie. */
-export function beginBrowserSession(): Promise<string>;
+/** argon2id check against WORKLOG_PASSPHRASE_HASH; the plaintext is never stored. */
+export function verifyPassphrase(submitted: string): Promise<boolean>;
 
+/** 32 random bytes, returned raw for the cookie together with the hash to store. */
+export function mintSessionToken(): { token: string; tokenHash: string };
+export function hashSessionToken(token: string): string;
+
+/** httpOnly, sameSite 'strict', explicit path and maxAge, secure outside development. */
+export function sessionCookieOptions(): CookieSerializeOptions;
+
+// store/auth-sessions.ts — the rows (see also component 6)
+export function beginBrowserSession(tx: Tx, tokenHash: string, expiresAt: Date): Promise<void>;
+
+// hooks.server.ts — needs a RequestEvent and a lookup, so it lives in the top layer
 export type AuthResult = { kind: 'browser' } | { kind: 'token' } | { kind: 'none' };
 export function authenticate(event: RequestEvent): Promise<AuthResult>;
+
+/** Only a path beginning with a single "/" is accepted; anything else becomes "/". */
+export function safeRedirectTarget(raw: string | null): string;
+
+/**
+ * The address rate limiting counts against (Requirement 11.20). `X-Forwarded-For` is
+ * caller-supplied for every hop the deployment does not control, so the rightmost
+ * `TRUSTED_PROXY_HOPS` entries are dropped and the next one taken; with the default of
+ * zero the header is ignored entirely and the socket address is used. Taking the
+ * leftmost entry instead lets anyone mint a fresh identity per request by prepending
+ * one — which would defeat the login bucket that Requirement 11.13 deliberately makes
+ * unconfigurable.
+ */
+export function clientAddress(event: RequestEvent, trustedProxyHops: number): string;
 ```
+
+The session lookup runs through `withReadTx`, never `withTx`: it happens on every request, and putting the global write lock in front of authentication would serialize the entire application (see component 5).
 
 The cookie is set with `httpOnly: true`, `sameSite: 'strict'`, `path: '/'`, an explicit `maxAge`, and `secure` unless `APP_ENV` is `development`. `strict` is chosen over the workspace's usual `lax` because nothing ever links into this application from elsewhere, and it removes the need for CSRF tokens on form actions.
 
@@ -479,13 +681,21 @@ The cookie is set with `httpOnly: true`, `sameSite: 'strict'`, `path: '/'`, an e
 
 ```ts
 export const handle = sequence(
-  handleRequestId,     // X-Request-Id in, echoed out, stored on locals
-  handleRequestLog,    // structured JSON line per request
-  handleCors,          // configured origins only, never a reflected wildcard
-  handleRateLimit,     // per address, plus the stricter login bucket
-  handleAuth,          // populates locals.auth; 401 for /api, redirect otherwise
+  handleStartupGuard,    // awaits the one-time init; 503 SERVICE_UNAVAILABLE while it failed
+  handleRequestId,       // X-Request-Id in, echoed out, stored on locals
+  handleRequestLog,      // structured JSON line per request
+  handleSecurityHeaders, // the headers kit.csp does not set
+  handleCors,            // configured origins only; answers OPTIONS preflight and returns
+  handleRateLimit,       // per clientAddress(), plus the stricter login bucket
+  handleAuth,            // the Auth_Hook: populates locals.auth; 401 for /api, redirect otherwise
 );
 ```
+
+Three details that are easy to get wrong and each break something visible:
+
+- **`handleStartupGuard` is first, and it is a hook rather than module-level code.** The checks are asynchronous — reach the database, compare `schema_migrations`, read or write the `Day_Boundary_Config` — and a module body cannot await them, so "refuse to start" cannot be implemented where an earlier draft implied it was. Instead one `Promise` is created at module load and every request awaits it; while it is rejected the guard answers 503 `SERVICE_UNAVAILABLE` and the process also exits non-zero, so a supervised deployment restarts rather than serving a half-configured server (Requirement 13.24).
+- **`handleCors` answers a preflight itself and returns**, before `handleAuth` runs. An `OPTIONS` preflight carries no credentials by definition; letting it reach the `Auth_Hook` answers it with 401 and the browser reports a CORS failure for a request that was perfectly legal (Requirement 11.19).
+- **`handleAuth` exempts the framework's static assets** as well as `/api/health`, the login route and preflights (Requirement 11.1). Without that the login page is served as unstyled HTML with no hydration, because its own stylesheet and JavaScript are redirected to the login page they are being requested for.
 
 ### 8. Error Envelope (`src/lib/server/core/errors.ts`)
 
@@ -497,7 +707,8 @@ export type ErrorCode =
   | 'ACTIVITY_OVERLAP' | 'OUTSIDE_TRACKED_TIME' | 'NO_PLACEMENT_ANCHOR' | 'NOTHING_TO_LOG'
   | 'PROJECT_EXISTS' | 'PROJECT_IN_USE' | 'PROJECT_ARCHIVED'
   | 'FUTURE_TIMESTAMP' | 'INTERVAL_TOO_SHORT' | 'STALE_PREVIEW'
-  | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED' | 'INTERNAL_ERROR';
+  | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED'
+  | 'SERVICE_UNAVAILABLE' | 'INTERNAL_ERROR';
 
 export class ApiError extends Error {
   constructor(
@@ -518,43 +729,69 @@ export function messageKeyFor(code: ErrorCode): string;
 
 The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
 
-### Security Headers (`src/lib/server/core/security-headers.ts`)
+### 9. Security Headers (`src/lib/server/core/security-headers.ts`)
 
-A `handleSecurityHeaders` hook sets, on every response:
+**The `Content-Security-Policy` is configured through `kit.csp` in `svelte.config.js`, not assembled by hand in a hook.** SvelteKit emits its own inline hydration script into every page; only its `csp` configuration knows that script's nonce or hash, and only `kit.csp` stamps the nonce onto it and onto the placeholders in `app.html`. A handwritten header with `script-src 'self' 'nonce-…'` and no `unsafe-inline` therefore blocks hydration in the production build — the page renders and nothing works, which is exactly the failure a strict policy is supposed to prevent. Requirement 12.13 forbids `unsafe-inline`, so the framework mechanism is the only one that satisfies both.
+
+```js
+// svelte.config.js — owned by 001 (task 1.1)
+csp: {
+  mode: 'nonce',
+  directives: {
+    'default-src': ['self'],
+    'script-src': ['self'],
+    'style-src': ['self'],
+    'img-src': ['self', 'data:'],
+    'connect-src': ['self'],
+    'frame-ancestors': ['none'],
+    'base-uri': ['none'],
+    'form-action': ['self']
+  }
+}
+```
+
+`handleSecurityHeaders` then sets only what `kit.csp` does not:
 
 | Header | Value |
 |---|---|
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'nonce-<per-request>'; style-src 'self' 'nonce-<per-request>'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'` |
 | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` — production only |
 | `X-Content-Type-Options` | `nosniff` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 
-The nonce is generated per request, placed on `event.locals`, and injected into `%sveltekit.nonce%` in `src/app.html` through `transformPageChunk`. Tailwind 4 compiles to a static stylesheet, so no inline style is needed; Svelte's own inline hydration script takes the nonce. Development relaxes the policy through configuration, never through a weakened production code path.
+`src/app.html` belongs to `002-worklog-ui` and `001` does not touch it: with `kit.csp` in charge there is no `transformPageChunk` injection to write, and `%sveltekit.nonce%` is a placeholder `002` may use if it ever adds an inline script of its own. One owner per file, and no hand-rolled mechanism competing with the framework's.
 
-### 9. REST Route Contracts (`src/routes/api/`)
+`style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy through configuration, never through a weakened production code path.
+
+### 10. REST Route Contracts (`src/routes/api/`)
 
 | Method | Path | Requirements |
 |---|---|---|
-| POST | `/api/sessions/start` | 1.1–1.4, 1.9 |
-| POST | `/api/sessions/stop` | 1.5–1.7 |
-| GET | `/api/sessions/current` | 1.8, 1.10 |
-| GET · **POST** | `/api/sessions` | 2.1–2.4 |
-| PATCH · DELETE | `/api/sessions/[id]` | 2.5–2.10, 14.2 |
+| POST | `/api/sessions/start` | 1.1–1.4, 1.9, 1.13, 1.14, 14.2 |
+| POST | `/api/sessions/stop` | 1.5–1.7, 1.13, 1.14, 14.2 |
+| GET | `/api/sessions/current` | 1.8, 1.10, 1.11 |
+| GET · **POST** | `/api/sessions` | 2.1–2.4, 1.13, 1.14, 2.9, 2.10, 14.2 |
+| PATCH · DELETE | `/api/sessions/[id]` | 2.5–2.10, 1.13, 1.14, 14.2 |
 | GET · POST | `/api/projects` | 3.1–3.5, 3.9 |
 | PATCH · DELETE | `/api/projects/[id]` | 3.6–3.8, 3.10, 3.11 |
-| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.6, 14.1, 15.x |
-| GET · PATCH · DELETE | `/api/activities/[id]` | 7.7–7.11, 14.1 |
-| GET | `/api/days` · `/api/days/[date]` | 8.1–8.10 |
-| GET | `/api/coverage` | 9.1–9.7 |
-| GET | `/api/health` | 13.1–13.4 |
+| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.6, 7.13, 7.14, 10.2, 12.4, 12.8, 12.9, 12.16, 12.17, 14.1, 15.x |
+| GET · PATCH · DELETE | `/api/activities/[id]` | 7.7–7.12, 14.1 |
+| GET | `/api/days` · `/api/days/[date]` | 8.1–8.22, 10.7 |
+| GET | `/api/coverage` | 9.1–9.8 |
+| GET | `/api/health` | 8.14, 10.8, 13.1–13.4, 13.24 |
+
+Every mutating route additionally answers to Requirements 12.1–12.6 (naming, envelope, unknown fields, 404, body size) and 14.3–14.5, 14.9 (`Dry_Run` shape and validation parity); those are hook- and helper-level and are not repeated per row.
 
 `POST /api/sessions` is the "I forgot to start the timer" route: it creates a **closed** session from an explicit start and end, and re-clips like any other frame change. Without it the interface's add-session action (`002` Requirement 8.1) has nothing to call — and Requirements 2.6 and 2.7 already legislate for a POST.
 
-### Field Naming
+### Field Naming and the Shared Schemas (`src/lib/contracts/schemas.ts`)
 
 JSON request and response bodies use `camelCase`; query parameters use `snake_case`. This is Requirement 12.1 and it is the single rule that resolves the two spellings that appear across the API surface — `startedAt` in a body, `include_archived` in a query string.
 
-Every route validates with a Zod schema declared here, so the interface's form actions and the REST routes share one definition and cannot drift (`002` forbids writing a second schema).
+Every schema below lives in **`src/lib/contracts/schemas.ts`**, beside `models.ts` and `responses.ts` — deliberately *outside* `src/lib/server/`, because `002` validates the same forms in the browser through superforms, types its components with the same domain types, and may import nothing under `lib/server/`. The rules for that directory:
+
+- **`001` owns it.** `002` imports from it and never adds a schema of its own; a second definition of any request body is a defect, not a convenience.
+- **It contains nothing server-side.** No database client, no `$env`, no `$app/server`, no SvelteKit runtime, no Drizzle — only Zod schemas, the domain types and the response types. It must be safe to ship to the browser, and the module-boundary test enforces that. `lib/server/domain` imports its types from here rather than declaring them.
+- **Both entry points validate through it.** The REST routes and `002`'s form actions parse the same object, so a rule tightened in one place cannot be missed in the other.
 
 ```ts
 const isoOffset = z.iso.datetime({ offset: true });
@@ -569,7 +806,7 @@ export const createActivitySchema = z.object({
   startedAt: isoOffset.optional(),
   endedAt: isoOffset.optional(),
   durationMinutes: z.number().int().positive().optional(),
-  uncoveredPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
+  untrackedPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
   ...dryRunFields
 }).strict();   // .strict() satisfies Requirement 12.4 — unknown fields are rejected
 
@@ -579,7 +816,7 @@ export const patchActivitySchema = z.object({
   startedAt: isoOffset.optional(),
   endedAt: isoOffset.optional(),
   durationMinutes: z.number().int().positive().optional(),
-  uncoveredPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
+  untrackedPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
   ...dryRunFields
 }).strict();
 
@@ -589,8 +826,10 @@ export const createSessionSchema = z.object({
   ...dryRunFields
 }).strict();
 
-export const startSessionSchema = z.object({ startedAt: isoOffset.optional() }).strict();
-export const stopSessionSchema  = z.object({ endedAt: isoOffset.optional() }).strict();
+// start and stop create and modify a Work_Session, so Requirement 14.2 applies to
+// them exactly as it does to POST and PATCH — they carry the dry-run fields too.
+export const startSessionSchema = z.object({ startedAt: isoOffset.optional(), ...dryRunFields }).strict();
+export const stopSessionSchema  = z.object({ endedAt: isoOffset.optional(), ...dryRunFields }).strict();
 
 export const patchSessionSchema = z.object({
   startedAt: isoOffset.optional(),
@@ -610,27 +849,69 @@ export const patchProjectSchema = z.object({
   colorIndex: z.number().int().min(0).max(7).optional()
 }).strict();
 
+export const listActivitiesQuery = z.object({
+  from: isoOffset.optional(),
+  to: isoOffset.optional(),
+  project_id: z.uuid().optional(),
+  cursor: z.string().optional(),        // Requirement 7.14
+}).strict();
+
 export type ActivityResponse = {
   entry: ActivityEntry;                 // includes its segments and `orphaned`
   discarded: Interval[];                // policy=clip, plus segments below MIN_INTERVAL_SECONDS
   extendedSessions: WorkSession[];      // policy=extend
   unplacedMinutes: number;              // duration mode
   removedSeconds: number;               // time taken from other entries — always present
+  slivers: Interval[];                  // dropped below MIN_INTERVAL_SECONDS (Req 6.5)
   dryRun: boolean;
-  previewToken: string;                 // frame fingerprint, see Requirement 14.7
+  previewToken: string;                 // see below
 };
+
+/**
+ * The Preview_Token of Requirement 14.7: `sha256` over the rows the outcome depends on, in a
+ * fixed order: for every Work_Session overlapping the affected window its id,
+ * startedAt, endedAt and updatedAt; for every Activity_Segment in that window its id
+ * and bounds. It is computed in `core/preview-token.ts` and verified by re-computing
+ * it inside the confirming transaction.
+ *
+ * What it must NOT include is any derived or current time. Fingerprinting the
+ * resulting `Tracked_Time` would embed "the Open_Session runs until now", so the token
+ * would change every second the timer is running and every preview would be stale
+ * before the user could confirm it. An Open_Session's `endedAt` is null in the row and
+ * stays null in the fingerprint — the state that changes the outcome is the row, not
+ * the clock.
+ */
+export type PreviewToken = string;
 
 // POST, PATCH or DELETE on a session, with dryRun
 export type SessionChangePreview = {
   session: WorkSession | null;          // null for a delete
   reclipped: ReclipOutcome[];           // before/after segments per affected entry
-  removedSeconds: number;               // total time that would disappear
+  removedSeconds: number;               // total described time that would disappear
+  /**
+   * Requirement 14.10: the Uncovered_Time that would stop being Tracked_Time —
+   * worked time nobody has described yet, which vanishes without any entry losing a
+   * segment and so appears nowhere in `reclipped`. Both the total and the intervals,
+   * because the dialog names the stretch ("Zatím bez popisu −1 h 30 min"), not only
+   * the sum. The server computes it: the preview already performs the real write and
+   * rolls it back, so it holds the before-and-after coverage for free. The interface
+   * MUST NOT intersect intervals to reconstruct it — a number shown in a preview is
+   * server output like every other, which is the rule the whole Dry_Run rests on.
+   */
+  lostUncoveredSeconds: number;
+  lostUncovered: Interval[];
   dryRun: true;
   previewToken: string;
 };
 
+/** GET /api/activities — paged, Requirements 7.13 and 7.14. */
+export type ActivityListResponse = {
+  entries: ActivityEntry[];             // at most ACTIVITY_PAGE_SIZE, orphans included
+  nextCursor: string | null;            // opaque; null when this is the last page
+};
+
 export type CurrentSessionResponse = {
-  session: WorkSession | null;
+  session: WorkSession | null;          // its own `stale` flag says the same thing
   elapsedSeconds: number;               // 0 when no session is open
   /** True for a Stale_Session — running past MAX_OPEN_SESSION_HOURS. */
   stale: boolean;
@@ -641,22 +922,78 @@ export type DaySummary = {
   trackedSeconds: number;
   coveredSeconds: number;
   uncoveredSeconds: number;
-  sessionCount: number;                 // sessions that began in this day — Requirement 8.9
-  longestBlockSeconds: number;          // longest uninterrupted session — Requirement 8.11
+  sessionCount: number;                 // Work_Session ROWS that began in this day — Req 8.9
+  /**
+   * The longest uninterrupted stretch of Tracked_Time, measured over the NORMALIZED
+   * intervals — two sessions touching at 12:00 are one block of work, and policy
+   * `extend` produces exactly that shape routinely. Measuring the longest row instead
+   * reports a four-hour morning as two two-hour blocks (Requirement 8.11).
+   */
+  longestBlockSeconds: number;
   overtimeSeconds: number;              // Overtime — tracked time outside the Gauge_Window (Req 8.12)
+  eveningSeconds: number;               // tracked time after the Evening_Hour — Requirement 8.19
+  /**
+   * The shape of the day. All three are present only when the request asked for
+   * `include=intervals` AND the range is at most MAX_INTERVAL_RANGE_DAYS long; all
+   * three are absent otherwise (Requirements 8.18, 8.23).
+   */
+  tracked?: Interval[];        // Requirement 8.15 — sessions, so bare: no project owns them
+  covered?: ProjectInterval[]; // Requirement 8.16 — each stretch carries its projectId
+  uncovered?: Interval[];      // Requirement 8.17 — sent, not left to the caller to derive
   byProject: ProjectTotal[];
 };
 
 export type DaysRangeResponse = {
   days: DaySummary[];
   /**
-   * The window holding the middle 90 % of tracked time across the range, as
-   * wall-clock times in the server zone. The interface offers it as a better
-   * Gauge_Window once real habits are known (Requirement 8.13).
+   * The SHORTEST window on the 24-hour clock containing at least 90 % of the range's
+   * Tracked_Time, as wall-clock times in the server zone (Requirement 8.13). The
+   * computation is circular, not min/max: "earliest and latest" cannot describe
+   * 21:00 → 01:40, which is exactly the shape this application exists for, and would
+   * return 00:00 → 23:59 for anyone working across midnight. Sweep the 1440 minute
+   * offsets, take the shortest arc reaching the threshold, tie-broken by the earlier
+   * start.
+   *
+   * Null when the range holds no Work_Session (Requirement 8.21) — there is nothing
+   * to fit, and zero-length or whole-day answers both read as real suggestions.
+   *
+   * The result is additionally constrained to be a window the server would accept at
+   * startup (Requirement 8.22): between 1 and 24 hours, leaving DAY_START_HOUR in the
+   * gap, and containing no DST transition hour. Offering a suggestion the user cannot
+   * apply without the server refusing to boot is worse than offering none.
    */
-  suggestedWindow: { start: string; end: string };   // "07:20", "01:40"
+  suggestedWindow: { start: string; end: string } | null;   // "07:20", "01:40"
+  /**
+   * Requirements 8.15–8.18 and 8.23. True when every DaySummary carries `tracked`,
+   * `covered` and `uncovered`; false when they were left out — either because the request did not
+   * ask for them, or because the range exceeds MAX_INTERVAL_RANGE_DAYS. False is a
+   * normal 200, never an error: the interface simply does not draw the rhythm strip.
+   */
+  intervalsIncluded: boolean;
+};
+
+/**
+ * The unauthenticated configuration handshake (Requirement 13.1). Every value the
+ * interface would otherwise have to guess is published here, and nothing it needs is
+ * left to be inferred from returned data — `maxOpenSessionHours` in particular tells
+ * the client exactly how far an Open_Session may be drawn, instead of it estimating
+ * that from a day's trackedSeconds.
+ */
+export type HealthResponse = {
+  status: 'ok' | 'degraded';
+  version: string;
+  timezone: string;                     // TIMEZONE
+  dayStartHour: number;                 // DAY_START_HOUR
+  gaugeStart: string;                   // GAUGE_START
+  gaugeEnd: string;                     // GAUGE_END
+  eveningHour: number;                  // EVENING_HOUR
+  maxOpenSessionHours: number;          // MAX_OPEN_SESSION_HOURS
 };
 ```
+
+**Why the intervals live on `DaySummary` rather than behind a new route, and why they are opt-in.** The interface's day-rhythm strip (`002` Requirement 12.10) draws one row per `Logical_Day` on a shared axis, hatched where the time is undescribed. That needs the *shape* of each day, not only its totals, and it needs it for the same range and in the same order the summaries already arrive in. A second route would mean a second range query, a second range guard and two responses to keep in step for no gain.
+
+The cost is bounded only if the range is. A day holds a handful of sessions, so a month is a few hundred intervals — but a year is a few thousand, sent to draw a strip 365 rows tall that nobody can read. So the intervals travel only when `include=intervals` is asked for, and only for a range of at most `MAX_INTERVAL_RANGE_DAYS`. Beyond that the server answers 200 with the summaries and `intervalsIncluded: false`; the strip is meaningful for a day, a week and a month, and the yearly statistics page must not fail merely because one of its panels does not apply. `uncovered` **is** sent, even though `subtract(tracked, covered)` reconstructs it. The rule that the interface never derives a reported figure outranks the redundancy, and Property 7 makes the two agree by construction rather than by hope. `tracked` stays bare because it describes `Work_Session` rows, which belong to no project; `covered` carries a `projectId` per stretch because that is what makes the rhythm strip drawable at all.
 
 A rejection is never a field: it is a non-2xx response carrying the standard error envelope. `002` maps that envelope into its own `rejection` shape — the server has no such concept.
 
@@ -671,7 +1008,7 @@ Mode selection:
 
 `Open_Mode` is the one-call quick log: `POST /api/activities` with nothing but `projectId` and a description records everything since the last entry ended. It reuses `resolveAnchor` and then follows the `Explicit_Mode` path with the resolved interval, so it adds no new reconciliation rules. This is deliberately a server mode rather than a client convenience — a shell script or a phone shortcut gets the same behavior as the interface, and the anchor rule stays in one place.
 
-### 10. Day and Coverage Contracts
+### 11. Day and Coverage Contracts (`src/lib/contracts/responses.ts`)
 
 ```ts
 export type CoverageResponse = {
@@ -680,6 +1017,17 @@ export type CoverageResponse = {
   covered: Interval[];
   uncovered: Interval[];                // Uncovered_Time — worked, nothing logged against it
   untracked: Interval[];                // Untracked_Time — breaks, the timer was not running
+  /**
+   * Requirements 9.4 and 9.8: `min_gap_seconds` filters the `uncovered` LIST only.
+   * These totals always describe the whole range, so a filtered view still reports
+   * the full amount of undescribed time.
+   */
+  totals: {
+    trackedSeconds: number;
+    coveredSeconds: number;
+    uncoveredSeconds: number;
+    untrackedSeconds: number;
+  };
 };
 
 export type DayResponse = {
@@ -692,14 +1040,15 @@ export type DayResponse = {
     trackedSeconds: number;
     coveredSeconds: number;
     uncoveredSeconds: number;
-    byProject: { projectId: string; projectName: string; coveredSeconds: number }[];
+    /** ProjectTotal, so `archived` is present — Requirement 8.5 needs it. */
+    byProject: ProjectTotal[];
   };
 };
 ```
 
 `uncovered` is computed as `subtract(tracked, covered)` and `untracked` as `gaps(tracked, window)`, which is what makes Requirement 9.3 hold by construction.
 
-### 11. Configuration (`src/lib/server/core/config.ts`)
+### 12. Configuration (`src/lib/server/core/config.ts`)
 
 ```ts
 export type Config = {
@@ -709,32 +1058,67 @@ export type Config = {
   passphraseHash: string;       // WORKLOG_PASSPHRASE_HASH, required, argon2id
   timezone: string;             // TIMEZONE, default Europe/Prague
   dayStartHour: number;         // DAY_START_HOUR, default 3
-  gaugeStart: string;           // GAUGE_START, default '06:00'
-  gaugeEnd: string;             // GAUGE_END, default '00:00'
+  gaugeStart: string;           // GAUGE_START, default '06:00' — Requirement 13.11
+  gaugeEnd: string;             // GAUGE_END, default '00:00' — wraps past midnight, Req 13.13
+  eveningHour: number;          // EVENING_HOUR, default 21 — Requirement 13.16
   allowDayBoundaryChange: boolean; // ALLOW_DAY_BOUNDARY_CHANGE, default false
   corsOrigins: string[];        // CORS_ORIGINS
   appEnv: 'development' | 'production';
   dbQueryTimeoutMs: number;     // DB_QUERY_TIMEOUT_SECONDS, default 5
-  rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120
-  sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720
-  maxOpenSessionHours: number;  // MAX_OPEN_SESSION_HOURS, default 12
-  minIntervalSeconds: number;   // MIN_INTERVAL_SECONDS, default 60
+  rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120 — Requirement 13.21
+  sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720 — Requirement 13.20
+  maxOpenSessionHours: number;  // MAX_OPEN_SESSION_HOURS, default 12 — Requirement 13.18
+  minIntervalSeconds: number;   // MIN_INTERVAL_SECONDS, default 60 — Requirement 13.19
   version: string;              // read from package.json — the single source of truth
 };
 
+/**
+ * Fixed limits. They are constants rather than fields because no deployment has a
+ * reason to move them, and a magic number repeated across three routes drifts.
+ */
+/** The ceiling on any queried range — Requirements 2.4, 7.5, 8.10, 9.6. */
+export const MAX_RANGE_DAYS = 366;
+/** Entries per page from /api/activities — Requirement 7.13. */
+export const ACTIVITY_PAGE_SIZE = 200;
+/**
+ * The ceiling on a range that may additionally carry per-day intervals
+ * (Requirement 8.18). 62 days covers a month view with room to spare, which is the
+ * longest span the day-rhythm strip is legible over.
+ */
+export const MAX_INTERVAL_RANGE_DAYS = 62;
+
 /** Validates at module load and throws listing every problem, not just the first. */
 export function loadConfig(): Config;
+
+/**
+ * True when the hour named by `dayStartHour` lies inside the Gauge_Gap — the
+ * invariant of Requirements 13.14 and 13.15. Exported because it is checked twice:
+ * once here, and once at startup beside the Day_Boundary_Config check, where the
+ * stored day start rather than the configured one is the one that matters.
+ */
+export function dayStartIsInGaugeGap(c: Pick<Config, 'dayStartHour' | 'gaugeStart' | 'gaugeEnd'>): boolean;
 ```
+
+Every value the requirements make configurable appears here exactly once, and nothing appears here that the requirements fix. The login bucket of Requirement 11.13 — five attempts per address per fifteen minutes — is deliberately **not** a field: a deployment must not be able to widen it. `RATE_LIMIT_PER_MINUTE` is a field because Requirement 13.21 introduces it and Requirement 12.7 refers to it rather than to a literal.
 
 ## Data Models
 
-### Domain Types (`src/lib/server/domain/models.ts`)
+### Domain Types (`src/lib/contracts/models.ts`)
 
 ```ts
 export type WorkSession = {
   id: string;
   startedAt: Date;
   endedAt: Date | null;         // null while the timer runs
+  /**
+   * True for a Stale_Session — an Open_Session running past MAX_OPEN_SESSION_HOURS.
+   * Derived at read time from `now`, never stored. It lives on the session rather
+   * than only on CurrentSessionResponse because Requirement 1.10 demands the flag in
+   * EVERY response carrying the session — the day response and the session listing
+   * included — and a caller must not have to re-derive it from a threshold the
+   * server never told it.
+   */
+  stale: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -753,12 +1137,23 @@ export type ActivityEntry = {
   id: string;
   projectId: string;
   projectName: string;          // joined, read-only
+  /** Joined, read-only. Requirement 7.15: every shape that names a Project also
+   *  carries its palette slot, so no caller fetches the project list to draw one. */
+  colorIndex: number;
   description: string;
   mode: ActivityMode;
 
-  // The original request, stored verbatim and never rewritten by Clipping.
-  requestedStartedAt: Date | null;
-  requestedEndedAt: Date | null;
+  /**
+   * The interval the request resolved to, stored before Clipping and never rewritten
+   * by it. Non-null in every mode (Requirement 5.13): Explicit_Mode stores what was
+   * submitted, Duration_Mode and Open_Mode store what the Placement_Anchor and the
+   * walk forward resolved to. This is the sort key for re-clipping, the handle by
+   * which an Orphaned_Entry is found again, and the interval a later frame change
+   * re-places the entry against.
+   */
+  requestedStartedAt: Date;
+  requestedEndedAt: Date;
+  /** Duration_Mode only: what the user actually asked for, kept beside the result. */
   requestedDurationMinutes: number | null;
 
   /** True when segments is empty — an Orphaned_Entry (Requirements 2.10, 7.3). */
@@ -776,12 +1171,35 @@ export type ActivitySegment = {
   endedAt: Date;
 };
 
+/**
+ * What `createEntry` is given: the entry row before the database assigns anything.
+ * `projectName`, `orphaned`, `segments` and the timestamps are all derived on read,
+ * so they are absent here.
+ */
+export type NewActivityEntry = {
+  projectId: string;
+  description: string;
+  mode: ActivityMode;
+  requestedStartedAt: Date;
+  requestedEndedAt: Date;
+  requestedDurationMinutes: number | null;
+};
+
 export type ProjectTotal = {
   projectId: string;
   projectName: string;
+  colorIndex: number;           // Requirement 8.5
   archived: boolean;
   coveredSeconds: number;
 };
+
+/**
+ * A stretch of Covered_Time with the Project it belongs to (Requirement 8.16). The
+ * day-rhythm strip draws each stretch in that project's colour; the name and the
+ * palette slot come from the `byProject` breakdown of the same summary, so the id is
+ * all that has to travel per interval.
+ */
+export type ProjectInterval = Interval & { projectId: string };
 ```
 
 Timestamps are `Date` inside the server and RFC 3339 UTC strings on the wire (Requirement 10.3). The interface revives them on receipt; `002` states where.
@@ -819,7 +1237,7 @@ CREATE TABLE work_sessions (
     ) WHERE (ended_at IS NOT NULL)
 );
 
--- At most one Open_Session (Requirement 1.8).
+-- At most one Open_Session (Requirement 1.9).
 CREATE UNIQUE INDEX work_sessions_one_open
     ON work_sessions ((true)) WHERE ended_at IS NULL;
 
@@ -840,21 +1258,28 @@ CREATE TABLE activity_entries (
     updated_at                 timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT activity_entries_mode_valid CHECK (mode IN ('explicit', 'duration', 'open')),
     CONSTRAINT activity_entries_description_length CHECK (char_length(description) <= 2000),
-    -- Open_Mode stores the resolved interval, so it carries the same fields as
-    -- Explicit_Mode; only `mode` records that the times were inferred.
+    -- EVERY mode stores the interval it resolved to; `mode` records how the times
+    -- were arrived at, and Duration_Mode additionally keeps the duration asked for.
+    -- Requirement 5.13: a duration entry with no interval has a null sort key (so
+    -- re-clipping is not deterministic), nothing to re-place it by, and no handle to
+    -- find it by once reconciliation empties it — at which point it is invisible for
+    -- ever and keeps its project undeletable through ON DELETE RESTRICT.
     CONSTRAINT activity_entries_mode_fields CHECK (
-        (mode IN ('explicit', 'open')
-            AND requested_started_at IS NOT NULL
-            AND requested_ended_at IS NOT NULL
-            AND requested_started_at < requested_ended_at)
-     OR (mode = 'duration'
-            AND requested_duration_minutes IS NOT NULL
-            AND requested_duration_minutes > 0)
+        requested_started_at IS NOT NULL
+        AND requested_ended_at IS NOT NULL
+        AND requested_started_at < requested_ended_at
+        AND (mode <> 'duration' OR (requested_duration_minutes IS NOT NULL
+                                    AND requested_duration_minutes > 0))
     )
 );
 
 CREATE INDEX activity_entries_project_id ON activity_entries (project_id);
-CREATE INDEX activity_entries_order ON activity_entries (requested_started_at, created_at);
+-- The deterministic re-clipping order, and the paging key (Requirement 7.13).
+CREATE INDEX activity_entries_order ON activity_entries (requested_started_at, created_at, id);
+-- Requirement 2.9 selects affected entries by requested interval as well as by
+-- segment, and an Orphaned_Entry has only this handle left.
+CREATE INDEX activity_entries_requested_range ON activity_entries
+    USING gist (tstzrange(requested_started_at, requested_ended_at));
 
 CREATE TABLE activity_segments (
     id         uuid PRIMARY KEY,
@@ -886,17 +1311,24 @@ CREATE INDEX auth_sessions_expires_at ON auth_sessions (expires_at);
 
 -- Idempotency for retried writes from scripts and phone shortcuts
 -- (Requirements 12.8, 12.9).
+-- entry_id is ON DELETE SET NULL, not CASCADE: with CASCADE, deleting the entry
+-- deletes the key, and the next retry of the same request creates a SECOND entry —
+-- the exact outcome the key exists to prevent. The status is stored beside the body
+-- (Requirement 12.16), because replaying a 201 as a 200 is a different answer.
 CREATE TABLE idempotency_keys (
     key        text PRIMARY KEY,
-    entry_id   uuid REFERENCES activity_entries (id) ON DELETE CASCADE,
+    entry_id   uuid REFERENCES activity_entries (id) ON DELETE SET NULL,
+    status     smallint NOT NULL,
     response   jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idempotency_keys_created_at ON idempotency_keys (created_at);
 
--- The day-boundary configuration the data was created under (Requirement 10.10).
--- A single row; the server refuses to start when it disagrees with the environment.
+-- The Day_Boundary_Config the data was created under (Requirement 10.10).
+-- A single row, written by the server at startup when absent (Requirement 10.11) —
+-- the migration cannot seed it, because it does not know TIMEZONE or DAY_START_HOUR.
+-- The server refuses to start when it disagrees with the environment.
 CREATE TABLE day_boundary_config (
     id             boolean PRIMARY KEY DEFAULT true CHECK (id),
     timezone       text NOT NULL,
@@ -951,11 +1383,13 @@ stateDiagram-v2
 
 **Validates: Requirements 6.1, 6.2**
 
-### Property 2: Duration mode preserves the requested duration
+### Property 2: Duration mode conserves the requested duration
 
-*For any* positive duration `d` and any `Tracked_Time` containing at least `d` of eligible time after the anchor and within the `Logical_Day`, the total duration of the produced `Activity_Segment` records SHALL equal `d` exactly, and `unplacedMs` SHALL be zero.
+*For any* positive duration `d` and any `Tracked_Time`, `total(segments) + unplacedMs` SHALL equal `d` exactly — every millisecond asked for is either placed or reported as unplaced, including the time of intervals dropped for falling below `minIntervalMs`. Additionally, when the eligible time after the anchor and within the `Logical_Day` contains at least `d` of stretches each no shorter than `minIntervalMs`, `unplacedMs` SHALL be zero.
 
-**Validates: Requirements 5.6, 5.7**
+**Validates: Requirements 5.8, 5.10, 5.14, 6.5, 6.15**
+
+Conservation is the form that always holds. The earlier statement — "the total equals `d` exactly and nothing is unplaced" — contradicts Requirement 6.5 on any fragmented day: a frame of thirty-second stretches cannot place two hours in segments that all clear the floor, so either the floor is violated or the total is short. Only the sum is invariant.
 
 ### Property 3: Breaks survive inside an entry
 
@@ -979,7 +1413,7 @@ stateDiagram-v2
 
 *For any* normalized list `input` and non-negative `ms`, `total(taken) + remainder` SHALL equal `ms`, `total(taken)` SHALL equal `min(total(input), ms)`, and `taken` SHALL be a time-ordered prefix of `input` — every instant in `taken` lies in `input`, and no instant of `input` before the end of `taken` is omitted.
 
-**Validates: Requirements 5.6, 5.7**
+**Validates: Requirements 5.8, 5.10**
 
 ### Property 7: Coverage partitions tracked time
 
@@ -997,19 +1431,21 @@ stateDiagram-v2
 
 *For any* database state, applying `reclipAffected` twice over the same interval SHALL produce the same `Activity_Segment` rows as applying it once.
 
-**Validates: Requirements 2.7, 2.8**
+**Validates: Requirements 2.9, 2.10**
 
 ### Property 10: Rejected writes leave no trace
 
-*For any* request rejected with HTTP 4xx, the contents of `work_sessions`, `activity_entries` and `activity_segments` SHALL be identical to their contents before the request.
+*For any* request rejected with HTTP 4xx, the contents of `work_sessions`, `activity_entries`, `activity_segments`, `projects` and `idempotency_keys` SHALL be identical to their contents before the request — a rejected write must not leave a project renamed or an idempotency key claimed either.
 
-**Validates: Requirements 6.9**
+**Validates: Requirements 6.11**
 
-### Property 11: The original request is preserved
+### Property 11: The recorded request is preserved
 
-*For any* accepted `Activity_Entry`, the stored `requestedStartedAt`, `requestedEndedAt` and `requestedDurationMinutes` SHALL equal the submitted values, regardless of how `Clipping` altered the stored segments.
+*For any* accepted `Activity_Entry`, the stored `requestedStartedAt` and `requestedEndedAt` SHALL equal the submitted interval in `Explicit_Mode` and the interval the mode resolved to in `Duration_Mode` and `Open_Mode`, `requestedDurationMinutes` SHALL equal the submitted duration where one was given, and none of the three SHALL be altered by `Clipping` or by any later re-clipping.
 
-**Validates: Requirements 4.2**
+**Validates: Requirements 4.2, 5.13, 15.6**
+
+The wording matters: the entry does not store "what the user typed" in the inferred modes — there were no times to type. It stores what the server resolved, which is what a later audit and a later re-clip both need.
 
 ### Property 12: Logical day assignment is a partition
 
@@ -1053,9 +1489,59 @@ stateDiagram-v2
 
 **Validates: Requirements 12.8, 12.9**
 
+### Property 19: Overtime and in-window time partition the day
+
+*For any* `Logical_Day`, any `Gauge_Window`, and any set of `Work_Session` records, the day summary SHALL satisfy `overtimeSeconds + total(intersect(tracked, gaugeWindowOfDay)) === trackedSeconds`, where `gaugeWindowOfDay` is `[GAUGE_START, GAUGE_END)` materialised on that day's dates — including on the 23-hour and the 25-hour day.
+
+**Validates: Requirements 8.12**
+
+This identity holds for *any* window, which is exactly why it is stated that way. It is a real property — it catches a `gaugeWindowOfDay` materialised on the wrong date, a wrap handled by clamping instead of by moving to the next day, and double counting at the boundary. It does **not** catch a window measuring zero hours, a day start inside the window, or a transition inside the window: those are configurations the startup checks of Requirements 13.12, 13.15 and 13.22 reject before any day is ever summarised, and the tests for them belong there. A property that appears to guard a rule it cannot see is worse than no property.
+
+### Property 20: Extending never reaches into the future
+
+*For any* request clipped with policy `extend`, every interval in `extend` SHALL end at or before `now`, and no `Work_Session` written as a result SHALL end after it.
+
+**Validates: Requirements 6.7, 6.8**
+
+### Property 21: The suggested window brackets the bulk of the work
+
+*For any* range holding at least one `Work_Session`, at least 90 percent of the range's `Tracked_Time` SHALL fall inside the window reported as `suggestedWindow`, materialised on each day of the range.
+
+**Validates: Requirements 8.13**
+
+### Property 22: Stored segments always lie inside tracked time
+
+*For any* sequence of accepted operations whatsoever — creating, patching and deleting `Work_Session` records, creating, patching and deleting `Activity_Entry` records, in any order — every `Activity_Segment` in the database at the end SHALL lie entirely within the `Tracked_Time` the database then holds.
+
+**Validates: Requirements 2.9, 6.1, 6.2**
+
+This is the invariant the whole application exists to maintain, and until now nothing asserted it end to end: Property 1 checks one `clip` call in isolation, and re-clipping is precisely where the guarantee is at risk — a wrong `affected` list, a missed entry, a selection by segment alone. If exactly one property here survives, it should be this one.
+
+### Property 23: Described time is conserved
+
+*For any* `Logical_Day`, the sum of the durations of that day's `Activity_Segment` records, clamped to the day, SHALL equal the day's reported `coveredSeconds`, and SHALL equal the sum of `coveredSeconds` over the per-`Project` breakdown — including archived projects.
+
+**Validates: Requirements 8.4, 8.5**
+
+The three numbers are computed by three different aggregations over the same rows, and the interface shows all three at once; a breakdown that does not add up to its own total is the most visible possible defect.
+
+### Property 24: Explicit segments never exceed the request
+
+*For any* `Explicit_Mode` request, every produced `Activity_Segment` SHALL lie within the requested interval — `Clipping` may only remove time, never add it.
+
+**Validates: Requirements 4.1, 6.1**
+
+### Property 25: Clipping is idempotent over its own output
+
+*For any* `ClipInput`, feeding the produced segments back as the requested interval against the same `Tracked_Time` — with the entry's own segments excluded from `covered`, as a PATCH does — SHALL produce those same segments, no `discarded`, no `slivers` and `unplacedMs` of zero.
+
+**Validates: Requirements 6.1, 6.4, 7.10**
+
+Re-clipping applies `clip` to entries that were already clipped, so anything but a fixed point there means a session change nudges unrelated entries every time it happens.
+
 ## Error Handling
 
-All error responses use the shape from Requirement 12.1: `{ error, message, details }`, where `message` is a Paraglide message key.
+All error responses use the shape from Requirement 12.2: `{ error, message, messageKey, details }`. `error` is the UPPER_SNAKE_CASE code, `message` is an **English sentence** for whoever is reading a shell script's output, `messageKey` is the Paraglide key the interface renders instead, and `details` is optional and code-specific. `message` is never a key and `messageKey` is never prose — see component 8.
 
 | Code | HTTP | Trigger | Details payload |
 |---|---|---|---|
@@ -1068,19 +1554,22 @@ All error responses use the shape from Requirement 12.1: `{ error, message, deta
 | `SESSION_ALREADY_RUNNING` | 409 | start while an `Open_Session` exists | `sessionId` |
 | `NO_SESSION_RUNNING` | 409 | stop with no `Open_Session` | — |
 | `SESSION_OVERLAP` | 409 | a session write would overlap another session | `conflicts[]` of `{ sessionId, interval }` |
-| `ACTIVITY_OVERLAP` | 409 | an `Explicit_Mode` request overlaps another entry's segments | `conflicts[]` of `{ entryId, interval }` |
+| `ACTIVITY_OVERLAP` | 409 | an `Explicit_Mode` request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }` — Requirement 4.5 wants the entry named, not only identified |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals |
 | `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date` |
-| `NOTHING_TO_LOG` | 409 | `Open_Mode` where the resolved start is not before the resolved end | `anchor` |
+| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `anchor`, `requested` |
 | `PROJECT_ARCHIVED` | 400 | a new entry targets an archived `Project` | `projectId` |
 | `FUTURE_TIMESTAMP` | 400 | any supplied instant lies more than five minutes ahead | `field`, `value` |
 | `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds` |
 | `STALE_PREVIEW` | 409 | a write carries a `previewToken` the frame no longer matches | `expected` |
 | `PROJECT_EXISTS` | 409 | duplicate project name | `projectId` |
-| `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount` |
+| `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryIds[]` from `entryIdsForProject` — Requirement 3.7 wants the referencing records identified, not counted |
 | `PAYLOAD_TOO_LARGE` | 413 | request body over 1 MiB | `maxBytes` |
 | `RATE_LIMITED` | 429 | over the configured limit; login has a stricter bucket | `retryAfterSeconds` |
+| `SERVICE_UNAVAILABLE` | 503 | database unreachable, query past `DB_QUERY_TIMEOUT_SECONDS`, or a startup check still failing | `retryAfterSeconds` |
 | `INTERNAL_ERROR` | 500 | any unhandled failure | — |
+
+`SERVICE_UNAVAILABLE` exists so that "the database is down" and "this request is malformed in a way we did not anticipate" are not the same answer. Both were 500 before, which tells a shell script to give up on a condition it should retry.
 
 ## Testing Strategy
 
@@ -1088,12 +1577,25 @@ Tests live under `tests/`, mirroring `src/`, run by Vitest with the workspace's 
 
 **Unit tests** — `tests/lib/server/domain/interval.test.ts`, `logical-day.test.ts`, `clipping.test.ts`; `tests/lib/server/core/config.test.ts`, `errors.test.ts`. No database. `clipping.test.ts` carries the worked example from the requirements as a named case: tracked `[08:00–14:48, 15:12–18:00]`, explicit request `13:00–16:00` → segments `[13:00–14:48, 15:12–16:00]`; and the duration case anchored at `14:00` with `2h` over the same frame → `[14:00–14:48, 15:12–16:24]`, totalling exactly 120 minutes. `logical-day.test.ts` pins the DST dates: `2026-03-28` is 23 hours, `2026-10-24` is 25 hours, both transition dates are 24, and `02:30` belongs to the previous logical day.
 
-**Property tests** — `tests/lib/server/domain/interval.property.test.ts`, `clipping.property.test.ts`, `logical-day.property.test.ts`, `reclip.property.test.ts`. Properties 1–7, 9, 11 and 12 are verified here without a database, using `fc.date()` and generators for random session frames and requests.
+**Property tests** — every property has exactly one home, and this table is the authority; the tasks that write them cite the same numbers.
 
-**Module boundary test** — `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/` and fails when a module imports something the Module Boundaries table forbids, so the purity of `domain` cannot rot silently.
+| File | Properties | Needs a database |
+|---|---|---|
+| `tests/lib/server/domain/interval.property.test.ts` | 4, 5, 6 | no |
+| `tests/lib/server/domain/logical-day.property.test.ts` | 12 | no |
+| `tests/lib/server/domain/clipping.property.test.ts` | 1, 2, 3, 11, 17, 20, 24, 25 | no |
+| `tests/lib/server/domain/reclip.property.test.ts` | 9 | no — an in-memory `ReclipPorts` fake |
+| `tests/lib/server/store/atomicity.property.test.ts` | 10, 16 | yes |
+| `tests/lib/server/store/overlap.property.test.ts` | 7, 8, 15, 22, 23 | yes |
+| `tests/api/dry-run.property.test.ts` | 13, 14, 18 | yes |
+| `tests/api/days.property.test.ts` | 19, 21 | yes |
 
-**Integration tests** — `tests/lib/server/store/*.test.ts` against a real PostgreSQL 16. These verify what pure code cannot: the single-`Open_Session` index, both exclusion constraints, the deferred reshuffle, the constraint-to-error mapping, and Properties 8, 10 and 14. A helper truncates every table between tests. The database is started with plain `docker run` on the sandbox's own network and reached by container name — never through a published port and never with Docker Compose.
+Property 17 is a domain property, not a database one: `clip` receives `minIntervalMs` as an input, so the floor is checked where it is applied. Property 14 is a route property, because a `Dry_Run` is only observable through a request. Property 22 is the one that needs a real database and a randomly generated *sequence* of operations rather than a single call — it is the end-to-end statement of what everything else is for.
 
-**Route tests** — `tests/api/*.test.ts` call the `+server.ts` handlers directly with a constructed `RequestEvent`. They verify status codes, the error envelope, mode selection, `Uncovered_Policy` behavior, `Dry_Run` responses including Property 13, that `/api/health` is reachable without a credential, and that both the session cookie and the bearer token authenticate.
+**Module boundary test** — `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/` and fails when a module imports something the Module Boundaries table forbids, so the layer order `domain` → `core` → `store` → `routes` cannot rot silently.
+
+**Integration tests** — `tests/lib/server/store/*.test.ts` against a real PostgreSQL 16. These verify what pure code cannot: the single-`Open_Session` index, both exclusion constraints, the application-level guard against overlapping the `Open_Session` that no constraint covers, the deferred reshuffle, that `SET CONSTRAINTS ALL IMMEDIATE` makes a dry run fail where the write would, the constraint-to-error mapping in both directions of SQLSTATE 23503, the `Day_Boundary_Config` round trip, and Properties 7, 8, 10, 15, 16, 22 and 23. A helper truncates every table between tests. The database is started with plain `docker run` on the sandbox's own network and reached by container name — never through a published port and never with Docker Compose.
+
+**Route tests** — `tests/api/*.test.ts` call the `+server.ts` handlers directly with a constructed `RequestEvent`. They verify status codes, the error envelope, mode selection, `Untracked_Policy` behavior, `Dry_Run` responses including Properties 13, 14 and 18, the day and coverage totals including Properties 19 and 21, that `/api/health` is reachable without a credential and reports the `Gauge_Window`, and that both the session cookie and the bearer token authenticate.
 
 **Schema agreement test** — `tests/lib/server/store/schema.test.ts` asserts that every column in the Drizzle definitions exists in the migrated database with a compatible type, catching drift between `src/db/schema/` and `migrations/001_init.sql`.

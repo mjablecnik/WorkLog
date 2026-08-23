@@ -119,6 +119,22 @@
       "w": 1120,
       "h": 600,
       "title": "Ukázka · vedle sebe"
+    },
+    {
+      "file": "Settings.dc.html",
+      "x": 0,
+      "y": 5250,
+      "w": 1440,
+      "h": 560,
+      "title": "Nastavení · desktop"
+    },
+    {
+      "file": "SettingsMobile.dc.html",
+      "x": 1560,
+      "y": 5250,
+      "w": 390,
+      "h": 844,
+      "title": "Nastavení · mobil"
     }
   ],
   "annotations": [
@@ -148,7 +164,7 @@
       "x": 0,
       "y": 3140,
       "w": 900,
-      "text": "PROJEKTY\n\nOsm ověřených barev, nový projekt dostane první volnou. Koš je u používaného projektu neaktivní a hláška vysvětluje proč — místo aby ti to spadlo na chybu až po kliknutí."
+      "text": "PROJEKTY\n\nOsm barevných slotů, nový projekt dostane první volnou. Ověřeně rozlišitelných je prvních pět — osm vzájemně odlišitelných kategorických barev neexistuje, optimum pro osm je ΔE 6,0. Proto barvu všude doprovází název.\n\nPruh v řádku měří podíl z celku, stejně jako ve statistikách. Koš zůstává aktivní: pokus o smazání proběhne a server vysvětlí, proč to nejde, i co dělat místo toho."
     },
     {
       "id": "note-axis",
@@ -163,6 +179,13 @@
       "y": 4990,
       "w": 1500,
       "text": "UKÁZKA S PŘESAHEM A BEZ\n\nVlevo artboard s přepínačem „presah“ nad ním — klikni a stejný den se překlopí.\n\nBez přesahu končí den o půlnoci přesně na značce 00 a oblouk sedí na dráze celou dobu.\n\nS přesahem pokračuje do 03:00 — tedy do prázdné mezery, kde nejsou žádné rysky ani čísla. Oblouk tam visí ve vzduchu a na jeho konci je popisek 03:00, protože jinak by nebylo podle čeho poznat, kam až došel."
+    },
+    {
+      "id": "note-settings",
+      "x": 2060,
+      "y": 5250,
+      "w": 900,
+      "text": "NASTAVENÍ\n\nMotiv, jazyk a odhlášení za jednou ikonou vpravo v liště. Odhlášení do teď nemělo v celém návrhu kde být, přestože ho požadavky vyžadují — tahle nabídka zavírá tři díry najednou.\n\nNa desktopu rozbalovací nabídka pod ikonou, na mobilu spodní sheet. Stejný obsah, jiná forma; v mobilní horní liště pro dvě samostatná ovládání není místo.\n\nCenou je, že jazyk už nepřepneš jedním klikem jako dřív. U věci, kterou nastavíš jednou za rok, je to správná výměna."
     }
   ],
   "launch": {
