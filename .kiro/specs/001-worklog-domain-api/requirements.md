@@ -286,6 +286,7 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 15. THE Worklog_Server SHALL interpret every `from`–`to` query as the half-open instant range `[from, to)`, and SHALL include a `Logical_Day` in a per-day response exactly when its window intersects that range, so that a `to` falling on a day boundary does not add an empty trailing day
 16. THE Worklog_Server SHALL count a range's length in `Logical_Day` values by that same rule when enforcing `MAX_RANGE_DAYS` and `MAX_INTERVAL_RANGE_DAYS`
 17. THE Worklog_Server SHALL make the current `Logical_Day` and its boundaries available to every server-rendered page, recomputed for each request, so that the interface never derives them and a page rendered after midnight is never stale
+18. IF a range request supplies one of `from` and `to` without the other, THEN THE Worklog_Server SHALL return HTTP 400 with error code `VALIDATION_ERROR`, because a half-stated range reads as two different ranges to two readers
 
 ### Requirement 11: Authentication
 
@@ -400,7 +401,9 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 30. THE Worklog_Server SHALL run the cleanup sweep of expired `Browser_Session` records and `Idempotency-Key` records every `CLEANUP_INTERVAL_MINUTES`
 31. WHILE the database is unmigrated or its `Day_Boundary_Config` disagrees with the configuration, THE Worklog_Server SHALL keep running and SHALL answer every route except the `Health_Endpoint` with HTTP 503 and error code `SERVICE_UNAVAILABLE`, because that condition is repaired by migrating or reconfiguring rather than by restarting the process
 32. THE Worklog_Server SHALL exempt the `Health_Endpoint` from the check of criterion 31, so that an operator can always ask what is wrong
-33. THE Worklog_Server SHALL accept `APP_ENV` values `development`, `test` and `production` only, defaulting to `production`, so that an end-to-end run has an environment of its own to relax nothing more than it must
+33. THE Worklog_Server SHALL accept `APP_ENV` values `development`, `test` and `production` only, defaulting to `production`
+34. THE Worklog_Server SHALL read its own public origin from `PUBLIC_ORIGIN`, and SHALL refuse to start when it is unset while `APP_ENV` is `production`, because behind a TLS-terminating proxy the runtime otherwise infers the wrong scheme and host, and both the cross-origin check and the framework's own form-action protection are decided from that value
+35. WHEN `APP_ENV` is `test`, THE Worklog_Server SHALL omit `Secure` from every cookie it sets and SHALL relax nothing else whatsoever, because an end-to-end run drives the application over `http://localhost` where a `Secure` cookie is discarded and no login can succeed
 
 ### Requirement 14: Dry Run
 

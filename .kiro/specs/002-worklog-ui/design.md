@@ -368,7 +368,7 @@ Every place the artboards write a bare `rgba(255,255,255,…)` gets a name, beca
 | `--meter-track` | `rgba(255,255,255,0.07)` | `rgba(0,0,0,0.09)` | 4 px coverage meters |
 | `--hairline` | `rgba(255,255,255,0.14)` | `rgba(0,0,0,0.20)` | dashed break rules |
 
-`SettingsLight` is the artboard for the first five rows. Until it lands these values are the contract and are implemented as written; when it lands, any value it draws differently is a defect against this table, fixed by correcting the table — never by an implementer guessing between the two.
+`SettingsLight` has landed and confirms the first five rows: chip `rgba(0,0,0,0.06)`, menu border `rgba(0,0,0,0.08)`, menu shadow `0 18px 44px rgba(43,36,32,0.18)`, group `rgba(0,0,0,0.04)`, active segment `rgba(165,82,46,0.14)`, and the menu's divider is `--divider` itself. Only `--grabber` has no light drawing, because the light mobile sheet is not among the artboards; its value follows the same ladder and is binding as written.
 
 ### Interaction States
 
@@ -412,7 +412,7 @@ The production CSP from `001` carries `style-src 'self' 'nonce-…'` with no `un
 
 `projectSlotClass(colorIndex)` returns `pj-0` … `pj-7` (wrapping at eight); `Segment_Block` uses `background: var(--pj-tint); border-left-color: var(--pj)` from its own stylesheet. `projectColorVar()` — which built an inline custom property — is deleted.
 
-2. **Computed block heights** are quantised to a 2 px ladder and applied through precompiled classes `.tl-h-26` … `.tl-h-320`, a continuous sequence in which every drawn height — 26, 36, 38, 44, 48, 58, 60, 62, 74, 96, 98, **106** — is a member by construction. A block taller than 320 px — a day with one entry easily reaches 700 — takes **`.tl-h-fill`** (`flex: 1 1 auto`) instead and absorbs whatever the flex column has left; a block column contains at most one such block, which is the tallest, and `layOutDay` marks it. `layOutDay` returns an exact `heightPx`; the component rounds it **down** to the ladder step and gives the remainder to the last block of the group, so the sum still fits the available height. 148 rules in the compiled stylesheet cost less than one nonce round trip. If a future layout needs a height outside the ladder, the alternative is a single nonced `<style>` element rendered from `locals.nonce` — never an inline attribute.
+2. **Computed block heights** are quantised to a 2 px ladder and applied through precompiled classes `.tl-h-26` … `.tl-h-320`, a continuous sequence in which every drawn height — 26, 36, 38, 44, 48, 58, 60, 62, 74, 96, 98, **106** — is a member by construction. A block taller than 320 px — a day with one entry easily reaches 700 — takes **`.tl-h-fill`** (`flex: 1 1 auto`) instead and absorbs whatever the flex column has left; a block column contains at most one such block, which is the tallest, and `layOutDay` marks it. `layOutDay` does the quantising itself and returns a `heightPx` already on the ladder, giving each block's remainder to that block's tallest segment; the component only picks the matching class. Rounding in two places was the earlier draft's mistake. 148 rules in the compiled stylesheet cost less than one nonce round trip. If a future layout needs a height outside the ladder, the alternative is a single nonced `<style>` element rendered from `locals.nonce` — never an inline attribute.
 
 3. **SVG is unaffected.** `d`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `x`, `y` are SVG presentation attributes, not CSS, and no CSP directive applies to them. The `Day_Gauge` may therefore compute its geometry per render and write it straight onto the elements. The `Day_Rhythm_Strip` may not — its segment offsets are CSS percentages, so it renders as an inline SVG with `<rect>` elements instead of positioned `<div>` elements.
 
@@ -436,7 +436,7 @@ Activating it opens a **268 px menu** anchored under the chip at the page's righ
 |---|---|---|
 | `MOTIV` — three-way `Theme_Switcher`: Systém / Světlý / Tmavý | items 34 tall, radius 9, 13 px; group radius 11 | items 44 tall, radius 10, 14 px; group radius 13 |
 | `JAZYK` — two-way `Locale_Switcher`: Čeština / English | as above | as above |
-| hairline `rgba(255,255,255,0.06)` | 1 px | 1 px |
+| hairline `--divider` — `rgba(255,255,255,0.05)` dark, `rgba(0,0,0,0.07)` light | 1 px | 1 px |
 | `Odhlásit se` in `--destructive` with a 15 px exit icon | row 34 tall, 13.5 px | row 44 tall, icon 17, 14.5 px |
 
 Both groups sit on `rgba(255,255,255,0.04)` with `padding: 4` and `gap: 4`; the selected item is `rgba(209,138,106,0.16)` with accent text at 500 — the same segmented-control treatment the `AddTask` dialog uses.
@@ -470,6 +470,8 @@ The `Orphan_Panel` exists because an `Orphaned_Entry` has no `Activity_Segment` 
 Inside the timeline, per `Work_Block`: a head of `08:00 – 12:30` at 13/500 tabular beside `4 h 30 min v kuse` at 12 `--text-faint` (a night block adds `· noční`); then a row of `gap: 14` holding the `Session_Rail` and the segment column with `gap: 4`. A `Segment_Block` is radius 10, padding `9px 13px`, `--pj-tint` background, 3 px `--pj` left border, and carries project name 14/500 → description 12.5 `--text-dim` → `08:00 – 10:15 · 2 h 15 min` 12 `--text-faint` tabular. At `MIN_BLOCK_PX` it collapses to one row: name 13/500 and times 12 `--text-faint` side by side.
 
 The desktop day page draws **no** date navigation in the artboards even though Requirement 5.2 needs it; it goes into the heading line, left of the date, as two 34 px round icon buttons matching the mobile treatment.
+
+The heading line's right end carries the two create actions: **`+ Přidat úkol`** as a filled accent pill, 34 tall, radius 9999, `padding: 0 16`, 13.5/600 in `--ink-on-accent`, and beside it **`+ úsek`** as a ghost pill on `--chip` in `--text-dim` at the same height. The task is the everyday action and gets the filled treatment; adding a timer block is a repair and stays quiet. On mobile both live behind the FAB's two-item sheet and neither appears in the heading.
 
 ### Day Page, Mobile (`DayMobile`)
 
@@ -512,8 +514,8 @@ One treatment — the `Uncovered_Marker` — in four variants, all built from th
 
 | Variant | Where | Content |
 |---|---|---|
-| tall block | desktop, ≥ 60 px | `Zatím bez popisu` 13/500 accent, then `01:30 – 03:00 · 1 h 30 min — klikni a doplň` 12 `--text-faint` |
-| short block | desktop, at the floor | `Bez popisu` 13/500 accent · times 12 `--text-faint` · flexible gap · `doplnit` 12 accent at the right edge |
+| tall block | desktop, ≥ 60 px — the same threshold that shows a description | `Zatím bez popisu` 13/500 accent, then `01:30 – 03:00 · 1 h 30 min — klikni a doplň` 12 `--text-faint` |
+| short block | desktop, under 60 px | `Bez popisu` 13/500 accent · times 12 `--text-faint` · flexible gap · `doplnit` 12 accent at the right edge |
 | mobile pill | mobile | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
 
 ### Dialogs (`AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`)
@@ -542,7 +544,7 @@ The bigger fields and type are a touch decision, not a scaling accident: 48 px c
 
 **Add task.** Segmented control of three modes (`Přesně od–do` / `Jen délka` / `Od posledního`), items 36 tall and radius 9 inside a radius-12 group on `rgba(255,255,255,0.04)`; the active item is `rgba(209,138,106,0.16)` with accent 13/500 text. The field row is a grid whose columns follow the mode, because the modes need different fields: `Explicit_Mode` shows day, from, to and project (`1fr 0.8fr 0.8fr 1.4fr`), `Duration_Mode` shows day, duration and project (`1fr 1fr 1.2fr`, the layout the artboard draws), and `Open_Mode` shows day and project alone (`1fr 1.6fr`) since the server resolves both ends. The day field appears in all three — `Explicit_Mode` composes its timestamps from it, and the other two send it as the `Target_Day`. Fields are `gap: 12`, each 44 tall at radius 11 on `--field`; the field the active mode derives is drawn with `--field-active-bg` and `--field-active-ring`. The description field is 66 tall. An inference is explained in a tinted note with an info icon. The live preview panel is radius 14 on `--panel`, headed by an eye icon and the caps label `uloží se takto` in accent, and renders the resulting segments as miniature blocks, then a dashed accent warning for anything that does not fit, then the `Untracked_Policy` segmented control (`Zahodit` / `Prodloužit timer`). Footer hint: `Esc zavře · nic se neuloží, dokud nepotvrdíš`.
 
-**Edit session.** Start and end as two 44 px fields; the changed one carries the new value with the old one struck through at 12 `--text-faint`. The consequence panel is radius 14 on `rgba(209,138,106,0.07)` with a `1px solid rgba(209,138,106,0.28)` border: a warning row naming the loss with **one** total at 15/500 accent — `removedSeconds + lostUncoveredSeconds`, which is where the artboard's `−2 h 00 min` comes from, being 30 min taken from an entry plus 1 h 30 of uncovered time — then one row per affected entry inside a radius-11 `--panel` box — a 3 × 18 slot-coloured tick, the project name at 13.5/500, the loss at 12.5 accent, and beneath it a `1fr 20px 1fr` grid of *teď* → *po úpravě* with an arrow between. An entry that would be emptied — becoming an `Orphaned_Entry` — gets prose instead of columns, and so does the `Uncovered_Time` row (see below). The panel closes with `Celkem 2 záznamy · 2 h 00 min zmizí z výkazu.` — the **duration** is the combined total, while the **count** counts `Activity_Entry` records only, because uncovered time is not a record. Directly under the headline total the two parts are broken out, so no reader has to work out why the headline is larger than the entries listed beneath it. Deletion is an inline `--destructive` text link. Footer hint: `Počítá to server, ne prohlížeč — co vidíš, to se stane`.
+**Edit session.** Start and end as two 44 px fields; the changed one carries the new value with the old one struck through at 12 `--text-faint`. The consequence panel is radius 14 on `rgba(209,138,106,0.07)` with a `1px solid rgba(209,138,106,0.28)` border: a warning row naming the loss with **one** total at 15/500 accent — `removedSeconds + lostUncoveredSeconds`, which is where the artboard's `−2 h 00 min` comes from, being 30 min taken from an entry plus 1 h 30 of uncovered time — then one row per affected entry inside a radius-11 `--panel` box — a 3 × 18 slot-coloured tick, the project name at 13.5/500, the loss at 12.5 accent, and beneath it a `1fr 20px 1fr` grid of *teď* → *po úpravě* with an arrow between. An entry that would be emptied — becoming an `Orphaned_Entry` — gets prose instead of columns, and so does the `Uncovered_Time` row (see below). The panel closes with `preview_total` — the **duration** is the combined total, while the **count** counts `Activity_Entry` records only, because uncovered time is not a record. Directly under the headline sits `preview_total_split`, naming the two parts, so no reader has to work out why the headline exceeds the entries listed beneath it. (`SessionEdit` says *2 záznamy* over one entry and one uncovered row; the artboard is being corrected, and the rule here — entries only — is what holds.) Deletion is an inline `--destructive` text link. Footer hint: `Počítá to server, ne prohlížeč — co vidíš, to se stane`.
 
 **The uncovered row in a session preview.** The artboard lists `Zatím bez popisu` among the affected records, and it stays. `Uncovered_Time` is not an `Activity_Entry`, so it is not one of the `reclipped` entries — it arrives as its own pair of fields on `SessionChangePreview`: `lostUncoveredSeconds` and `lostUncovered`, the intervals that would fall outside `Tracked_Time`.
 
@@ -586,6 +588,8 @@ Two rules these templates follow deliberately, and both hold for **every** messa
 1. **A countable noun always goes through a plural form.** Czech needs one / few / other, and a noun interpolated beside a bare number is wrong for two of the three.
 2. **No verb ever follows a number.** Czech verb agreement would then depend on the count as well, turning one plural choice into two coupled ones. Every template above is a noun phrase for exactly that reason — `Nejdelší nepřerušený úsek: …`, never `Nejdelší úsek trval …`.
 
+**Length is a two-language problem, not a Czech one.** English is usually shorter but not always — `not described` against `bez popisu`, `Longest unbroken block` against `Nejdelší blok v kuse` — so wherever a surface is too narrow for the full string, the **short form exists in both languages** as its own key (`timer_worked_short`, `timer_uncovered_short`, `day_break_short`, `activity_mode_explicit_short`, `day_segment_part_short`). Nothing is truncated with an ellipsis and nothing relies on one language happening to fit; a caps label that overflows in either language gets a short key or the surface gets wider.
+
 The bar and the printed percentage state the same quantity. The artboard drew bars relative to the largest project (100/54/14 %) while printing shares of the total (59/32/9 %); two scales in one row is a misreading waiting to happen, and the share is the number the reader is being given.
 
 **The ranges are a day, a week and a month — deliberately, and there is no year.** A year on the rhythm strip would be 365 rows of two-pixel marks, which is unreadable, and that is the same reason the server caps interval payloads at `MAX_INTERVAL_RANGE_DAYS` (62 days). This is a closed decision, not a gap waiting to be filled.
@@ -595,6 +599,8 @@ The bar and the printed percentage state the same quantity. The artboard drew ba
 ### Surfaces the artboards do not draw
 
 Nine surfaces are specified here in tokens rather than as artboards. All nine are fully pinned below — there is nothing left to choose while implementing them.
+
+**Field error.** Directly beneath the field it belongs to, `margin-top: 6`, 12 px in `--destructive`, with the field itself taking `box-shadow: inset 0 0 0 1px var(--destructive)` in place of its resting ring and keeping its value. The message is a catalogue key: `001` maps each Zod issue to one, the envelope carries it in `details.fields[name]`, and the interface renders the translation. **A validator's English sentence never reaches the screen** — the schema is shared with a REST API whose messages are deliberately English prose for shell output.
 
 **Confirmation dialog.** The dialog shell at its smallest: `--dialog` at radius 20, `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, footer as the write dialogs have it — a ghost pill and, for a destructive confirmation, a filled pill in `--destructive` with `--ink-on-accent` text rather than the accent. Never a bare "are you sure": the body names the record and the duration.
 
@@ -635,7 +641,6 @@ worklog/
 │   ├── app.html                         # 002 owns it; carries %sveltekit.nonce%
 │   │                                    #   and the nonced pre-paint theme script
 │   ├── hooks.client.ts                  # handleError → the interface error surface
-│   ├── hooks.ts                         # reroute via deLocalizeUrl
 │   ├── lib/
 │   │   ├── core/i18n/                   # locale state, init, switch
 │   │   │   ├── state.svelte.ts
@@ -820,7 +825,7 @@ It is a **budget, not a limit**.
 
 **The algorithm, which is normative.** The heights drawn in the artboards illustrate it; they do not define it, and reproducing them exactly is not a requirement (Requirement 17.13).
 
-1. **Reserve the fixed rows.** `fixed = Σ BLOCK_HEAD_PX + Σ BREAK_MARKER_PX + Σ BLOCK_GAP_PX` over every block, break and inter-segment gap. What remains, `flex = availablePx − fixed`, is what the segments share.
+1. **Reserve the fixed rows.** `fixed = Σ BLOCK_HEAD_PX + Σ HEAD_GAP_PX + Σ BREAK_MARKER_PX + Σ BLOCK_TO_BREAK_PX + Σ BLOCK_GAP_PX` — every head, every gap under a head, every marker, both gaps around each marker and every inter-segment gap. Omitting the last two is what would make Property 2 false. What remains, `flex = availablePx − fixed`, is what the segments share.
 2. **Distribute proportionally.** Each segment gets `flex × its seconds / total segment seconds`. The denominator counts **every** stretch inside the blocks, including uncovered stretches under `MIN_UNCOVERED_SECONDS` that will get no block of their own — their share stays with the block and is absorbed by the segment that follows them, so what is drawn still sums to the session.
 3. **Lift to the floor.** Any segment below `MIN_BLOCK_PX` is raised to it and pinned. The deficit this creates is repaid by the unpinned segments in **descending current height**, one `HEIGHT_STEP_PX` at a time — take 2 px from the tallest, re-sort, take 2 px from the new tallest, and so on — stopping when the deficit is settled or every segment has reached the floor and is pinned. Repaying in steps rather than proportionally is what keeps a segment from being pushed under the floor by the repayment itself. This runs **before** quantisation, so step 4 has nothing left to undo.
 4. **Quantise.** Round each height **down** to `HEIGHT_STEP_PX`. The remainder — at most 2 px per segment — is given back to the tallest segment of each block, so the block's own total is exact.
@@ -848,12 +853,11 @@ type DayTimelineProps = {
   uncovered: Interval[];
   maxOpenSessionHours: number;      // from the Health_Endpoint, through layout context
   now: Date;
-  density: Density;                 // 'desktop' | 'mobile' — chosen by the caller
-  editable: boolean;                // drag handles, add-session affordance
+  density: Density;                 // 'desktop' | 'mobile' — resolved from the viewport cookie
   onActivityActivate: (entryId: string) => void;
   onSessionActivate: (sessionId: string) => void;
+  onSessionEdgeActivate: (sessionId: string, edge: 'start' | 'end') => void;
   onUncoveredActivate: (range: Interval) => void;
-  onSessionResize: (sessionId: string, next: Interval) => void;
 };
 ```
 
@@ -998,7 +1002,8 @@ export function previewCreateActivity(input: CreateActivityInput, signal: AbortS
 export function previewPatchActivity(id: string, input: PatchActivityInput, signal: AbortSignal): Promise<ActivityPreview>;
 export function previewCreateSession(input: CreateSessionInput, signal: AbortSignal): Promise<SessionPreview>;
 export function previewPatchSession(id: string, input: PatchSessionInput, signal: AbortSignal): Promise<SessionPreview>;
-/** DELETE carries no body, so its flags are query parameters: ?dryRun=true&previewToken=… */
+/** DELETE carries no body, so its flags are query parameters. `001` names them in snake_case
+ *  and parses them with a `.strict()` schema, so camelCase is a 400: ?dry_run=true&preview_token=… */
 export function previewDeleteSession(id: string, previewToken: string | null, signal: AbortSignal): Promise<SessionPreview>;
 ```
 
@@ -1123,7 +1128,7 @@ All five components follow the mark specs: 2 px surface gaps between adjacent se
 
 **The one flash the interface permits.** On a first visit neither cookie exists, so the server renders `DEFAULT_RENDER_THEME` (`dark`) and the client corrects it once during hydration if the browser asks for light. There is no way around it: a server cannot know a system preference the browser has never reported to it. Every subsequent visit is correct in the first byte, because that hydration also wrote `worklog_theme_resolved`.
 
-**Language is resolved entirely by `001`.** Its hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech, and puts the answer on `locals.locale` — which is also what fills `%lang%`. `002` reads `locals.locale` and renders it. It does **not** run its own `Accept-Language` negotiation: two negotiations would disagree the moment they differed, and the one that wins the `lang` attribute is not the one in `002`.
+**Language is resolved entirely by `001`.** Its hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech, and puts the answer on `locals.locale` — which is also what fills `%lang%`. `002` reads `locals.locale` and renders it, and runs no negotiation of its own anywhere, `+layout.server.ts` included.
 
 `src/app.html` carries `<html lang="%lang%" data-theme="%theme%">`. `002` owns that file and writes the placeholders; **`001` substitutes them** in its `transformPageChunk`, from the values its hook resolved — the same hook that already fills `%sveltekit.nonce%`. Neither half can do it alone: the file is `002`'s and the hook is `001`'s.
 
@@ -1171,7 +1176,9 @@ Follows the workspace pattern exactly: `@inlang/paraglide-js` with flat snake_ca
 
 **The locale is resolved on the server, exactly like the theme.** Resolving it in `onMount` over an English base would server-render English and switch to Czech on hydration — the same flash the theme avoids — and would emit the wrong `lang` on `<html>` for the whole SSR pass, which is a correctness problem for a screen reader, not only a visual one.
 
-So: `switchLocale()` writes a `locale` cookie (a year, `SameSite=Lax`, not `HttpOnly` — the client reads it too); the root `+layout.server.ts` reads that cookie, falls back to `Accept-Language`, and falls back again to **Czech**; the resolved locale goes into `app.html` through the same mechanism as the theme, so `<html lang>` is correct in the first byte. Client-side switching stays instant through `overwriteGetLocale` / `overwriteSetLocale` over a `$state` rune in `state.svelte.ts`; `switchLocale()` strips the hash with `history.replaceState` before changing and updates `document.documentElement.lang`.
+So: `switchLocale()` writes the `worklog_locale` cookie (a year, `SameSite=Lax`, not `HttpOnly` — the client reads it too) and that is the whole of `002`'s part in resolving a language. **`001`'s hook does the resolving** — cookie, then `Accept-Language`, then Czech — and puts the answer on `locals.locale`, which is what fills `%lang%`. `002` seeds its rune from `locals.locale` and never negotiates: two negotiations disagree the moment they differ, and the one that wins the `lang` attribute would not be the one in `002`.
+
+There is **no** `src/hooks.ts`, no `reroute` and no `deLocalizeUrl`: the URL carries no locale prefix, because the language is a cookie and a prefix would be a second source of truth. Client-side switching stays instant through `overwriteGetLocale` / `overwriteSetLocale` over a `$state` rune in `state.svelte.ts`; `switchLocale()` strips the hash with `history.replaceState` before changing and updates `document.documentElement.lang`.
 
 **Czech is the fallback everywhere.** Not Czech in one place and English in another: the cookie, the `Accept-Language` negotiation and the final default all end at Czech. `baseLocale` stays `en` because that is what Paraglide compiles message ids against — it is not a user-facing default and must not be read as one.
 
@@ -1216,8 +1223,8 @@ The interface adds no persistent state. It holds four pieces of client state:
 
 | State | Lives in | Lifetime |
 |---|---|---|
-| Active locale | `state.svelte.ts` rune, mirrored to `localStorage` | across visits |
-| `Theme_Preference` and the `Theme` it resolves to | `theme.svelte.ts` runes, the preference mirrored to `localStorage` | across visits |
+| Active locale | `state.svelte.ts` rune seeded from `locals.locale`, mirrored to the `worklog_locale` cookie | across visits |
+| `Theme_Preference` and the `Theme` it resolves to | `theme.svelte.ts` runes, mirrored to the `worklog_theme` and `worklog_theme_resolved` cookies | across visits |
 | Elapsed tick, dialog and `Settings_Menu` open state, pending preview | component-local runes | the page view |
 | Aborted-request controllers | `dry-run.ts` module scope | one dialog session |
 
@@ -1360,6 +1367,7 @@ not an `ErrorCode`.
 | `timer_stop` | Zastavit timer | Stop the timer |
 | `timer_running_since` | běží od {time} | running since {time} |
 | `timer_idle_caption` | timer neběží | timer is not running |
+| `timer_stopped_at` | zastaveno v {time} | stopped at {time} |
 | `timer_worked` | odpracováno | worked |
 | `timer_covered` | popsáno | described |
 | `timer_uncovered` | chybí popis | not described |
@@ -1452,6 +1460,7 @@ not an `ErrorCode`.
 | `session_field_end` | konec | end |
 | `session_delete_link` | Smazat celý úsek {from} – {to} | Delete the whole block {from} – {to} |
 | `session_delete_title` | Smazat úsek timeru? | Delete this timer block? |
+| `session_delete_body` | Úsek {from} – {to} · {duration} zmizí. {entries, plural, =0 {Žádný záznam to neovlivní.} one {Jeden záznam přijde o čas.} few {# záznamy přijdou o čas.} other {# záznamů přijde o čas.}} | The block {from} – {to} · {duration} disappears. {entries, plural, =0 {No entry is affected.} one {One entry loses time.} other {# entries lose time.}} |
 | `session_confirm_save` | Potvrdit a uložit | Confirm and save |
 | `session_back_to_edit` | Zpět k úpravě | Back to editing |
 
@@ -1463,6 +1472,7 @@ not an `ErrorCode`.
 | `preview_parts` | Uloží se {count, plural, one {# část} few {# části} other {# částí}} kolem pauzy. | Saved as {count, plural, one {# part} other {# parts}} around a break. |
 | `preview_unplaced` | {duration} se nevejde. | {duration} will not fit. |
 | `preview_unplaced_why` | Po {time} už timer neběžel, takže z {requested} se zapíše {stored}. | The timer was not running after {time}, so {stored} of {requested} is recorded. |
+| | `{requested}` is the requested duration, `{stored}` the sum of the preview's resulting segments, `{time}` the end of the last tracked stretch before the gap | |
 | `preview_sliver` | {duration} se zahodí — kratší úsek než {minimum} se neukládá. | {duration} is dropped — anything shorter than {minimum} is not stored. |
 | `preview_policy_label` | Se zbytkem: | The remainder: |
 | `preview_policy_clip` | Zahodit | Discard |
@@ -1473,6 +1483,7 @@ not an `ErrorCode`.
 | `preview_entry_loss` | −{duration} | −{duration} |
 | `preview_emptied` | Úsek {from} – {to} zmizí celý — po zkrácení už nebude uvnitř běhu timeru. | {from} – {to} disappears entirely — after the change it is outside the timer's run. |
 | `preview_uncovered_row` | Zatím bez popisu | Not described yet |
+| `preview_total_split` | Z toho {entriesDuration} ze záznamů a {uncoveredDuration} nepopsaného času. | Of that, {entriesDuration} from entries and {uncoveredDuration} of undescribed time. |
 | `preview_total` | Celkem {count, plural, one {# záznam} few {# záznamy} other {# záznamů}} · {duration} zmizí z výkazu. | {count, plural, one {# entry} other {# entries}} · {duration} disappears from the log. |
 | `preview_no_change` | Nic se neztratí. | Nothing is lost. |
 
@@ -1551,7 +1562,7 @@ not an `ErrorCode`.
 
 ### errors_*
 
-One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_OVERLAP` → `errors_activity_overlap`). Three codes carry a `details.reason` or `details.scope` that changes the sentence, so they take one key per value — the interface reads the field and picks; it never composes the sentence itself.
+One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_OVERLAP` → `errors_activity_overlap`), **including the base key of every code that also has variants** — a server that emits the unsuffixed key must find it here, which is what the catalogue-completeness test checks. Three codes carry a `details.reason` or `details.scope` that changes the sentence, so they take one key per value in addition to their base; the interface reads the field and picks, and never composes a sentence itself. Field-level validation lives in its own `fields_*` namespace below, not here — it maps a Zod issue to one field of one form rather than an API failure.
 
 | Key | Czech | English |
 |---|---|---|
@@ -1581,8 +1592,37 @@ One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_O
 | `errors_rate_limited_request` | Moc požadavků. Zkus to za {retryAfterSeconds} s. | Too many requests. Try again in {retryAfterSeconds} s. |
 | `errors_rate_limited_login` | Moc pokusů o přihlášení. Zkus to za {retryAfterSeconds} s. | Too many login attempts. Try again in {retryAfterSeconds} s. |
 | `errors_service_unavailable` | Server teď nemůže odpovědět. Zkus to za {retryAfterSeconds} s. | The server cannot answer right now. Try again in {retryAfterSeconds} s. |
+| `errors_method_not_allowed` | Tahle akce tady není povolená. | That action is not allowed here. |
+| `errors_idempotency_key_reused` | Tenhle požadavek už proběhl. | This request has already been processed. |
+| `errors_nothing_to_log` | Není co zapsat. | There is nothing to log. |
+| `errors_rate_limited` | Moc požadavků. Zkus to za {retryAfterSeconds} s. | Too many requests. Try again in {retryAfterSeconds} s. |
+| `errors_login_failed` | Nesprávné heslo. | Incorrect passphrase. |
 | `errors_internal_error` | Něco se pokazilo. Když to nahlásíš, přilož kód {requestId}. | Something went wrong. If you report it, quote {requestId}. |
 | `errors_login_failed` | Nesprávné heslo. | Incorrect passphrase. |
+
+### fields_*
+
+Field-level validation, returned by `001`'s `fieldMessageKeyFor(issue)`. This is a **separate
+namespace from `errors_*`** on purpose: these describe one field of one form, not an API
+failure. The catalogue must carry every key that function can return, `fields_invalid`
+included — it is the fallback, and without it an unmapped issue renders nothing at all.
+
+| Key | Czech | English |
+|---|---|---|
+| `fields_required` | Vyplň tohle pole. | This field is required. |
+| `fields_invalid` | Tahle hodnota nesedí. | This value is not valid. |
+| `fields_invalid_choice` | Vyber jednu z nabízených možností. | Choose one of the offered options. |
+| `fields_invalid_date` | Zadej datum ve tvaru RRRR-MM-DD. | Enter a date as YYYY-MM-DD. |
+| `fields_invalid_timestamp` | Zadej čas ve tvaru HH:MM. | Enter a time as HH:MM. |
+| `fields_invalid_id` | Tohle není platný identifikátor. | This is not a valid identifier. |
+| `fields_wrong_type` | Tahle hodnota má být jiného typu. | This value is of the wrong type. |
+| `fields_too_long` | Nejvíc {max} znaků. | {max} characters at most. |
+| `fields_too_short` | Nejmíň {min} znaků. | {min} characters at least. |
+| `fields_too_large` | Nejvíc {max}. | {max} at most. |
+| `fields_too_small` | Nejmíň {min}. | {min} at least. |
+| `fields_bounds_together` | Začátek i konec se zadávají spolu. | Start and end go together. |
+| `fields_date_required_for_duration` | U délky vyplň i den. | A duration needs a day as well. |
+| `fields_unknown` | Tohle pole sem nepatří. | This field does not belong here. |
 
 ### aria_*
 
@@ -1630,4 +1670,4 @@ Labels with no visible text of their own.
 
 **Accessibility checks** — the Playwright suite runs an axe pass on the timer, day, projects and statistics pages in **both themes**, and a keyboard-only walk of the day page that reaches every block, opens a dialog, and completes a save without a pointer.
 
-**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` is the list, so an artboard added later joins the comparison by appearing there. It holds 19 today; **14 are screens and all 14 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. `Demo` and `DemoSideBySide` in particular are **not** geometric references: they shrink the gauge to fit a teaching layout, so their radii, stroke widths and control size do not match the production figures. Read geometry from `GaugeNormal`, `GaugeOverrun` and `GaugeNonstop` only, and read placement from `Main`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.
+**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` is the list, so an artboard added later joins the comparison by appearing there. It holds 20 today; **15 are screens and all 15 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. `Demo` and `DemoSideBySide` in particular are **not** geometric references: they shrink the gauge to fit a teaching layout, so their radii, stroke widths and control size do not match the production figures. Read geometry from `GaugeNormal`, `GaugeOverrun` and `GaugeNonstop` only, and read placement from `Main`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.

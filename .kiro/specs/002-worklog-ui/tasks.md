@@ -52,7 +52,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The focus ring is `0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)`, with `--focus-gap` set per surface — `--bg` on the page, `--dialog` in a dialog, `--panel` in a panel, the block's `--pj-tint` on a `Segment_Block` — so the ring stays visible on accent-filled controls and on tinted blocks
     - Every interactive control gets an activation area of at least 44 × 44 through padding or a transparent `::after`, while its drawn shape stays at the size the design gives it (chip 30, icon buttons 32, day controls and segmented items 34, dialog buttons 42)
     - Author mobile-first with 768 pixels as the single breakpoint
-    - _Requirements: 14.5, 14.7, 14.8, 14.9, 14.12, 17.1, 17.2, 17.3, 17.12_
+    - _Requirements: 14.5, 14.7, 14.8, 14.9, 14.12, 17.1, 17.2, 17.3, 17.15_
 
   - [ ] 1.5 Generate the palette and block-height stylesheets
     - `src/lib/theme/palette.css`: eight classes `pj-0` … `pj-7` per theme, each carrying `--pj` (the slot hex) and `--pj-tint` — the same colour at **0.16 alpha in the dark theme and 0.13 in the light one** — generated from `src/lib/viz/palette.ts` rather than hand-written
@@ -60,20 +60,22 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Generate both files with a script under `scripts/`, **commit them**, and make `bun run check` fail when regenerating produces a diff — committed so a clean checkout renders, generated so the hexes live in one place
     - No `.pj-*` class may reference `--destructive`, and no destructive control may reference a `.pj-*` class — the pink slot and the destructive colour sit close together and must stay separable
     - Distinguish a primary action from `Uncovered_Time` by shape: a filled accent pill or circle against a dashed accent outline on a 6 % accent fill
-    - _Requirements: 11.9, 17.8, 17.9, 17.10, 17.11_
+    - _Requirements: 11.9, 17.11, 17.12, 17.13, 17.14_
 
   - [ ] 1.6 Write `src/app.html` with the server-substituted placeholders
     - Create `src/app.html` with `<html lang="%lang%" data-theme="%theme%">` plus `%sveltekit.head%`, `%sveltekit.body%` and `%sveltekit.nonce%`
     - **`002` writes the placeholders; `001` substitutes all four** in its `transformPageChunk`, from the language and `Theme` its hook resolved out of the cookies. Confirm that contract with `001` before building on it — neither half works alone
-    - The only inline script is one nonced line that handles the single case the server cannot: when the `theme` cookie says `system`, resolve `prefers-color-scheme` and write the result back into the cookie. It runs at most once per browser and sets nothing else
+    - `001` picks `%theme%` from `worklog_theme`, and only when that says `system` from `worklog_theme_resolved`; with neither it renders `DEFAULT_RENDER_THEME` (`dark`)
+    - The only inline script is one nonced line for the case the server cannot know: on a first visit it resolves `prefers-color-scheme`, corrects the attribute and writes `worklog_theme_resolved`. That single correction is the one flash the interface permits, and every later visit is right in the first byte
     - No other inline script and no inline style goes into this file
-    - _Requirements: 1.23, 17.5, 17.7, 17.8, 17.11_
+    - _Requirements: 1.23, 17.5, 17.7, 17.8, 17.9, 17.10, 17.14_
 
   - [ ] 1.7 Implement the theme store
     - `src/lib/theme/theme.svelte.ts` with `ThemePreference` (`system` | `light` | `dark`), `Theme` (`dark` | `light`), `resolveTheme(preference)`, `setThemePreference()` and a `theme` rune exposing both the preference and the resolved theme
-    - Persist the **preference** in the `theme` **cookie** — never `localStorage`, which the server cannot read — defaulting to `system`; while it is `system`, listen to `matchMedia('(prefers-color-scheme: dark)')`, re-resolve without a reload, and write the resolved value back so the next server render is right
+    - **Two cookies, never one.** `worklog_theme` holds the `Theme_Preference` and is written **only** when the user touches the switcher; `worklog_theme_resolved` holds the last resolved `light`/`dark` and is written by the client from `matchMedia('(prefers-color-scheme: dark)')`, and again whenever that query changes. Merging them destroys the preference the first time the client writes
+    - Never `localStorage`: the server cannot read it
     - Writing `data-theme` on `<html>` is the only way a theme is applied
-    - _Requirements: 17.4, 17.5, 17.6_
+    - _Requirements: 17.4, 17.5, 17.6, 17.7, 17.10_
 
   - [ ] 1.8 Build the `Settings_Menu`
     - `src/lib/ui/layout/SettingsMenu.svelte` — one component for both presentations, taking `density`
@@ -88,11 +90,11 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 1.9 Set up Paraglide and the message files
     - `project.inlang/settings.json` with `baseLocale: "en"`, `locales: ["en","cs"]`, `pathPattern: "./messages/{locale}.json"`, the message-format and m-function-matcher plugins
     - Wire `paraglideVitePlugin` into `vite.config.ts` after `tailwindcss()` and `sveltekit()`, compiling into `src/lib/paraglide/`
-    - Resolve the locale **on the server**: `+layout.server.ts` reads the `locale` cookie, falls back to `Accept-Language`, and falls back again to **Czech**, then feeds `%lang%` — Czech is the single fallback in all three places, and `baseLocale: "en"` is only what Paraglide compiles message ids against, never a user-facing default
-    - `src/lib/core/i18n/state.svelte.ts` overrides `getLocale`/`setLocale` over a `$state` rune seeded from the server value; `switchLocale()` writes the `locale` cookie (one year, `SameSite=Lax`, readable by the client), strips the hash with `history.replaceState` and updates `document.documentElement.lang`
+    - **Do not resolve the locale at all.** `001`'s hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech and puts the answer on `locals.locale`, which also fills `%lang%`. `002` seeds its rune from `locals.locale`; put no `Accept-Language` logic in `+layout.server.ts` — Czech is the single fallback in all three places, and `baseLocale: "en"` is only what Paraglide compiles message ids against, never a user-facing default
+    - `src/lib/core/i18n/state.svelte.ts` overrides `getLocale`/`setLocale` over a `$state` rune seeded from `locals.locale`; `switchLocale()` writes the `worklog_locale` cookie (one year, `SameSite=Lax`, readable by the client), strips the hash with `history.replaceState` and updates `document.documentElement.lang`
     - Declare every message that carries a count with plural forms, so Czech selects one / few (2–4) / many (5+) — `2 záznamy` against `5 záznamů`, `část 2 ze 3`, `6 ze 7 dnů`, `Bloky práce 3`. A flat string with the number interpolated is wrong in Czech for most of the values it can take
     - The `Locale_Switcher` indicates the active language and changes it without a reload, without a flash and without losing scroll position
-    - `src/hooks.ts` exporting `reroute` via `deLocalizeUrl`
+    - Create **no** `src/hooks.ts`: there is no `reroute`, no `deLocalizeUrl` and no locale prefix in any URL — the language is a cookie, and a prefix would be a second source of truth
     - Write `messages/cs.json` and `messages/en.json` from the design's **Message Catalogue** — every key it lists, both languages, nothing invented and nothing omitted. A string that is not in the catalogue does not go on screen; if one is missing, add it to the catalogue first
     - Include the three statistics observation keys with both languages exactly as the design's table gives them: `stats_observation_nights` — `Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}.` / `Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}.`; `stats_observation_longest` — `Nejdelší nepřerušený úsek: {duration}, {weekday}.` / `Longest unbroken stretch: {duration}, {weekday}.`; `stats_observation_idle` — `Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}.` / `No work on {idleDays, plural, one {# day} other {# days}}.`
     - Two rules that hold for **every** message, not only those three: a countable noun always goes through a plural form, and **no verb ever follows a number** — Czech verb agreement would then depend on the count as well. Write noun phrases (`Nejdelší nepřerušený úsek: …`), never `Nejdelší úsek trval …`
@@ -107,7 +109,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The active target carries `aria-current`, is full-strength text on the desktop bar and the accent colour on the mobile bar
     - `src/routes/+error.svelte` offers a link back to the timer page; `src/routes/offline/+page.svelte` is reached only when a page `load` fails with `SERVICE_UNAVAILABLE` or no response, carrying `?next=<path>` whose retry returns there. A later failure never navigates — it surfaces in place, so a filled-in dialog is not lost
     - Read `event.locals.today` — the current `Logical_Day` and its bounds, resolved by `001` — in the root `+layout.server.ts` and put it in context. The browser never computes a day boundary, a rollover or a zone conversion of one
-    - Read the `viewport` cookie in the same load and resolve `density` and `availablePx` from it, defaulting to 1440 × 900 (desktop, `availablePx = 712`) when it is absent; on mount, measure and rewrite the cookie **only if it differs**
+    - Read the `worklog_viewport` cookie in the same load and resolve `density` and `availablePx` from it, defaulting to 1440 × 900 (desktop, `availablePx = 712`) when it is absent; on mount, measure and rewrite the cookie **only if it differs**
     - Load the server's `TIMEZONE`, `DAY_START_HOUR`, `Gauge_Window`, `MAX_OPEN_SESSION_HOURS` and `Evening_Hour` from `/api/health` once in the root layout and put them in context — all five are configurable and none may be hard-coded; every wall-clock rendering and parse uses that zone, and the shell says which zone it is when it differs from the device
     - Navigation between pages stays on the client — no full document reload
     - Render every user-supplied value through Svelte's escaping; never `{@html}` a `Project` name or an `Activity_Entry` description
@@ -139,7 +141,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/lib/viz/format.test.ts`: durations in both locales — zero, under a minute, over a day, the mobile short form; `formatDayLabel` says today for the current `Logical_Day`; a time renders in the server zone rather than the device zone
     - `tests/lib/theme/theme.test.ts`: both themes define the same token set with no missing key; dim and faint are 0.62 / 0.50 dark and 0.78 / 0.66 light, and neither pair equals the other; `resolveTheme('system')` follows `prefers-color-scheme` and falls back to `dark`, while `light` and `dark` ignore it
     - `tests/lib/theme/contrast.test.ts`: compute the measured ratio of `--text-dim` and `--text-faint` against `--bg` in both themes and assert each clears 4.5:1 — the check that would have caught dark faint at 3.38:1
-    - `tests/lib/i18n.test.ts`: `cs.json` and `en.json` hold identical key sets; every message carrying a count declares Czech plural forms and renders correctly for 1, 2 and 5; every key `messageKeyFor` can emit exists in both; no `.svelte` file under `src/` carries a user-facing string literal outside a message call; no `.svelte` file uses `{@html}` on a project name or description
+    - `tests/lib/i18n.test.ts`: `cs.json` and `en.json` hold identical key sets and both cover the design's Message Catalogue exactly — no key missing, none invented; every `ErrorCode` from `001` has its base `errors_*` key present, variants included; every message carrying a count declares Czech plural forms and renders correctly for 1, 2 and 5; every key `messageKeyFor` can emit exists in both; no `.svelte` file under `src/` carries a user-facing string literal outside a message call; no `.svelte` file uses `{@html}` on a project name or description
     - `tests/lib/ui/settings-menu.test.ts`: the menu renders the three-way `Theme_Switcher`, the two-way `Locale_Switcher` and exactly one logout control, in that order; Escape closes it and focus returns to the chip; at mobile density a scrim is rendered over the bottom navigation and neither the page content nor the tab bar carries an `opacity`; the timer page renders no `Running_Indicator` while the day page does
     - `tests/lib/csp.test.ts`: no `.svelte` file under `src/` contains a `style=` attribute
     - _Requirements: 1.8, 1.12, 1.15, 1.18, 1.19, 1.20, 1.21, 13.1, 13.2, 13.7, 13.8, 13.9, 13.10, 13.11, 13.12, 14.10, 17.1, 17.3, 17.5, 17.10_
@@ -150,7 +152,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - [ ] 3. Day timeline
   - [ ] 3.1 Implement the day layout in `src/modules/day/components/timeline-geometry.ts`
     - `layOutDay(sessions, entries, uncovered, availablePx, density, now, maxOpenSessionHours)` returns one block per `Work_Session` with its segments, plus the breaks between them
-    - Follow the design's five-step algorithm exactly, because it is normative and the artboard heights are only illustrative: reserve the fixed rows (`BLOCK_HEAD_PX`, `BREAK_MARKER_PX`, `BLOCK_GAP_PX`), distribute the remainder proportionally inside each block, lift anything under `MIN_BLOCK_PX` and repay the deficit from the unpinned segments in descending height order one step at a time, quantise each height **down** to `HEIGHT_STEP_PX` and give each block's remainder to its tallest segment
+    - Follow the design's five-step algorithm exactly, because it is normative and the artboard heights are only illustrative: reserve the fixed rows — `BLOCK_HEAD_PX`, `HEAD_GAP_PX`, `BREAK_MARKER_PX`, `BLOCK_TO_BREAK_PX` **and** `BLOCK_GAP_PX`, since leaving the two gap constants out makes Property 2 false — distribute the remainder proportionally inside each block, lift anything under `MIN_BLOCK_PX` and repay the deficit from the unpinned segments in descending height order one step at a time, quantise each height **down** to `HEIGHT_STEP_PX` inside `layOutDay` and give each block's remainder to that block's tallest segment. Quantise in this one place only — the component reads `heightPx` and picks a class, it does not round
     - `availablePx` comes from the server's `viewport` cookie on first render and from the client's own measurement afterwards — a budget, not a limit: when every segment is pinned and the total still exceeds it, return the larger total and let the page scroll
     - Set `showsDescription` true only at desktop density and at 60 pixels or more; mobile never shows a description at any height
     - Produce no block for an uncovered stretch shorter than `MIN_UNCOVERED_SECONDS`, leaving it as unclaimed space inside its `Work_Block` while every total still counts it
@@ -189,7 +191,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Render the blocks and `Break_Marker` rows in chronological DOM order from `layOutDay`; every block is a `<button>` with an `aria-label` carrying its times, project, description and part counter
     - Props carry `density`, not `orientation` — the timeline is vertical at every width and differs only in density; there is no `compact` variant and no `bounds` prop
     - An `Open_Session` is drawn continuing to now and marked as running; a `Stale_Session` block additionally states that the timer is running but no longer counting; a session continuing past the day is marked as continuing and its true end is named in the head
-    - Activation is emitted, not handled: `onActivityActivate` from a `SegmentBlock`, `onSessionActivate` from a block head or the rail's middle, `onSessionEdgeActivate` with `'start' | 'end'` from a rail edge, `onUncoveredActivate` from an uncovered stretch carrying that exact interval. The day page opens the dialogs in tasks 5.5 and 5.6, so the timeline never depends on a component built later
+    - Props are `density` and four callbacks — there is no `editable` and no `onSessionResize`, both leftovers of the dropped drag. Activation is emitted, not handled: `onActivityActivate` from a `SegmentBlock`, `onSessionActivate` from a block head or the rail's middle, `onSessionEdgeActivate` with `'start' | 'end'` from a rail edge, `onUncoveredActivate` from an uncovered stretch carrying that exact interval. The day page opens the dialogs in tasks 5.5 and 5.6, so the timeline never depends on a component built later
     - Hover or focus on a block reveals its times, project and description; keyboard focus moves between blocks in chronological order
     - An empty `Logical_Day` renders an empty state inviting the user to start the timer
     - Measure the column height and pass it as `availablePx`, recomputing on resize; when the layout exceeds it the column scrolls rather than compressing a block below the floor. The mobile artboard's `overflow: hidden` is a drawing convenience, not the contract
@@ -256,7 +258,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.15, 6.16, 6.19, 7.3, 14.15_
 
   - [ ] 5.5 Implement activity create, edit and delete actions
-    - Form actions in `src/modules/day/actions.ts`, delegated to from `src/routes/day/[date]/+page.server.ts`, using `superValidate` with the shared Zod schemas and returning message keys rather than prose
+    - Form actions **in `src/routes/day/[date]/+page.server.ts` itself**, using `superValidate` with the shared Zod schemas and returning message keys rather than prose. Create no `src/modules/day/actions.ts`: only `+page.server.ts` and `+server.ts` may import `lib/server/**`, and the boundary test enforces exactly that
     - Each action validates, then calls the matching `src/lib/server/services/` function `001` declares — `createActivity`, `patchActivity`, `deleteActivity`, `createSession`, `patchSession`, `deleteSession` — and maps a thrown `ApiError` to its message key. **Write no orchestration here:** the transaction, the clipping, the re-clipping, the `Idempotency-Key` and the `Preview_Token` check all live in the service, which is the same function `routes/api/**` calls
     - The day page offers the action that opens the dialog for a new entry — the desktop button and the mobile `Fab`
     - A metadata-only edit saves without a preview; a change to the interval or duration goes through `Change_Preview` first; an entry opened for editing is prefilled with its current values
@@ -275,12 +277,13 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 5.7 Wire the session rail edges to the dialog
     - **Implement no dragging.** A block's height is proportional only within its block and every segment is clamped at `MIN_BLOCK_PX`, so the axis is non-linear the moment anything is pinned and no pixel-to-minute mapping exists that would not misreport the time being set
     - The rail's top and bottom 12 pixels are their own buttons: activating one opens the `Session_Dialog` with that end's field focused and its content selected. The rail's middle opens the same dialog with neither field focused
+    - **Below a block height of 60 pixels render no edges at all** — the rail becomes one target. Three stacked targets inside 36 pixels cannot be hit reliably, and the dialog is still one activation away on the block. The edges take the same activation-area exception as a `Segment_Block`
     - Every boundary change therefore passes through a field and a `Change_Preview`
     - _Requirements: 8.7, 8.8_
 
   - [ ] 5.8 Build the `Quick_Log` control
     - The 50 pixel pill on the timer page posts in `Open_Mode` with only the `projectId` — the server resolves the start from the `Placement_Anchor` and the end from now
-    - Take the project **and** the interval from `DayResponse.quickLog`, which the server resolved; name both on the pill so a one-tap log is never blind. Compute neither in the browser, and issue no extra request for them
+    - Take `projectId`, `projectName`, `colorIndex` **and** the interval from `DayResponse.quickLog`, all resolved by the server; name the project and the interval on the pill. Never call `/api/activities` to work out a recent project, and never derive the interval
     - WHEN `quickLog` is `null` — nothing to log, or no project exists at all — the pill posts nothing: with no project it opens the `Activity_Dialog` in `Open_Mode` focused on the `Project_Picker`, and otherwise it is disabled with the reason shown
     - Display the interval the control expects from the already-loaded day data, labelled as what the server will use rather than as an input, with the outstanding `Uncovered_Time` beside it on desktop
     - Offer opening the full `Activity_Dialog` instead — the same `Open_Mode` request with a description and a project picker attached — and surface `NOTHING_TO_LOG` and `NO_PLACEMENT_ANCHOR` as plain explanations
@@ -340,13 +343,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 6.7 Build `TimerControl` and the timer page
     - A single start action when no `Open_Session` exists and a single stop action when one does, both form actions with `use:enhance` applying the change optimistically and rolling back with the reason on failure; reachable by tab and activated by both Enter and Space
     - The page lives at the root path `/`, so opening the application lands on the timer
-    - Lay the page out in the artboard's order: hero elapsed above the circle, the `běží od …` caption, the `Day_Gauge` with the control at its exact centre, the three figures, the `Quick_Log` pill, the `Project_Legend`
+    - Lay the page out in the artboard's order: hero figure above the circle, its caption, the `Day_Gauge` with the control at its exact centre, the three figures, the `Quick_Log` pill, the `Project_Legend`
+    - **Two states, one layout.** Running: the hero is the session's elapsed time via `formatClock`, captioned `timer_running_since`. Stopped: the hero is the day's `Tracked_Time` via `formatDuration` in the same face, captioned `timer_stopped_at` — or `timer_idle_caption` on a day with no session — and the centre control shows the start icon. The gauge draws the day's arcs identically either way; `GaugeNormal` is the resting reference, and the application spends most of the day in this state
     - The three figures are `Tracked_Time`, `Covered_Time` and `Uncovered_Time` in that order, 26/300 tabular under caps labels, the third in the accent; mobile drops to 19/300 with shortened labels
     - `ProjectLegend` names every project drawn on the gauge beside its swatch, taking each colour from the `colorIndex` the day payload carries, and closes with a dashed entry for `Uncovered_Time`. It is the gauge's text alternative for project identity, so it is not optional
     - The timer page carries **no** `Running_Indicator`: the hero readout is already the elapsed time
     - A `Stale_Session` shows the notice above the hero: a `--panel` box with the accent border, a 15 pixel warning icon, the explanation at 13 `--text-dim`, a 44 pixel time field prefilled with `startedAt + MAX_OPEN_SESSION_HOURS`, and one 42 pixel accent pill that stops the session at that time — no dismiss action
     - A start refused for an existing or overlapping session explains which session is in the way
-    - _Requirements: 1.8, 1.9, 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.13, 3.14, 3.15, 3.16, 3.17, 10.6, 11.9, 16.13, 16.14_
+    - _Requirements: 1.8, 1.9, 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.13, 3.14, 3.15, 3.16, 3.17, 3.19, 3.20, 10.6, 11.9, 16.13, 16.14_
 
   - [ ] 6.8 Implement the tab title
     - While an `Open_Session` exists, write the running elapsed time into `document.title` from the same store that feeds the on-screen readout, so the two cannot disagree
@@ -359,7 +363,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
 - [ ] 7. Projects
   - [ ] 7.1 Build the projects page
-    - List every `Project` with its total `Covered_Time` over the last thirty `Logical_Day` values — summed in `query.ts` from the per-project totals of `GET /api/days` over that range, not from a separate endpoint — its swatch beside the name in a 32 pixel tinted icon box, and a share bar; content max 940
+    - List every `Project` with its total `Covered_Time` over the last thirty `Logical_Day` values — summed in `src/routes/projects/+page.server.ts` from the store's day summaries over that range, not from a second endpoint — its swatch beside the name in a 32 pixel tinted icon box, and a share bar; content max 940
     - Draw each row's bar as that project's **share of the range's total** `Covered_Time`, the same quantity the statistics breakdown uses, not relative to the largest project as the artboard drew it
     - Drop the artboard's `naposledy dnes 01:30` line: no criterion asks for it and no endpoint returns a last-used timestamp
     - Leave the delete control **enabled** on every project: the list carries no reference count to disable it from, and a disabled button explains nothing. Let the attempt run and explain `PROJECT_IN_USE` when it comes back, which is what the criterion asks for anyway
@@ -384,15 +388,17 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
 - [ ] 8. Statistics
   - [ ] 8.1 Build the statistics queries and range control
-    - `src/modules/stats/query.ts` aggregates from `/api/days` for the selected day, week or month range, requesting `include=intervals` whenever the range is one the `Day_Rhythm_Strip` will be drawn for — the server omits the intervals unless they are asked for
-    - Offer three ranges and no more: day, week, month — each anchored on the current `Logical_Day` from context, the week beginning **Monday**. There is deliberately **no year** — 365 rows of two-pixel marks on the rhythm strip is unreadable, which is the same reason the server caps interval payloads at 62 days
+    - `src/routes/stats/+page.server.ts` reads the day summaries from the store for the selected day, week or month range — **not** through `/api/days`, which exists for scripts — asking for the per-day intervals only when the `Day_Rhythm_Strip` will be drawn
+    - Put the aggregation in `src/modules/stats/aggregate.ts` as pure functions over `DaySummary[]`, importing nothing from `lib/server/`; the load function passes data in
+    - Offer three ranges and no more: day, week, month — each anchored on the current `Logical_Day` from context, the week beginning **Monday**
+    - For a **one-day** range render neither the `Day_Rhythm_Strip` nor `RhythmPanel`, and lay the page out in one column of `KPI_Row` and breakdown: a one-row strip says nothing the day page does not, and every rhythm figure compares days that are not in the range. There is deliberately **no year** — 365 rows of two-pixel marks on the rhythm strip is unreadable, which is the same reason the server caps interval payloads at 62 days
     - Map the response into `StatsRange`, carrying `intervalsIncluded` through to the page: a range wider than `MAX_INTERVAL_RANGE_DAYS` comes back **HTTP 200** with the summaries and without the intervals, and that is a success, never an error path. The interface never asks for such a range, but `/api/days` is also called by scripts and phone shortcuts, and the branch belongs to the route's contract rather than to the caller
     - Read each figure by name — `trackedSeconds`, `coveredSeconds`, `uncoveredSeconds`, `sessionCount`, `longestBlockSeconds`, `overtimeSeconds`, `eveningSeconds`, `byProject[]` — rather than recomputing any of them
     - A segmented control switches the range and the resolved date range is named beside it
     - Fold everything past the top seven projects by `Covered_Time` into an "Other" slot so no chart cycles the palette
     - Include archived projects holding time in the range, so the per-project figures reconcile with the total
     - Offer the server's `suggestedWindow` when it differs from the configured `Gauge_Window` by more than 30 minutes at either end — as the two values to put in the server's `.env` and restart with, never as a control the interface can apply, because the window has no write endpoint
-    - _Requirements: 12.1, 12.14, 12.15, 12.16, 12.19_
+    - _Requirements: 12.1, 12.14, 12.15, 12.16, 12.19, 12.20_
 
   - [ ] 8.2 Build `KpiRow`, `CoverageMeter` and `ProjectBreakdown`
     - `KpiRow` is four panels built from the summaries alone, so it renders whether or not the intervals came back: `Tracked_Time`, `Covered_Time`, the described share as a percentage over a 4 pixel `CoverageMeter`, and the range's `Overtime` with its share of `Tracked_Time` beneath it — the artboard's fourth card carried the `Evening_Hour` figure, which moves to the rhythm panel
@@ -438,6 +444,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 9.2 Implement result and error feedback
     - Toasts: bottom centre on mobile, bottom right on desktop, `--dialog` at radius 14 with the dialog shadow, `padding: 12px 16px`, 13.5 text, a 15 pixel leading icon, `max-width: 420`. A success dismisses itself after about four seconds; a failure carries an accent text action and stays until dismissed — a message the user never saw is the same as no message
     - Confirmation dialogs: the dialog shell at `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, and for a destructive confirmation a filled `--destructive` pill rather than an accent one. Never a bare "are you sure"
+    - A field-level rejection renders the key from `details.fields[name]` beneath the field at 12 px in `--destructive`, with the field taking `inset 0 0 0 1px var(--destructive)` and keeping its value. **Never render the validator's English sentence** — the schema is shared with a REST API whose prose is deliberately English
     - A success confirms briefly without demanding dismissal; a failure shows the reason and keeps the input intact
     - An overlap conflict names the conflicting records and offers to open one
     - A write reporting discarded or unplaced time is never presented as an unqualified success — the confirmation names what did not fit
@@ -446,7 +453,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Three codes carry a field that changes the sentence — `NOTHING_TO_LOG.reason`, `RATE_LIMITED.scope`, `SESSION_OVERLAP` on the open session — and each has its own catalogue key; read the field and pick, never compose
     - On `UNAUTHORIZED` from a browser-issued request, navigate to `/login?next=<path>&reason=session_expired`
     - `src/hooks.client.ts` sends an uncaught client error to the same surface as a failed request rather than leaving a blank page
-    - _Requirements: 2.6, 13.11, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.11_
+    - _Requirements: 2.6, 13.11, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9, 15.11, 15.12_
 
 - [ ] 10. Checkpoint — the interface is complete
   - Run `bun run check && bun run test` and walk the whole application by hand on a desktop and at a 375 pixel width, in both themes
@@ -481,12 +488,12 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 14.1, 14.5, 14.10, 14.11_
 
   - [ ] 11.6 Run the visual conformance pass
-    - `canvas.json` is the list — an artboard added later joins the comparison by being in it. It holds **19** today: **14** are screens and every one is compared, at its own frame size, against the matching PNG in `.design/screens/`: `Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsMobile`
+    - `canvas.json` is the list — an artboard added later joins the comparison by being in it. It holds **20** today: **15** are screens and every one is compared, at its own frame size, against the matching PNG in `.design/screens/`: `Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`
     - The other **5** — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge rather than showing a screen and are not compared
     - Compare arrangement, relative proportion and palette against `.design/screens/`. **Exact pixel heights are not compared** — the artboard's block heights illustrate the layout algorithm, and the algorithm in the design is what is normative. Copy and example data are not compared either
     - This pass is not optional: nine surfaces are specified in the design's tokens rather than drawn as artboards — confirmation dialogs, toasts, empty states, skeletons, the login, error and offline pages, the timezone notice and the focus ring — and this is the only check that looks at them at all
     - Record any deviation as a defect against this spec or against the `Design_Contract`, never as a local decision
-    - _Requirements: 14.7, 17.14_
+    - _Requirements: 14.7, 17.16_
 
 - [ ] 12. Checkpoint — ready to use
   - Run `bun run test:all`, then use the application for one real working day and fix whatever gets in the way
@@ -526,8 +533,9 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - **Reads are load functions, writes are form actions.** `fetch` is only for the `Dry_Run`, the timer refresh and inline project creation. Keep it that way — form actions are what give field-level errors and preserved input for free through superforms.
 - **No second Zod schema.** Form actions import from `src/lib/contracts/schemas.ts`, which `001` owns and keeps outside `src/lib/server/` so superforms can validate in the browser from the same definition. No `src/modules/*/schema.ts` is created and that file is never edited here.
 - **File ownership.** `002` owns `src/app.html` including the `%sveltekit.nonce%` placeholder and the pre-paint theme script, `src/hooks.client.ts`, and the `.svelte` halves of the login and logout routes. `001` owns `src/hooks.server.ts`, `src/lib/contracts/schemas.ts` and the `+page.server.ts` halves of login and logout. Neither spec edits the other's half.
-- **Nothing that decides the first paint lives in `localStorage`.** The `Theme_Preference`, the locale and the viewport are cookies, because the server has to read them: it renders `<html lang>` and `data-theme` itself and it resolves the timeline's density and budget. `localStorage` cannot be read by the server, and a pre-paint script cannot repaint SVG attributes, so the gauge would flash colours even if the page did not.
-- **`002` writes the `%lang%` and `%theme%` placeholders; `001` substitutes them.** Same mechanism as `%sveltekit.nonce%`, same split of ownership: the file is `002`'s, the hook is `001`'s.
+- **Nothing that decides the first paint lives in `localStorage`.** `worklog_theme` (the preference, written only by the switcher), `worklog_theme_resolved` (the client's resolved value), `worklog_locale` and `worklog_viewport` are cookies, because the server has to read them: it renders `<html lang>` and `data-theme` itself and it resolves the timeline's density and budget. `localStorage` cannot be read by the server, and a pre-paint script cannot repaint SVG attributes, so the gauge would flash colours even if the page did not.
+- **`002` writes the `%lang%` and `%theme%` placeholders; `001` substitutes them.** Same mechanism as `%sveltekit.nonce%`, same split of ownership: the file is `002`'s, the hook is `001`'s. **The language is resolved only by `001`** — cookie, `Accept-Language`, Czech — and `002` reads `locals.locale`. Two negotiations would disagree, and the one filling `lang` would not be `002`'s.
+- **Pages read the server layer directly.** `+page.server.ts` calls the store; `/api` is for scripts and phone shortcuts. Reading your own REST route from a load function serialises everything twice and forces `Date` revival for nothing. This is also why there is no `modules/*/query.ts` and no `modules/*/actions.ts`: only `+page.server.ts` and `+server.ts` may import `lib/server/**`, and the boundary test enforces it.
 - **The font is self-hosted.** Four `woff2` faces in `static/fonts/` with `font-display: swap`. The artboards link Google Fonts because they are file:// previews; production cannot, because the CSP has no third-party host and would leave the entire type scale on `system-ui`.
 - **No dragging on the timeline, ever.** The axis is non-linear as soon as a segment is pinned at `MIN_BLOCK_PX`, so a drag would report a time it is not setting. Rail edges open the dialog with that field focused instead.
 - **Interaction states come from one rule, not from thirty drawings.** Hover +0.03 surface alpha and one text level, active +0.06, disabled `opacity: 0.4`, focus is the ring. On accent-filled controls hover is `--accent-hover`. This is binding precisely because the artboards draw resting states only.

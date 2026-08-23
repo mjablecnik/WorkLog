@@ -7,7 +7,7 @@ disagree, that is a defect to be resolved — not a choice left to whoever is im
 ```
 .design/
 ├── DESIGN.md          this file — the tokens and rules, in prose
-├── artboards/         the approved screens as .dc.html, plus canvas.json
+├── artboards/         21 approved artboards as .dc.html, plus canvas.json
 └── screens/           the same artboards rendered to PNG for at-a-glance comparison
 ```
 
@@ -274,6 +274,13 @@ holding a 16px gear, at the right end of the top bar. It opens a 268px menu anch
 it on desktop, and the same content as a bottom sheet on mobile: a 38×4 grabber, `MOTIV` as
 a three-way segmented control (Systém / Světlý / Tmavý), `JAZYK` as a two-way one
 (Čeština / English), a hairline divider, and `Odhlásit se` in `--destructive`.
+
+`SettingsLight` and `SettingsMobileLight` draw the light halves, so every surface here is
+painted rather than computed: chip `rgba(0,0,0,0.06)`, menu border `rgba(0,0,0,0.08)`, shadow
+`0 18px 44px rgba(43,36,32,0.18)`, group `rgba(0,0,0,0.04)`, active segment
+`rgba(165,82,46,0.14)` — lower than the dark theme's `0.16`, because the light accent is
+darker to begin with — grabber `rgba(0,0,0,0.16)`, divider `rgba(0,0,0,0.07)`, sheet and menu
+surface `#FBF7F1`.
 
 The sheet is modal — the scrim covers the bottom navigation and the sheet sits over it.
 Neither the content nor the tab bar carries its own opacity; the scrim does all the dimming.

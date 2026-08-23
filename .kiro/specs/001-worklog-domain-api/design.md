@@ -72,8 +72,15 @@ sequenceDiagram
         R->>DB: INSERT entry + segments
         R->>DB: ROLLBACK
         R-->>C: 201 + outcome, dryRun: true
-    else committed write
-        R->>DB: INSERT entry + segments (+ sessions when policy=extend)
+    else committed write, policy=extend
+        R->>DB: INSERT the extending Work_Session FIRST
+        R->>DB: reclipAffected(union of old and new tracked)
+        R->>CL: clip again, against the coverage that leaves
+        R->>DB: INSERT entry + segments
+        R->>DB: COMMIT
+        R-->>C: 201 + entry, segments, discarded, unplaced
+    else committed write, policy=clip or reject
+        R->>DB: INSERT entry + segments
         R->>DB: COMMIT
         R-->>C: 201 + entry, segments, discarded, unplaced
     end
@@ -173,7 +180,7 @@ worklog/
 │   ├── build.sh  start-docker.sh  stop-docker.sh  deploy.sh
 │   └── test-e2e.sh
 ├── src/
-│   ├── app.d.ts                          # 001: App.Locals — requestId, auth, cspNonce
+│   ├── app.d.ts                          # 001: App.Locals — requestId, auth, today, …
 │   ├── app.html                          # 002 owns it; 001 substitutes %lang%/%theme%
 │   ├── hooks.server.ts                   # 001: sequence of handles
 │   ├── db/schema/                        # 001: Drizzle table definitions
@@ -184,6 +191,7 @@ worklog/
 │   │   ├── auth-sessions.ts
 │   │   └── index.ts                      # barrel
 │   ├── lib/contracts/                    # 001: browser-safe — types and schemas, no runtime
+│   │   ├── constants.ts                  # MAX_RANGE_DAYS, ACTIVITY_PAGE_SIZE, … pure data
 │   │   ├── models.ts                     # Interval, WorkSession, Project, ActivityEntry, …
 │   │   ├── responses.ts                  # DayResponse, DaySummary, HealthResponse, …
 │   │   └── schemas.ts                    # Zod request schemas
@@ -205,7 +213,8 @@ worklog/
 │   │   │   ├── config.ts                 # env validation, fail fast
 │   │   │   ├── errors.ts                 # ApiError, error codes, json helper
 │   │   │   ├── auth.ts                   # passphrase, token minting, cookie options
-│   │   │   ├── security-headers.ts       # CSP nonce and the header set
+│   │   │   ├── security-headers.ts       # the headers kit.csp does not set; %lang%/%theme%
+│   │   │   ├── preview-token.ts          # the Dry_Run row fingerprint
 │   │   │   ├── rate-limit.ts
 │   │   │   ├── logger.ts
 │   │   │   └── request-id.ts
@@ -260,7 +269,7 @@ worklog/
 
 | Module | May import | Must never import | Owner |
 |---|---|---|---|
-| `lib/contracts` | `zod` — nothing else | anything under `lib/server`, `$env`, `$app`, Drizzle, SvelteKit | 001 |
+| `lib/contracts` | `zod`, and its own pure constants | anything under `lib/server`, `$env`, `$app`, Drizzle, SvelteKit | 001 |
 | `lib/server/domain` | `contracts`, `@date-fns/tz`, standard library | anything under `store`, `core`, `$env`, `$app`, Drizzle, SvelteKit | 001 |
 | `lib/server/core` | standard library, `$env`, `contracts` | `domain`, `store`, `routes` | 001 |
 | `lib/server/store` | `domain`, `core`, `contracts`, Drizzle, `$db` | anything under `routes`, `services` | 001 |
@@ -269,9 +278,11 @@ worklog/
 | `routes/login`, `routes/logout` | all of the above | — | `+page.server.ts` 001, `+page.svelte` 002 |
 | `lib/ui`, `modules`, `app.html`, the remaining routes | `contracts`, and each other; a `+page.server.ts` or a `modules/*/actions.ts` may additionally import `lib/server/services` | anything else under `lib/server` — `domain`, `store`, `core` | 002 |
 
-`lib/contracts` holds **types as well as schemas**, and that is why it exists. `002`'s components are typed in terms of `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project`; if those live under `lib/server/domain` then nothing in `lib/ui`, `modules` or a route may import them and the interface has nothing to compile against — while duplicating them in `002` guarantees the two drift. So the domain types and every response shape are declared here, `lib/server/domain` imports them like everyone else, and the file stays free of anything that cannot be shipped to a browser: no database, no `$env`, no `$app`, no Drizzle, no SvelteKit.
+`lib/contracts` holds **pure constants and types as well as schemas**, and that is why it exists. A schema needs its own limits — `listActivitiesQuery` caps `limit` at `ACTIVITY_PAGE_SIZE` — so a constant a schema uses must live where the schema does. Those constants are therefore declared here and `core/config.ts` **imports** them rather than declaring a second copy; the rule is that `lib/contracts` may hold values that are pure data, never anything that reads the environment or the database.
 
-The server layers are strictly ordered — `domain` → `core` → `store` → `services` → `routes` — and each may import only to its left. `lib/contracts` sits beside them and below everything: it may be imported by any layer and by the browser, and it imports nothing but Zod. Task 10.1 enforces exactly this table, including that no file under `lib/contracts` reaches into `lib/server`.
+ `002`'s components are typed in terms of `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project`; if those live under `lib/server/domain` then nothing in `lib/ui`, `modules` or a route may import them and the interface has nothing to compile against — while duplicating them in `002` guarantees the two drift. So the domain types and every response shape are declared here, `lib/server/domain` imports them like everyone else, and the file stays free of anything that cannot be shipped to a browser: no database, no `$env`, no `$app`, no Drizzle, no SvelteKit.
+
+**The table above is the rule, and nothing else is.** The server layers do happen to run `domain` → `core` → `store` → `services` → `routes`, but "each may import only to its left" is a summary that is *false* of `lib/contracts`: it sits below all of them, is imported by every layer and by the browser, and itself imports nothing but Zod and its own pure constants. Where a summary and the table disagree, the table wins. Task 10.1 enforces the table cell by cell, including that no file under `lib/contracts` reaches into `lib/server`.
 
 **`services` is the one body of every write, and both entry points call it.** A service
 function takes plain arguments and a `now`, opens its own `withTx`, and returns a
@@ -713,8 +724,16 @@ export function entriesOverlapping(tx: Tx, window: Interval): Promise<ActivityEn
  */
 export function orphanedEntriesOverlapping(tx: Tx, window: Interval): Promise<ActivityEntry[]>;
 
-/** Entry ids referencing a project, for the PROJECT_IN_USE details (Requirement 3.7). */
-export function entryIdsForProject(tx: Tx, projectId: string): Promise<string[]>;
+/**
+ * The entries blocking a project delete, for the PROJECT_IN_USE details (Requirement
+ * 3.7): the total count, plus up to ERROR_DETAIL_SAMPLE_SIZE of them carrying the
+ * description and requested interval the error promises. Ids alone would force the
+ * client to fetch them back to write its sentence.
+ */
+export function entriesBlockingProject(tx: Tx, projectId: string, limit: number): Promise<{
+  count: number;
+  sample: { entryId: string; description: string; requestedStartedAt: Date; requestedEndedAt: Date }[];
+}>;
 
 // aggregates.ts — SQL aggregation, because /api/days must not load a year into memory
 /**
@@ -878,7 +897,8 @@ condition means "answers 503 until it passes".
 interface Locals {
   requestId: string;
   auth: AuthResult;
-  cspNonce: string;
+  // No cspNonce: kit.csp owns the nonce and nothing here ever holds one. An
+  // always-undefined field is worse than an absent one — someone will build on it.
   /** Today as a Logical_Day, and its bounds. Requirement 10.17. */
   today: { date: string; bounds: Interval };
   locale: 'cs' | 'en';
@@ -1292,7 +1312,17 @@ export const coverageQuery = z.object({
   from: isoOffset.optional(),
   to: isoOffset.optional(),
   min_gap_seconds: z.coerce.number().int().min(0).default(0)   // Requirement 9.9
-}).strict();
+}).strict()
+  .refine(v => (v.from === undefined) === (v.to === undefined),
+          { message: 'from and to must be supplied together' });
+
+/**
+ * `from` and `to` travel together on EVERY range route — `/api/sessions`, `/api/activities`,
+ * `/api/days` and `/api/coverage` alike (Requirement 10.18). Sending one alone is a
+ * `VALIDATION_ERROR`, not a half-open range and not a silent fall back to the default day:
+ * "from yesterday" with no `to` reads as "since yesterday" to one implementer and "that
+ * one day" to another, and the caller can always state both.
+ */
 
 export type ActivityResponse = {
   entry: ActivityEntry;                 // includes its segments and `orphaned`
@@ -1561,7 +1591,22 @@ export type Config = {
   trustedProxyHops: number;     // TRUSTED_PROXY_HOPS, default 0, 0..8 — Requirement 13.23
   logLevel: 'debug' | 'info' | 'warn' | 'error';   // LOG_LEVEL, default info — Req 13.26
   dbPoolMax: number;            // DB_POOL_MAX, default 10, 1..100 — Requirement 13.27
-  appEnv: 'development' | 'production';   // APP_ENV, default production
+  appEnv: 'development' | 'test' | 'production';   // APP_ENV, default production
+  /**
+   * PUBLIC_ORIGIN, e.g. `https://worklog.fly.dev`. Required in production. Behind Fly's
+   * TLS-terminating proxy `adapter-node` sees a plain-HTTP request on an internal host,
+   * so `url.origin` becomes `http://localhost:3000` unless it is told otherwise — and
+   * both the cross-origin check of Requirement 11.18 and SvelteKit's own form-action
+   * CSRF protection compare against that value, so login silently stops working.
+   *
+   * It is set as the `ORIGIN` environment variable for `adapter-node` from this one
+   * value at startup. `PROTOCOL_HEADER=x-forwarded-proto` and `HOST_HEADER=x-forwarded-host`
+   * are the alternative and are NOT used: they trust caller-supplied headers, which is
+   * only safe with a proxy that overwrites them, and one fixed origin is both safer and
+   * easier to reason about. `TRUSTED_PROXY_HOPS` is a separate concern — it governs the
+   * client address for rate limiting, not the server's own identity.
+   */
+  publicOrigin: string;
   dbQueryTimeoutMs: number;     // DB_QUERY_TIMEOUT_SECONDS, default 5, 1..60
   rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120, 1..10000 — Req 13.21
   sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720, 1..8760 — Req 13.20
@@ -1573,15 +1618,21 @@ export type Config = {
 
 ### Fixed Constants
 
+Three of them — `MAX_RANGE_DAYS`, `MAX_INTERVAL_RANGE_DAYS` and `ACTIVITY_PAGE_SIZE` — are
+declared in **`src/lib/contracts/constants.ts`**, because the request schemas that live
+beside them need their values and `lib/contracts` may not import from `lib/server`. This
+file imports those three and declares the rest; nothing declares any of them twice.
+
 Every `Fixed_Constant` the specification names, with its value. They are constants rather
 than `Config` fields because no deployment has a reason to move them, and a magic number
 repeated across three routes drifts. Each is declared **here and nowhere else** — `tx.ts`
 imports the advisory lock from this file rather than declaring its own copy.
 
 ```ts
-export const MAX_RANGE_DAYS = 366;              // any queried range — Req 2.4, 7.5, 8.10, 9.6
-export const MAX_INTERVAL_RANGE_DAYS = 62;      // a range that may carry intervals — Req 8.18
-export const ACTIVITY_PAGE_SIZE = 200;          // entries per page — Requirement 7.13
+export { MAX_RANGE_DAYS, MAX_INTERVAL_RANGE_DAYS, ACTIVITY_PAGE_SIZE } from '$lib/contracts/constants';
+// MAX_RANGE_DAYS 366              — any queried range, Req 2.4, 7.5, 8.10, 9.6
+// MAX_INTERVAL_RANGE_DAYS 62      — a range that may also carry intervals, Req 8.18
+// ACTIVITY_PAGE_SIZE 200          — entries per page, Requirement 7.13
 export const ERROR_DETAIL_SAMPLE_SIZE = 10;     // conflicting records named in details — Req 3.7
 export const FUTURE_TOLERANCE_SECONDS = 300;    // clock skew allowance — Req 1.13, 4.10
 export const SUGGESTED_WINDOW_COVERAGE = 0.9;   // share the suggestion must cover — Req 8.13
@@ -1652,7 +1703,10 @@ export type Project = {
   name: string;
   colorIndex: number;           // 0..7, see 002-worklog-ui
   archivedAt: Date | null;
+  /** `archivedAt !== null`, sent so no caller has to derive the flag it filters on. */
+  archived: boolean;
   createdAt: Date;
+  updatedAt: Date;              // Requirement 13.7 — the column exists, so it is returned
 };
 
 export type ActivityMode = 'explicit' | 'duration' | 'open';
@@ -1849,9 +1903,11 @@ CREATE TABLE idempotency_keys (
     key            text PRIMARY KEY,
     entry_id       uuid REFERENCES activity_entries (id) ON DELETE SET NULL,
     status         smallint NOT NULL,
-    -- sha256 of the canonical request body, so replaying a DIFFERENT request under the
-    -- same key is caught (409 IDEMPOTENCY_KEY_REUSED, Requirement 12.23) rather than
-    -- answered with the first request's result.
+    -- sha256, lowercase hex, of the CANONICAL request body: the object as Zod parsed it
+    -- (defaults applied), re-serialised with JSON.stringify over keys sorted ascending.
+    -- Deliberately not the raw bytes — a retry differing only in whitespace or key order
+    -- is the same request and must replay. Catches replaying a genuinely different body
+    -- under the same key (409 IDEMPOTENCY_KEY_REUSED, Requirement 12.23).
     request_hash   text NOT NULL,
     response       jsonb NOT NULL,
     created_at     timestamptz NOT NULL DEFAULT now(),
