@@ -1314,6 +1314,19 @@ export const daysQuery = z.object({
   include: z.literal('intervals').optional()   // the only accepted value; anything else 400
 }).strict();
 
+/** GET /api/sessions — Requirements 2.2, 2.3, 2.4. */
+export const listSessionsQuery = z.object({
+  from: isoOffset.optional(),
+  to: isoOffset.optional()
+}).strict()
+  .refine(v => (v.from === undefined) === (v.to === undefined),
+          { message: 'from and to must be supplied together' });
+
+/** GET /api/projects — Requirements 3.4, 3.5. */
+export const listProjectsQuery = z.object({
+  include_archived: z.enum(['true', 'false']).default('false')
+}).strict();
+
 export const coverageQuery = z.object({
   from: isoOffset.optional(),
   to: isoOffset.optional(),
@@ -1403,6 +1416,16 @@ export type ActivityListResponse = {
   entries: ActivityEntry[];             // at most ACTIVITY_PAGE_SIZE, orphans included
   nextCursor: string | null;            // opaque; null when this is the last page
 };
+
+/**
+ * GET /api/sessions and GET /api/projects. Both are BARE ARRAYS rather than envelopes,
+ * and the difference is not a style choice: neither is paged — a session list is bounded
+ * by MAX_RANGE_DAYS and a project list by how many projects exist — so there is no
+ * cursor to carry and an envelope would wrap nothing. ActivityListResponse is an
+ * envelope only because Requirement 7.13 pages it.
+ */
+export type SessionListResponse = WorkSession[];  // by startedAt ascending (Requirement 2.2)
+export type ProjectListResponse = Project[];      // by name ascending; archived only with include_archived=true
 
 export type CurrentSessionResponse = {
   session: WorkSession | null;          // its own `stale` flag says the same thing

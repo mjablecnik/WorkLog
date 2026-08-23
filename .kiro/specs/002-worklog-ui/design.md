@@ -75,7 +75,7 @@ Two files are split down the middle, and the split is exact:
 
 | File | Owned by | Note |
 |---|---|---|
-| `src/app.html` | **002** | 002 creates the file, including the `%sveltekit.nonce%` placeholder and the pre-paint theme script; 001 only fills the nonce in through `transformPageChunk` |
+| `src/app.html` | **002** | 002 creates the file and writes `<html lang="%lang%" data-theme="%theme%">`, `%sveltekit.head%`, `%sveltekit.body%` and `%sveltekit.nonce%`. 001 substitutes **only** `%lang%` and `%theme%`, through `transformPageChunk`; `%sveltekit.nonce%` is stamped by `kit.csp` and needs no hook |
 | `src/routes/login/+page.server.ts` | 001 | the form action, the passphrase check, the cookie |
 | `src/routes/login/+page.svelte` | **002** | the page that renders it |
 | `src/routes/logout/+page.server.ts` | 001 | ends the stored session |
@@ -100,8 +100,10 @@ Five things the browser must never work out for itself. Each is a field `001` pu
 ```ts
 // additions 002 depends on, in 001's contracts module
 type DayTotals = { …; sessionCount: number; longestBlockSeconds: number; eveningSeconds: number };
-type QuickLogHint = { projectId: string; projectName: string; colorIndex: number;
-                      from: Date; to: Date; seconds: number } | null;   // DayResponse.quickLog
+type QuickLogHint = { start: string; end: string;                       // RFC 3339 UTC, revived on receipt
+                      anchorSource: 'last-segment' | 'first-session';
+                      projectId: string; projectName: string;
+                      colorIndex: number } | null;                      // DayResponse.quickLog
 type ProjectInterval = Interval & { projectId: string; colorIndex: number };
 type Anchor = { at: Date; source: 'explicit' | 'last-segment' | 'first-session' } | null;
 type Today = { date: string; bounds: Interval };                        // event.locals.today
@@ -111,11 +113,11 @@ type Today = { date: string; bounds: Interval };                        // event
 
 ### The Shared Zod Schemas
 
-`001` declares one Zod schema per write and forbids a second copy. `002` therefore has **no `schema.ts` of its own** in any module — form actions import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `deleteSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`.
+`001` declares one Zod schema per write and forbids a second copy. `002` therefore has **no `schema.ts` of its own** in any module — form actions import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`. A delete has no body schema: `deleteSessionQuery` and `deleteActivityQuery` validate the `dry_run` and `preview_token` **query parameters**, so they belong to the dry-run client rather than to superforms.
 
 That file is owned by `001` and sits deliberately **outside** `src/lib/server/`: it is a pure module importing nothing from `$env`, Drizzle or the server layer, so superforms can import it in the browser for the validation Requirement 6.10 asks for. `002` imports from it and never edits it.
 
-The same applies to the **domain types**. Every component signature in this document is written in terms of `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment`, `Project`, `DaySummary` and `DayResponse`; those types are declared by `001` in `src/lib/contracts/models.ts`, beside the schemas and equally client-safe, and `002` imports them from there. A type under `src/lib/server/` cannot be imported by a `.svelte` file at all, so this is a build requirement rather than a preference.
+The same applies to the **domain types**. Every component signature in this document is written in terms of `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project`, which `001` declares in `src/lib/contracts/models.ts`, and of `DaySummary`, `DayResponse`, `DaysRangeResponse`, `CoverageResponse`, `ActivityResponse`, `ActivityListResponse`, `SessionChangePreview`, `CurrentSessionResponse` and `HealthResponse`, which `001` declares beside them in `src/lib/contracts/responses.ts` — models and responses are two files, and a component that draws a day imports from both. Both are equally client-safe. A type under `src/lib/server/` cannot be imported by a `.svelte` file at all, so this is a build requirement rather than a preference.
 
 ### The Two Dialog Flows
 
@@ -1035,7 +1037,7 @@ type EntryMode = 'explicit' | 'duration' | 'open';
 
 The mode switch is a segmented control with **three** items, all first class: `Přesně od–do` (`Explicit_Mode`), `Jen délka` (`Duration_Mode`) and `Od posledního` (`Open_Mode`). In `Duration_Mode` and `Open_Mode` with no start given, the dialog shows the `Placement_Anchor` **the `Dry_Run` returned**, labelled as an inference rather than as an input. It is not computed in the browser: the anchor is a reconciliation rule, the preview already runs on every field change, and a second implementation of that rule would drift from the server exactly like a second implementation of clipping. In `Open_Mode` neither an end nor a duration is offered at all: the request carries the project, the description and the date, and the server resolves the interval.
 
-**Which project `Quick_Log` sends.** `projectId` is required by the server, and the pill has no picker, so it resolves one before posting: the `Project` of the most recent `Activity_Entry` of the displayed `Logical_Day`; failing that, the most recent of any day, which the day payload's project totals and the projects list together answer; and failing *that* — a database with no project in it at all — the pill does not post. It opens the `Activity_Dialog` in `Open_Mode` with focus on the `Project_Picker`, which is also where the first project gets created. The pill always names the project it will send, so a one-tap log is never a blind one.
+**Which project `Quick_Log` sends.** `projectId` is required by the server, and the pill has no picker — so the pill does not resolve one at all. It sends the project the server named in `DayResponse.quickLog`, which already applies the whole rule: the `Project` of the most recent `Activity_Entry` of the displayed `Logical_Day`, and failing that the most recent of any day. No endpoint exposes a last-used timestamp per project, and the projects list carries none, so this is not a lookup `002` could perform even if it were allowed to. When `quickLog` is `null` — a database with no project in it at all, or a day with no anchor — the pill does not post. It opens the `Activity_Dialog` in `Open_Mode` with focus on the `Project_Picker`, which is also where the first project gets created. The pill always names the project it will send, so a one-tap log is never a blind one.
 
 `Open_Mode` is reachable **from both** the dialog and the `Quick_Log` pill. The pill is the one-tap path for the common case; the dialog's third mode is the same request with a description and a project picker attached. Both post the identical body, so the anchor rule stays in exactly one place — on the server, where a shell script gets the same behaviour.
 
@@ -1130,7 +1132,7 @@ All five components follow the mark specs: 2 px surface gaps between adjacent se
 
 **Language is resolved entirely by `001`.** Its hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech, and puts the answer on `locals.locale` — which is also what fills `%lang%`. `002` reads `locals.locale` and renders it, and runs no negotiation of its own anywhere, `+layout.server.ts` included.
 
-`src/app.html` carries `<html lang="%lang%" data-theme="%theme%">`. `002` owns that file and writes the placeholders; **`001` substitutes them** in its `transformPageChunk`, from the values its hook resolved — the same hook that already fills `%sveltekit.nonce%`. Neither half can do it alone: the file is `002`'s and the hook is `001`'s.
+`src/app.html` carries `<html lang="%lang%" data-theme="%theme%">`. `002` owns that file and writes the placeholders; **`001` substitutes those two** in its `transformPageChunk`, from the values its hook resolved. `%sveltekit.nonce%` is not part of that exchange: SvelteKit's own `kit.csp` fills it, which is exactly why `001`'s design refuses to inject a nonce by hand — a hand-rolled header competing with the framework's is what breaks hydration under a strict policy. Neither half can do the `%lang%`/`%theme%` pair alone: the file is `002`'s and the hook is `001`'s.
 
 There is no `reroute` and no URL locale prefix. The language lives in a cookie; a prefix would be a second source of truth for the same fact.
 

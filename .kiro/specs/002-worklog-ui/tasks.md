@@ -130,8 +130,9 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 11.9, 13.7, 17.11_
 
   - [ ] 1.13 Point the form actions at the shared Zod schemas
-    - Import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `deleteSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`, which `001` owns and places outside `src/lib/server/` precisely so superforms can import it in the browser
-    - Import the domain types the same way — `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment`, `Project`, `DaySummary`, `DayResponse` from `src/lib/contracts/models.ts`. Every component signature in this spec is written in those types, and a type under `src/lib/server/` cannot be imported by a `.svelte` file at all
+    - Import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`, which `001` owns and places outside `src/lib/server/` precisely so superforms can import it in the browser
+    - There is **no** `deleteSessionSchema`. A delete carries its dry-run flags as the `dry_run` and `preview_token` query parameters, validated by `deleteSessionQuery` and `deleteActivityQuery` — used by the dry-run client of task 5.1, not by superforms
+    - Import the domain types the same way — `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project` from `src/lib/contracts/models.ts`, and `DaySummary`, `DayResponse`, `DaysRangeResponse`, `CoverageResponse`, `ActivityResponse`, `ActivityListResponse`, `SessionChangePreview`, `CurrentSessionResponse` and `HealthResponse` from `src/lib/contracts/responses.ts`. `001` splits models from response shapes across two files; both are client-safe, and a type under `src/lib/server/` cannot be imported by a `.svelte` file at all
     - Create no `schema.ts` in any `src/modules/` directory and do not edit `src/lib/contracts/schemas.ts` — it belongs to `001`
     - Feed the same schema to `superValidate` on the server and to the superforms client adapter, so browser and server validation cannot drift
     - _Requirements: 6.10_
@@ -365,14 +366,15 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 7.1 Build the projects page
     - List every `Project` with its total `Covered_Time` over the last thirty `Logical_Day` values — summed in `src/routes/projects/+page.server.ts` from the store's day summaries over that range, not from a second endpoint — its swatch beside the name in a 32 pixel tinted icon box, and a share bar; content max 940
     - Draw each row's bar as that project's **share of the range's total** `Covered_Time`, the same quantity the statistics breakdown uses, not relative to the largest project as the artboard drew it
-    - Drop the artboard's `naposledy dnes 01:30` line: no criterion asks for it and no endpoint returns a last-used timestamp
+    - Drop the artboard's `naposledy dnes 01:30` line: no criterion asks for it, and no endpoint exposes a per-project last-used timestamp. The one cross-day "most recent" answer the server gives is `DayResponse.quickLog.project`, which is about the write the pill would make, not about the row
     - Leave the delete control **enabled** on every project: the list carries no reference count to disable it from, and a disabled button explains nothing. Let the attempt run and explain `PROJECT_IN_USE` when it comes back, which is what the criterion asks for anyway
     - Create by name, rename, archive and unarchive, hiding archived by default
     - A duplicate name differing only in case or surrounding whitespace shows the error beside the field
     - Delete an unreferenced project; a referenced one explains that it is in use and offers archiving instead
     - The colour control lives **inside the row it changes**: activating that row's swatch expands the eight `Palette_Slot` swatches within the row — 38 tall at radius 11, the current one ringed — and choosing one saves and collapses it. The artboard shows the strip as a standalone panel to display all eight at once; a page-level picker could not say which project it meant
     - An empty state covers the case of no projects at all, offering to create the first one
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11, 11.13, 11.14, 15.10_
+    - Below 768 pixels follow the design's *Statistics and Projects, Mobile* section: content padding 16 with no 940 cap, the row on two lines inside `padding: 12px 14px`, a 28 px icon box, and the three row actions behind one 32 px overflow button opening the settings-sheet treatment. Assert no horizontal overflow at 320
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11, 11.13, 11.14, 14.25, 15.10_
 
   - [ ] 7.2 Build the `Project_Picker`
     - `ProjectPicker.svelte` is a combobox over non-archived projects with substring search and keyboard navigation
@@ -500,8 +502,21 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
 ## Task Dependency Graph
 
+**These waves are numbered within this specification and are not absolute.** `002` wave 0
+may begin only once `001` wave 1 has landed `src/lib/contracts/` — tasks 1.12 and 1.13
+import the types and schemas `001` task 1.8 and task 2.7 write. `002` wave 4 may begin
+only once `001` wave 6 has landed the REST routes and the write services: task 1.10 reads
+`/api/health`, and tasks 3.7, 5.5, 5.6 and 8.1 read the day, activity and range routes
+while the form actions call `001`'s services. In a combined run, add 10 to every wave id
+below and interleave with `001`'s graph.
+
 ```json
 {
+  "requires": {
+    "spec": "001-worklog-domain-api",
+    "wave0": "001 wave 1 — src/lib/contracts/",
+    "wave4": "001 wave 6 — REST routes and write services"
+  },
   "waves": [
     { "id": 0, "tasks": ["1.1", "1.2", "1.12", "1.13", "6.1"] },
     { "id": 1, "tasks": ["1.3", "1.4", "1.9", "3.1", "5.1", "6.2", "8.1"] },

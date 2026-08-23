@@ -138,7 +138,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Validates: Requirements 10.5, 10.6**
 
   - [ ] 2.7 Implement the shared types in `src/lib/contracts/models.ts` and `responses.ts`
-    - `Interval`, `WorkSession`, `Project` (carrying `archived` and `updatedAt` beside `archivedAt`), `ActivityEntry`, `ActivitySegment`, `ActivityMode`, `NewActivityEntry`, `ProjectTotal`, `ProjectInterval` in `models.ts`; every response shape — `ActivityResponse`, `ActivityListResponse`, `SessionChangePreview`, `CurrentSessionResponse`, `DaySummary`, `DaysRangeResponse`, `DayResponse`, `CoverageResponse`, `HealthResponse` — in `responses.ts`
+    - `Interval`, `WorkSession`, `Project` (carrying `archived` and `updatedAt` beside `archivedAt`), `ActivityEntry`, `ActivitySegment`, `ActivityMode`, `NewActivityEntry`, `ProjectTotal`, `ProjectInterval` in `models.ts`; every response shape — `ActivityResponse`, `ActivityListResponse`, `SessionListResponse`, `ProjectListResponse`, `SessionChangePreview`, `CurrentSessionResponse`, `DaySummary`, `DaysRangeResponse`, `DayResponse`, `CoverageResponse`, `HealthResponse` — in `responses.ts`
     - **Not under `lib/server/domain/`.** `002` types its components with these, and the Module Boundaries forbid `lib/ui`, `modules` and the routes from importing anything under `lib/server/`; declared there, the interface would have nothing to compile against and would end up with a second copy that drifts. `src/lib/server/domain/interval.ts` imports `Interval` from here and contributes only the algebra
     - Every shape that names a `Project` carries its `colorIndex` as well: `ActivityEntry`, `ProjectTotal`, `ReclipOutcome` and the `ACTIVITY_OVERLAP` conflict details. The timeline, the gauge, the legend, the statistics breakdown and the rhythm strip all colour by project, and none of them may fetch the project list to do it
     - `ActivityEntry` carries a **non-null** resolved requested interval in every mode, the requested duration where one was given, and an `orphaned` flag
@@ -411,7 +411,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 8.1 Implement the session routes
     - `src/routes/api/sessions/{start,stop,current}/+server.ts`, `sessions/+server.ts` (GET list and **POST create closed**), `sessions/[id]/+server.ts`
-    - Validate with `startSessionSchema`, `stopSessionSchema`, `createSessionSchema`, `patchSessionSchema` and `deleteSessionQuery` — **all five carry the dry-run fields**, DELETE taking them as the `dry_run` and `preview_token` **query** parameters because a DELETE body is not reliably transmitted, because start and stop create and modify a `Work_Session` and Requirement 14.2 covers them too
+    - Validate with `startSessionSchema`, `stopSessionSchema`, `createSessionSchema`, `patchSessionSchema` and `deleteSessionQuery` — **all five carry the dry-run fields**, DELETE taking them as the `dry_run` and `preview_token` **query** parameters because a DELETE body is not reliably transmitted, because start and stop create and modify a `Work_Session` and Requirement 14.2 covers them too; the GET listing validates with `listSessionsQuery`
+    - `GET /api/sessions` answers `SessionListResponse` — a bare `WorkSession[]` ordered by start ascending, each carrying its `stale` flag. Not an envelope: the listing is bounded by `MAX_RANGE_DAYS` and is never paged, so there is no cursor to wrap it for
     - Return `SESSION_ALREADY_RUNNING`, `NO_SESSION_RUNNING`, `SESSION_OVERLAP`, `FUTURE_TIMESTAMP` and `INTERVAL_TOO_SHORT` as specified; `current` reports `elapsedSeconds` as the true time since the start, uncapped even for a `Stale_Session`, because the interface shows it as the running clock
     - **`stop` always succeeds.** When the `Open_Session` is shorter than `MIN_INTERVAL_SECONDS`, delete the row instead of closing it and answer 200 saying so — a timer the user started must always be stoppable, and twenty seconds records nothing. The floor rejects *created and modified* sessions, never a stop
     - `current` returns `CurrentSessionResponse` with elapsed seconds and the `stale` flag; every route returning a `WorkSession` carries the same flag on the session itself
@@ -435,7 +436,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - _Requirements: 1.1, 1.2, 1.5, 1.6, 1.8, 1.10, 1.11, 1.13, 1.14, 2.1, 2.5, 2.6, 2.7, 2.8, 2.9, 14.2, 14.5, 14.10_
 
   - [ ] 8.3 Implement the project routes
-    - `src/routes/api/projects/+server.ts` and `projects/[id]/+server.ts` with `createProjectSchema` and `patchProjectSchema`
+    - `src/routes/api/projects/+server.ts` and `projects/[id]/+server.ts` with `createProjectSchema`, `patchProjectSchema` and `listProjectsQuery`
+    - `GET /api/projects` answers `ProjectListResponse` — a bare `Project[]` ordered by name ascending, each carrying its `colorIndex`, archived rows included only with `include_archived=true`. A bare array for the same reason the session listing is one: nothing pages it
     - PATCH accepts name, archived state and `colorIndex`
     - Map store errors to `PROJECT_EXISTS` and `PROJECT_IN_USE`, the latter carrying `Activity_Entry` ids
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11_
