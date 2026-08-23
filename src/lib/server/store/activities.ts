@@ -12,6 +12,7 @@ import type {
 	NewActivityEntry
 } from '$lib/contracts/models';
 import { normalize } from '../domain/interval';
+import { randomUuidV7 } from '../core/uuid';
 import { activityEntries, activitySegments, projects } from '../../../db/schema';
 import type { Tx } from './tx';
 
@@ -103,7 +104,7 @@ export async function createEntry(
 	entry: NewActivityEntry,
 	segments: Interval[]
 ): Promise<ActivityEntry> {
-	const id = Bun.randomUUIDv7();
+	const id = randomUuidV7();
 	const [row] = await tx
 		.insert(activityEntries)
 		.values({
@@ -119,7 +120,7 @@ export async function createEntry(
 	if (segments.length > 0) {
 		await tx.insert(activitySegments).values(
 			segments.map((s) => ({
-				id: Bun.randomUUIDv7(),
+				id: randomUuidV7(),
 				entryId: id,
 				startedAt: s.start,
 				endedAt: s.end
@@ -185,7 +186,7 @@ export async function replaceSegments(
 	if (segments.length > 0) {
 		await tx.insert(activitySegments).values(
 			segments.map((s) => ({
-				id: Bun.randomUUIDv7(),
+				id: randomUuidV7(),
 				entryId,
 				startedAt: s.start,
 				endedAt: s.end

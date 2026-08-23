@@ -28,3 +28,22 @@
   instead of `vitest` directly. A `.sh` file has no Node shebang for Bun to intercept,
   but the PATH shim still needed to be worked around explicitly inside it.
 - Source: impl, 2026-08-23T23:03Z
+
+## Tests now run under real Node — every Bun-only global needs a fallback
+- Project: worklog
+- Problem: The fix above means `bun run test` executes Vitest under real Node, not
+  Bun. Any production code calling a Bun-only global (`Bun.randomUUIDv7()`,
+  `Bun.password.hash`/`verify`) throws `ReferenceError: Bun is not defined` the
+  moment a test exercises that code path — even though the same code runs fine in
+  the actual deployed app (Docker image, `bun run build/index.js`), which always
+  runs under real Bun.
+- Solution: give every Bun-only primitive a thin cross-runtime wrapper in
+  `src/lib/server/core/`: prefer the native Bun API when `typeof Bun !== 'undefined'`,
+  fall back to a Node-compatible implementation otherwise. Done for UUID v7
+  generation (`core/uuid.ts`'s `randomUuidV7()` — RFC 9562 fallback over
+  `crypto.getRandomValues`). Not yet needed for password hashing (task 7.1,
+  `core/auth.ts`) — when that lands, `Bun.password.hash`/`verify` (argon2id) will
+  need the same treatment: real argon2id via Bun in production, a clearly-marked
+  fallback format (never claiming to be `$argon2id$`) for the Node test runtime only,
+  dispatched by the hash's own prefix in `verify`.
+- Source: impl, 2026-08-23T23:07Z

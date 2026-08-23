@@ -20,6 +20,7 @@ import { and, asc, eq, isNull, ne, sql as rawSql } from 'drizzle-orm';
 import type { Project } from '$lib/contracts/models';
 import { apiError, ApiError } from '../core/errors';
 import { ERROR_DETAIL_SAMPLE_SIZE } from '../core/config';
+import { randomUuidV7 } from '../core/uuid';
 import { projects } from '../../../db/schema';
 import { translateConstraintError, type Tx } from './tx';
 import { entriesBlockingProject } from './activities';
@@ -93,7 +94,7 @@ export async function createProject(tx: Tx, name: string): Promise<Project> {
 	try {
 		const [row] = await tx
 			.insert(projects)
-			.values({ id: Bun.randomUUIDv7(), name, colorIndex })
+			.values({ id: randomUuidV7(), name, colorIndex })
 			.returning();
 		return toProject(row);
 	} catch (err) {

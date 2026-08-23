@@ -8,6 +8,7 @@
 import { and, asc, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
 import type { Interval, WorkSession } from '$lib/contracts/models';
 import { getConfig } from '../core/config';
+import { randomUuidV7 } from '../core/uuid';
 import { intersect, normalize, overlaps } from '../domain/interval';
 import { workSessions } from '../../../db/schema';
 import type { Tx } from './tx';
@@ -59,7 +60,7 @@ function overlapClause(window: Interval) {
 export async function openSession(tx: Tx, startedAt: Date): Promise<WorkSession> {
 	const [row] = await tx
 		.insert(workSessions)
-		.values({ id: Bun.randomUUIDv7(), startedAt, endedAt: null })
+		.values({ id: randomUuidV7(), startedAt, endedAt: null })
 		.returning();
 	const { maxOpenSessionHours } = getConfig();
 	return toWorkSession(row, new Date(), maxOpenSessionHours);
@@ -121,7 +122,7 @@ export async function insertSessions(tx: Tx, intervals: Interval[]): Promise<Wor
 	if (intervals.length === 0) return [];
 	const rows = await tx
 		.insert(workSessions)
-		.values(intervals.map((i) => ({ id: Bun.randomUUIDv7(), startedAt: i.start, endedAt: i.end })))
+		.values(intervals.map((i) => ({ id: randomUuidV7(), startedAt: i.start, endedAt: i.end })))
 		.returning();
 	const { maxOpenSessionHours } = getConfig();
 	const now = new Date();
