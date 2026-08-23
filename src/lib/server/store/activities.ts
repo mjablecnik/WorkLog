@@ -117,16 +117,14 @@ export async function createEntry(
 		})
 		.returning();
 	if (segments.length > 0) {
-		await tx
-			.insert(activitySegments)
-			.values(
-				segments.map((s) => ({
-					id: Bun.randomUUIDv7(),
-					entryId: id,
-					startedAt: s.start,
-					endedAt: s.end
-				}))
-			);
+		await tx.insert(activitySegments).values(
+			segments.map((s) => ({
+				id: Bun.randomUUIDv7(),
+				entryId: id,
+				startedAt: s.start,
+				endedAt: s.end
+			}))
+		);
 	}
 	const [hydrated] = await hydrate(tx, [row]);
 	return hydrated;
