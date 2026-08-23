@@ -24,16 +24,22 @@ so a browser renders them faithfully. `support.js` is absent and unnecessary.
 
 ---
 
-## 0. What is settled, and what is not
+## 0. What is settled
 
-Everything below was decided in conversation and is settled. Two things are **not**, and
-are flagged in place:
+Everything below was decided in conversation and is settled. Four decisions were taken
+after the first version of this file and are already reflected in the artboards:
 
-- The **project palette** in this file replaces the one in the artboards. The artboard
-  palette was checked with the data-viz validator and failed (see § 2); the hues here are
-  the same family, moved the minimum distance needed to pass.
-- Several acceptance criteria in `.kiro/specs/002-worklog-ui/` **contradict** these
-  artboards. They are listed in § 9 and must be reconciled before implementation starts.
+1. The **corrected project palette** (§ 2) replaces the drawn one, which failed the
+   data-viz validator. The artboards now carry the corrected hexes.
+2. The **add-task dialog keeps its third mode** (`Od posledního`). Requirement 6.2, which
+   forbade it, is being rewritten.
+3. **Timeline blocks stay at 36px** desktop / 26px mobile, as an explicit exception to the
+   44×44 touch-target rule.
+4. **The gauge gap stays bare even when the circle closes.** `GaugeNonstop` was redrawn:
+   the arc runs all the way round, but no graduation or numeral is ever added to the gap.
+
+Several acceptance criteria in `.kiro/specs/002-worklog-ui/` still **contradict** these
+artboards. They are listed in § 9 and are being reconciled.
 
 ---
 
@@ -58,6 +64,7 @@ Two themes, both first-class. Every value below is lifted from the artboards.
 | `--field` | `rgba(255,255,255,0.05)` |
 | `--field-active` | `rgba(209,138,106,0.10)`, inset `1px rgba(209,138,106,0.40)` |
 | `--divider` | `rgba(255,255,255,0.05)` |
+| `--destructive` | `#E06A5E` |
 
 ### Light — "Daylight"
 
@@ -71,16 +78,20 @@ Two themes, both first-class. Every value below is lifted from the artboards.
 | `--accent-hover` | `#8A4724` |
 | `--ink-on-accent` | `#FBF7F1` |
 | `--panel` | `rgba(0,0,0,0.045)` |
+| `--destructive` | `#A8321F` |
 
 The dim and faint opacities are **deliberately higher in the light theme** (0.78 / 0.66
 against 0.55 / 0.40). At the dark theme's values they computed to contrast ratios of 4.17
 and 2.99 against `#F3EEE6` — under AA. They are not a copy of the dark theme's numbers and
 must not be "unified" back.
 
-**Two collisions the implementation must not accidentally merge.** `--accent` carries both
-*primary action* and *uncovered time / attention*. The pink project colour is close to the
-destructive colour. Neither is a bug — but destructive controls and project swatches must
-never be styled from the same token.
+**One collision the implementation must not accidentally merge.** `--accent` carries both
+*primary action* and *uncovered time / attention*. That is deliberate.
+
+The second collision has been resolved: the artboards originally drew delete controls in
+the pink *project* colour, so recolouring a project would have recoloured every trash icon.
+`--destructive` is now its own token (5.67:1 on the dark ground, 5.79:1 on the light one)
+and must never be derived from the palette.
 
 ---
 
@@ -99,12 +110,12 @@ Assigned automatically by `color_index` 0–7, overridable by the user.
 | 6 | olive | `#A19201` | `#7F7302` |
 | 7 | clay | `#BA4939` | `#CB5848` |
 
-**These are not the hexes drawn in the artboards.** The artboard palette
-(`#5D8AC4 #C4708A #5FA37F #D6A55C #B07FC4 #6FA9B5 #A8A05C #C4776A`) was run through the
-data-viz validator against each theme's surface and failed on four checks — most seriously
-green↔pink at deuteranope ΔE **1.7**, meaning a red-green colourblind user cannot tell two
-adjacent projects apart at all. Four colours also fell below the chroma floor (reading as
-grey) and three sat outside the lightness band.
+**The originally drawn palette** (`#5D8AC4 #C4708A #5FA37F #D6A55C #B07FC4 #6FA9B5
+#A8A05C #C4776A`) was run through the data-viz validator against each theme's surface and
+failed on four checks — most seriously green↔pink at deuteranope ΔE **1.7**, meaning a
+red-green colourblind user cannot tell two adjacent projects apart at all. Four colours also
+fell below the chroma floor (reading as grey) and three sat outside the lightness band. The
+artboards have been repainted with the table above.
 
 The palette above keeps every approved hue within 0–20° (only violet moved 20°) and lifts
 lightness and chroma into the band. Measured, all pairs, both themes:
@@ -221,11 +232,16 @@ running session draws in the accent** — the accent marks *running*, not *overt
 Uncovered time is dashed: `stroke-dasharray="3 6"`, `stroke-linecap="round"`, accent at 65%
 (light 75%). Stroke widths 10px outer / 6px inner.
 
-At 24 hours of work the circle closes completely.
+At 24 hours of work the arc closes into a complete circle — but **the gap is still never
+graduated**. The arc runs over it; no graduation and no numeral is ever added there.
+Requirement 16.7 holds without exception, and `GaugeNonstop.dc.html` was redrawn to match.
 
-**Open question:** `GaugeNonstop.dc.html` draws graduations *into* the former gap once the
-circle closes, and labels `03`. Requirement 16.7 says the gap is never graduated. One of the
-two has to give.
+A closed ring cannot be drawn as an SVG arc back to its own start point — that path is
+degenerate and paints nothing. Use a `<circle>`.
+
+**The angle is a function of the wall clock, not of position within the day.** That matters
+on the two days a year that are 23 or 25 hours long: nothing about the track changes,
+because the DST transition happens between 02:00 and 03:00, which is inside the gap.
 
 ---
 
@@ -312,18 +328,18 @@ replaced it. Overtime (12.12) has no home in the design.
 
 These are contradictions, not omissions. Each needs a decision before implementation.
 
-| # | Design says | Spec says |
-|---|---|---|
-| 1 | Project palette as § 2 | `design.md` § 1 lists eight entirely different hexes, and tasks 1.6/1.7 test them |
-| 2 | Add-task dialog has three modes | Req 6.2 forbids Open Mode as a third choice |
-| 3 | One column of blocks plus a rail | Req 4.1/4.4/4.5 describe two lanes over a shared axis |
-| 4 | Desktop timeline is vertical | Req 4.13 makes vertical the sub-768px behaviour |
-| 5 | Blocks floor at 36px desktop / 26px mobile | Req 14.2 requires 44×44 targets |
-| 6 | Timer page shows the gauge | Req 3.10 requires a compact timeline there |
-| 7 | Rhythm strip, no stacked bars | Req 12.5/12.7 require `DayStack`; 12.12 requires overtime |
-| 8 | Graduations reappear when the circle closes | Req 16.7 says the gap is never graduated |
-| 9 | Session edit lists uncovered time among affected entries | Uncovered time is not an `Activity_Entry`; the server's preview does not return it |
-| 10 | Spacing off the 4/8/12… scale | Req 14.6 mandates that scale |
+| # | Design says | Spec says | Resolution |
+|---|---|---|---|
+| 1 | Project palette as § 2 | `design.md` § 1 lists eight entirely different hexes, and tasks 1.6/1.7 test them | design wins — spec updated |
+| 2 | Add-task dialog has three modes | Req 6.2 forbids Open Mode as a third choice | design wins — 6.2 rewritten |
+| 3 | One column of blocks plus a rail | Req 4.1/4.4/4.5 describe two lanes over a shared axis | design wins |
+| 4 | Desktop timeline is vertical | Req 4.13 makes vertical the sub-768px behaviour | design wins — the difference is density, not orientation |
+| 5 | Blocks floor at 36px / 26px | Req 14.2 requires 44×44 targets | design wins — explicit exception |
+| 6 | Timer page shows the gauge | Req 3.10 requires a compact timeline there | design wins — 3.10 dropped |
+| 7 | Rhythm strip, no stacked bars | Req 12.5/12.7 require `DayStack`; 12.12 requires overtime | design wins — overtime moves into the KPI row |
+| 8 | Circle closes at 24 h | Req 16.7 says the gap is never graduated | **spec wins** — artboard redrawn |
+| 9 | Session edit lists uncovered time among affected entries | Uncovered time is not an `Activity_Entry`; the preview does not return it | open — needs a data decision |
+| 10 | Spacing off the 4/8/12… scale | Req 14.6 mandates that scale | design wins |
 
 Also missing from the specification entirely: the whole colour system, the typography, the
 radii and component heights, the centred navigation, the project legend, the third timer
