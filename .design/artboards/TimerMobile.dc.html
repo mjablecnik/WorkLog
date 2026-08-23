@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Inter Tight', system-ui, sans-serif; background: #0F1319; color: #E6EAF2; -webkit-font-smoothing: antialiased; }
+    a { color: #D18A6A; text-decoration: none; }
+    .dim   { color: rgba(230,234,242,0.55); }
+    .faint { color: rgba(230,234,242,0.40); }
+    .lbl { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(230,234,242,0.40); }
+    .rbtn { border-radius: 9999px; display: flex; align-items: center; justify-content: center; }
+    .tab { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; font-size: 10px; color: rgba(230,234,242,0.40); height: 100%; }
+    .tab.on { color: #D18A6A; }
+  </style>
+</helmet>
+
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; box-sizing: border-box;">
+
+  <div style="height: 60px; display: flex; align-items: center; gap: 10px; padding: 0 22px;">
+    <span style="font-size: 15px; font-weight: 600; flex-grow: 1;">Worklog</span>
+    <span style="font-size: 12px;" class="faint">CS</span>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 0 22px 14px;">
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 7px;">
+      <div style="font-size: 56px; font-weight: 300; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums;">5:12:08</div>
+      <span class="lbl">běží od 21:00</span>
+    </div>
+
+    <div style="position: relative; width: 300px; height: 300px;">
+      <svg width="300" height="300" viewBox="-22 -22 364 364">
+        <path d="M 62.42 257.58 A 138 138 0 1 1 257.58 257.58" fill="none" stroke="rgba(255,255,255,0.055)" stroke-width="10" stroke-linecap="round"></path>
+        <path d="M 76.56 243.44 A 118 118 0 1 1 243.44 243.44" fill="none" stroke="rgba(255,255,255,0.045)" stroke-width="6" stroke-linecap="round"></path>
+
+        <line x1="56.76" y1="263.24" x2="49.69" y2="270.31" stroke="rgba(230,234,242,0.30)" stroke-width="1.5" stroke-linecap="round"></line>
+        <text x="41.21" y="282.99" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">06</text>
+        <line x1="33.56" y1="233.00" x2="30.10" y2="235.00" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="18.97" y1="197.79" x2="15.11" y2="198.82" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="14.00" y1="160.00" x2="6.00" y2="160.00" stroke="rgba(230,234,242,0.24)" stroke-width="1.3" stroke-linecap="round"></line>
+        <text x="-6.00" y="164.20" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">09</text>
+        <line x1="18.97" y1="122.21" x2="15.11" y2="121.18" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="33.56" y1="87.00" x2="30.10" y2="85.00" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="56.76" y1="56.76" x2="49.69" y2="49.69" stroke="rgba(230,234,242,0.30)" stroke-width="1.5" stroke-linecap="round"></line>
+        <text x="41.21" y="45.41" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">12</text>
+        <line x1="87.00" y1="33.56" x2="85.00" y2="30.10" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="122.21" y1="18.97" x2="121.18" y2="15.11" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="160.00" y1="14.00" x2="160.00" y2="6.00" stroke="rgba(230,234,242,0.24)" stroke-width="1.3" stroke-linecap="round"></line>
+        <text x="160.00" y="-1.80" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">15</text>
+        <line x1="197.79" y1="18.97" x2="198.82" y2="15.11" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="233.00" y1="33.56" x2="235.00" y2="30.10" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="263.24" y1="56.76" x2="270.31" y2="49.69" stroke="rgba(230,234,242,0.30)" stroke-width="1.5" stroke-linecap="round"></line>
+        <text x="278.79" y="45.41" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">18</text>
+        <line x1="286.44" y1="87.00" x2="289.90" y2="85.00" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="301.03" y1="122.21" x2="304.89" y2="121.18" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="306.00" y1="160.00" x2="314.00" y2="160.00" stroke="rgba(230,234,242,0.24)" stroke-width="1.3" stroke-linecap="round"></line>
+        <text x="326.00" y="164.20" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">21</text>
+        <line x1="301.03" y1="197.79" x2="304.89" y2="198.82" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="286.44" y1="233.00" x2="289.90" y2="235.00" stroke="rgba(230,234,242,0.14)" stroke-width="1.1" stroke-linecap="round"></line>
+        <line x1="263.24" y1="263.24" x2="270.31" y2="270.31" stroke="rgba(230,234,242,0.30)" stroke-width="1.5" stroke-linecap="round"></line>
+        <text x="278.79" y="282.99" fill="rgba(230,234,242,0.17)" font-family="Inter Tight, sans-serif" font-size="12" text-anchor="middle">00</text>
+
+        <path d="M 26.70 195.72 A 138 138 0 0 1 75.99 50.52" fill="none" stroke="rgba(230,234,242,0.34)" stroke-width="10"></path>
+        <path d="M 98.96 36.23 A 138 138 0 0 1 229.00 40.49" fill="none" stroke="rgba(230,234,242,0.34)" stroke-width="10"></path>
+        <path d="M 298.00 160.00 A 138 138 0 0 1 160.00 298.00" fill="none" stroke="#D18A6A" stroke-width="10"></path>
+
+        <path d="M 46.02 190.54 A 118 118 0 0 1 48.26 122.07" fill="none" stroke="#C4708A" stroke-width="6"></path>
+        <path d="M 48.26 122.07 A 118 118 0 0 1 88.17 66.38" fill="none" stroke="#5D8AC4" stroke-width="6"></path>
+        <path d="M 107.81 54.17 A 118 118 0 0 1 175.40 43.01" fill="none" stroke="#5D8AC4" stroke-width="6"></path>
+        <path d="M 175.40 43.01 A 118 118 0 0 1 185.54 44.80" fill="none" stroke="#5FA37F" stroke-width="6"></path>
+        <path d="M 185.54 44.80 A 118 118 0 0 1 219.00 57.81" fill="none" stroke="rgba(209,138,106,0.65)" stroke-width="6" stroke-dasharray="3 6" stroke-linecap="round"></path>
+        <path d="M 278.00 160.00 A 118 118 0 0 1 248.72 237.80" fill="none" stroke="#5D8AC4" stroke-width="6"></path>
+        <path d="M 248.72 237.80 A 118 118 0 0 1 205.16 269.02" fill="none" stroke="#C4708A" stroke-width="6"></path>
+        <path d="M 205.16 269.02 A 118 118 0 0 1 160.00 278.00" fill="none" stroke="rgba(209,138,106,0.65)" stroke-width="6" stroke-dasharray="3 6" stroke-linecap="round"></path>
+        <circle cx="257.58" cy="257.58" r="4" fill="#D18A6A"></circle>
+        <text x="160.00" y="326.20" fill="#D18A6A" font-family="Inter Tight, sans-serif" font-size="12" font-weight="500" text-anchor="middle">03:00</text>
+      </svg>
+
+      <div class="rbtn" style="position: absolute; left: 150px; top: 150px; transform: translate(-50%, -50%); width: 98px; height: 98px; background: #D18A6A; color: #1A0F0A; box-shadow: 0 0 0 11px rgba(209,138,106,0.09);">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"></rect></svg>
+      </div>
+    </div>
+
+    <div style="width: 100%; display: flex; justify-content: space-between; padding: 0 6px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+        <span class="lbl">odprac.</span>
+        <span style="font-size: 19px; font-weight: 300; font-variant-numeric: tabular-nums;">14 h 15</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+        <span class="lbl">popsáno</span>
+        <span style="font-size: 19px; font-weight: 300; font-variant-numeric: tabular-nums;">11 h 35</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+        <span class="lbl">chybí</span>
+        <span style="font-size: 19px; font-weight: 300; color: #D18A6A; font-variant-numeric: tabular-nums;">2 h 40</span>
+      </div>
+    </div>
+
+    <div style="width: 100%; height: 50px; border-radius: 9999px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; gap: 10px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(230,234,242,0.7)" stroke-width="1.8" stroke-linecap="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+      <span style="font-size: 14px;" class="dim">Zapsat 01:30 → teď</span>
+    </div>
+  </div>
+
+  <div style="height: 68px; display: flex; border-top: 1px solid rgba(255,255,255,0.06);">
+    <div class="tab on">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2"></path><path d="M9 2h6"></path></svg>
+      <span>Timer</span>
+    </div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>
+      <span>Den</span>
+    </div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+      <span>Projekty</span>
+    </div>
+    <div class="tab">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>
+      <span>Statistiky</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
