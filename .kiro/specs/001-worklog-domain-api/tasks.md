@@ -285,7 +285,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - Start PostgreSQL, run `./scripts/migrate.sh`, then `bun run test tests/lib/server/store`
 
 - [ ] 6. Reconciliation core
-  - [ ] 6.1 Implement `clip` for `Explicit_Mode` in `src/lib/server/domain/clipping.ts`
+  - [x] 6.1 Implement `clip` for `Explicit_Mode` in `src/lib/server/domain/clipping.ts`
     - Define `UntrackedPolicy`, `ClipInput` and `ClipResult` per design component 3
     - `ClipInput` carries `minIntervalMs` and `now` as inputs. The module may not read `$env` and may not call `new Date()`: the floor of Requirement 6.5 and the future bound of Requirement 6.8 both arrive from the caller, and every test supplies them explicitly
     - Compute `inside = intersect(requested, tracked)` and `outside = subtract(requested, tracked)`
@@ -295,7 +295,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Return empty `segments` when nothing survives; the route answers 409 `NOTHING_TO_LOG` for it in every mode, so an accepted write never manufactures an `Orphaned_Entry`
     - _Requirements: 4.1, 4.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.12, 6.18_
 
-  - [ ] 6.2 Implement `resolveAnchor` and `clip` for `Duration_Mode`
+  - [x] 6.2 Implement `resolveAnchor` and `clip` for `Duration_Mode`
     - `resolveAnchor` returns the `Placement_Anchor`: the explicit start when given, else the end of the `Target_Day`'s latest `Activity_Segment`, else the start of its earliest `Work_Session`, else throws `NoPlacementAnchorError`
     - Declare `NoPlacementAnchorError` in `clipping.ts` carrying the `Target_Day` date. It is a domain error, not an `ErrorCode`; the route catches it and answers 409 `NO_PLACEMENT_ANCHOR`, so the domain still names no HTTP status
     - Compute `eligible = subtract(clamp(tracked, [anchor, dayBounds.end)), covered)` and call `take(eligible, durationMs, minIntervalMs)`
@@ -312,7 +312,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Reject a `Target_Day` in the future with `VALIDATION_ERROR`: a day that has not begun has no `Placement_Anchor` and no end to log up to, which is reachable by calling at 02:00 with today's date under `DAY_START_HOUR=3`
     - _Requirements: 6.12, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.10_
 
-  - [ ] 6.4 Write unit tests for `clip`
+  - [x] 6.4 Write unit tests for `clip`
     - `tests/lib/server/domain/clipping.test.ts`
     - Named case `worked example, explicit`: tracked `[08:00–14:48, 15:12–18:00]`, requested `13:00–16:00` → `[13:00–14:48, 15:12–16:00]`
     - Named case `worked example, duration`: same frame, anchor `14:00`, `2h` → `[14:00–14:48, 15:12–16:24]`, exactly 120 minutes
@@ -324,7 +324,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `resolveAnchor` resolves the `Placement_Anchor` for all four branches of Requirements 5.4–5.7
     - _Requirements: 4.1, 5.1, 5.4, 5.5, 5.6, 5.7, 6.3, 6.5, 6.6, 6.7, 6.8, 6.9, 15.2, 15.3_
 
-  - [ ]* 6.5 Write property tests for `clip`
+  - [x]* 6.5 Write property tests for `clip`
     - `tests/lib/server/domain/clipping.property.test.ts`
     - **Property 1: Segments never cover untracked time**
     - **Property 2: Duration mode conserves the requested duration**
@@ -336,7 +336,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Property 25: Clipping is idempotent over its own output**
     - **Validates: Requirements 1.14, 4.1, 4.2, 5.8, 5.10, 5.13, 5.14, 6.1, 6.2, 6.3, 6.4, 6.5, 6.7, 6.8, 6.13, 6.14, 6.15, 7.10, 15.6**
 
-  - [ ] 6.6 Implement re-clipping in `src/lib/server/domain/reclip.ts`
+  - [x] 6.6 Implement re-clipping in `src/lib/server/domain/reclip.ts`
     - Declare `ReclipPorts` and `ReclipOutcome` per design component 4 so the module stays free of Drizzle
     - `affected` is an `Interval[]`, not one interval: moving a session across the week yields two disjoint stretches, and merging them re-clips everything in between for no reason. Define the boundary cases — `start` has no old interval and a new one of `[startedAt, now)`; `stop` reads the old one as `[startedAt, now)` and the new one as `[startedAt, endedAt)`; a delete has no new interval
     - `reclipAffected` loads the affected `Activity_Entry` records through `entriesAffectedBy` — segment overlap **or** requested-interval overlap — in deterministic order, clears their `Activity_Segment` rows, and re-applies `Clipping` to each with `Untracked_Policy` `clip`, treating already re-clipped entries as part of `Covered_Time`
@@ -347,7 +347,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Keep an `Activity_Entry` with zero `Activity_Segment` rows as an `Orphaned_Entry` rather than deleting it
     - _Requirements: 2.9, 2.10, 2.11, 14.2, 14.6_
 
-  - [ ] 6.7 Write tests for re-clipping against a fake `ReclipPorts`
+  - [x] 6.7 Write tests for re-clipping against a fake `ReclipPorts`
     - `tests/lib/server/domain/reclip.test.ts` with an in-memory fake, no database
     - Shrinking a `Work_Session` splits an `Activity_Entry`; deleting one leaves it an `Orphaned_Entry` with `orphaned: true`; widening restores `Covered_Time`
     - **An `Orphaned_Entry` comes back**: after a delete empties an entry, re-creating a session over its requested interval re-places it — the case a selection by segment alone can never find
@@ -357,7 +357,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `removedMs` matches the time actually lost; `projectName` and `description` are carried through
     - _Requirements: 2.9, 2.10, 14.2, 14.6_
 
-  - [ ]* 6.8 Write a property test for re-clipping
+  - [x]* 6.8 Write a property test for re-clipping
     - **Property 9: Re-clipping is deterministic and idempotent**
     - **Validates: Requirements 2.9, 2.10**
 
