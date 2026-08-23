@@ -1071,7 +1071,7 @@ export function messageKeyFor(code: ErrorCode): string;
 export function fieldMessageKeyFor(issue: z.core.$ZodIssue): string;
 ```
 
-Every code's `details` below is chosen so the interface can compose a complete sentence from the response alone — Requirement 12.19. Where the reason is genuinely one of several, the reason is a field rather than something the client infers. The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
+Every code's `details` below is chosen so the interface can compose a complete sentence from the response alone — Requirement 12.18. Where the reason is genuinely one of several, the reason is a field rather than something the client infers. The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
 
 **The complete `errors_*` catalogue.** `002` writes the Czech and English text for each of these keys, so they are enumerated here rather than left to a lowercasing rule that two people would apply differently. Every `ErrorCode` has exactly one key, and no key is shared:
 
@@ -1721,7 +1721,7 @@ export const ERROR_DETAIL_SAMPLE_SIZE = 10;     // conflicting records named in 
 export const FUTURE_TOLERANCE_SECONDS = 300;    // clock skew allowance — Req 1.13, 4.10
 export const SUGGESTED_WINDOW_COVERAGE = 0.9;   // share the suggestion must cover — Req 8.13
 export const CLEANUP_INTERVAL_MINUTES = 60;     // sweep cadence — Requirements 11.21, 13.30
-export const SERVICE_RETRY_AFTER_SECONDS = 5;   // Retry-After on 503 — Requirement 12.22
+export const SERVICE_RETRY_AFTER_SECONDS = 5;   // Retry-After on 503 — Requirement 12.21
 export const LOGIN_ATTEMPT_LIMIT = 5;           // Requirement 11.13, deliberately not config
 export const LOGIN_ATTEMPT_WINDOW_MINUTES = 15; // Requirement 11.13
 export const IDEMPOTENCY_RETENTION_HOURS = 24;  // Requirement 12.9
@@ -1731,7 +1731,7 @@ export const SHUTDOWN_GRACE_SECONDS = 30;       // Requirement 13.5
 export const WORKLOG_ADVISORY_LOCK = 4919372001;// the one write lock — component 5
 /** Substituted for `%theme%` when the cookie says `system` or is absent, so a rendered
  *  page never carries the placeholder and never paints the wrong palette before
- *  hydration (Requirement 12.28). Dark is the design's primary variant — the one the
+ *  hydration (Requirement 12.32, and 12.28 for the preference itself). Dark is the design's primary variant — the one the
  *  artboards and the gauge inks were drawn against. */
 export const DEFAULT_RENDER_THEME = 'dark';
 
@@ -1982,7 +1982,7 @@ CREATE INDEX auth_sessions_expires_at ON auth_sessions (expires_at);
 -- entry_id is ON DELETE SET NULL, not CASCADE: with CASCADE, deleting the entry
 -- deletes the key, and the next retry of the same request creates a SECOND entry —
 -- the exact outcome the key exists to prevent. The status is stored beside the body
--- (Requirement 12.17), because replaying a 201 as a 200 is a different answer.
+-- (Requirement 12.16), because replaying a 201 as a 200 is a different answer.
 CREATE TABLE idempotency_keys (
     key            text PRIMARY KEY,
     entry_id       uuid REFERENCES activity_entries (id) ON DELETE SET NULL,
@@ -1991,7 +1991,7 @@ CREATE TABLE idempotency_keys (
     -- (defaults applied), re-serialised with JSON.stringify over keys sorted ascending.
     -- Deliberately not the raw bytes — a retry differing only in whitespace or key order
     -- is the same request and must replay. Catches replaying a genuinely different body
-    -- under the same key (409 IDEMPOTENCY_KEY_REUSED, Requirement 12.23).
+    -- under the same key (409 IDEMPOTENCY_KEY_REUSED, Requirement 12.22).
     request_hash   text NOT NULL,
     response       jsonb NOT NULL,
     created_at     timestamptz NOT NULL DEFAULT now(),
@@ -2169,7 +2169,7 @@ The wording matters: the entry does not store "what the user typed" in the infer
 
 *For any* `POST /api/activities` repeated with the same `Idempotency-Key` **and the same body**, the database SHALL hold exactly one resulting `Activity_Entry` and both responses SHALL be identical in status and body. *For any* repetition with the same key and a **different** body, the second response SHALL be 409 `IDEMPOTENCY_KEY_REUSED` and the database SHALL be unchanged by it.
 
-**Validates: Requirements 12.8, 12.9, 12.17, 12.23**
+**Validates: Requirements 12.8, 12.9, 12.16, 12.22**
 
 ### Property 19: Overtime and in-window time partition the day
 
@@ -2245,11 +2245,11 @@ All error responses use the shape from Requirement 12.2: `{ error, message, mess
 | `ACTIVITY_OVERLAP` | 409 | a request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }`, at most `ERROR_DETAIL_SAMPLE_SIZE` of them, plus `conflictCount` — Requirement 4.5 wants the entry named, not only identified |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` **in `Explicit_Mode` or `Open_Mode`**, and part of the request is untracked. Never raised in `Duration_Mode`, which states no interval to fall outside anything (Requirement 6.9) | `outside[]` of intervals, `outsideSeconds` |
 | `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date`, `dayBounds` — the message names the day and can offer to start the timer |
-| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'` \| `'all-slivers'`, plus `anchor`, `requested`, and for `'all-slivers'` the `slivers` themselves. Four different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described", "what is left is shorter than a minute" — and the client must not have to guess which (Requirement 12.20). `'all-slivers'` is reachable and none of the other three describes it: the request did overlap `Tracked_Time`, that time was not covered, and the interval was not empty; every produced segment simply fell under `MIN_INTERVAL_SECONDS` |
+| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'` \| `'all-slivers'`, plus `anchor`, `requested`, and for `'all-slivers'` the `slivers` themselves. Four different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described", "what is left is shorter than a minute" — and the client must not have to guess which (Requirement 12.19). `'all-slivers'` is reachable and none of the other three describes it: the request did overlap `Tracked_Time`, that time was not covered, and the interval was not empty; every produced segment simply fell under `MIN_INTERVAL_SECONDS` |
 | `PROJECT_ARCHIVED` | 400 | a new entry, or a PATCH, targets an archived `Project` | `projectId`, `projectName` |
 | `FUTURE_TIMESTAMP` | 400 | a supplied instant lies further ahead than `FUTURE_TOLERANCE_SECONDS` | `field`, `value`, `maxAllowed` |
 | `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds`, `actualSeconds` |
-| `STALE_PREVIEW` | 409 | a write carries a `Preview_Token` the stored rows no longer match | `submittedToken`, `currentToken` (Requirement 12.21). The client's response is to re-run the `Dry_Run` and show the new outcome; it is never asked to work out what changed |
+| `STALE_PREVIEW` | 409 | a write carries a `Preview_Token` the stored rows no longer match | `submittedToken`, `currentToken` (Requirement 12.20). The client's response is to re-run the `Dry_Run` and show the new outcome; it is never asked to work out what changed |
 | `PROJECT_EXISTS` | 409 | duplicate project name, ignoring case and surrounding whitespace | `projectId`, `projectName` — the existing project, so the client can offer to use it instead |
 | `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount`, and `entries[]` of `{ entryId, description, requestedStartedAt, requestedEndedAt }` for at most `ERROR_DETAIL_SAMPLE_SIZE` of them (Requirement 3.7). A bare count cannot tell the user *which* records block the delete, and a bare list of ids makes the client fetch them |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | an `Idempotency-Key` seen before with a different request body | `key` — replaying the first answer would silently discard the second request |

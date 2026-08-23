@@ -117,10 +117,16 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
                   setupFiles: ['tests/setup/db.ts'],
                   poolOptions: { threads: { singleThread: true } } } },
         { test: { name: 'components', environment: 'jsdom',
-                  include: ['tests/modules/**/*.test.ts'],
+                  include: ['tests/modules/**/*.test.ts', 'tests/lib/theme/**/*.test.ts',
+                            'tests/lib/ui/**/*.test.ts', 'tests/lib/*.test.ts'],
                   setupFiles: ['tests/setup/dom.ts'] } }
       ] }
       ```
+      The `components` globs also carry `002`'s theme, design-system, i18n and CSP suites, which
+      live under `tests/lib/theme/`, `tests/lib/ui/` and `tests/lib/` directly. A project list that
+      only names `tests/modules/**` silently runs none of them — Vitest reports success over the
+      files it matched and says nothing about the five it did not.
+
       `domain` keeps full parallelism — it touches no database. `server` is single-threaded because its suites share one database and truncate between tests, so parallel workers would truncate each other's fixtures
     - `playwright.config.ts`: `testDir: 'tests/e2e'`, `workers: 1`, `fullyParallel: false`, `retries: 0`, `use.baseURL` pointing at the preview server, and a `webServer` running `bun run preview` with `APP_ENV=test` and `TEST_DATABASE_URL` in its environment, `reuseExistingServer: !process.env.CI`
     - Extend Playwright's `test` with a worker-scoped auto fixture calling the same `resetDb()` from task 4.9, so an E2E run starts from an empty database exactly as the integration suites do
@@ -376,7 +382,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - The address comes from `clientAddress(event, TRUSTED_PROXY_HOPS)`: drop that many entries from the **right** of `X-Forwarded-For` and take the next, or use the socket address when the count is zero or the header is absent. Taking the leftmost entry lets a caller mint a new identity per request by prepending one, which would defeat the login bucket entirely
     - Evict a bucket once it has been idle for twice its own window — 2 minutes for the request bucket, 30 minutes for the login bucket — on the sweep that runs every `CLEANUP_INTERVAL_MINUTES`, so memory cannot grow without bound
     - State plainly in the module's doc comment that this state is in-process: it resets on restart and is not shared between instances, which is why Requirement 13.25 fixes the deployment at one instance. Do not describe it as a distributed limit
-    - _Requirements: 11.13, 11.20, 11.26, 12.7, 12.22, 13.23, 13.25, 13.30_
+    - _Requirements: 11.13, 11.20, 11.26, 12.7, 12.21, 13.23, 13.25, 13.30_
 
   - [ ] 7.3 Implement the idempotency and day-boundary stores
     - `src/lib/server/store/idempotency.ts` — **not** `core/idempotency.ts`: `idempotency_keys` is a table, and `core` holds no persistence
