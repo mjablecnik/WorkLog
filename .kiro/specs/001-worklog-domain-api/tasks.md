@@ -361,8 +361,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Property 9: Re-clipping is deterministic and idempotent**
     - **Validates: Requirements 2.9, 2.10**
 
-- [ ] 7. Authentication and hooks
-  - [ ] 7.1 Implement authentication in `src/lib/server/core/auth.ts` and `src/lib/server/store/auth-sessions.ts`
+- [x] 7. Authentication and hooks
+  - [x] 7.1 Implement authentication in `src/lib/server/core/auth.ts` and `src/lib/server/store/auth-sessions.ts`
     - Split by the Module Boundaries: `core` holds no persistence, so `core/auth.ts` keeps `verifyPassphrase`, `mintSessionToken`, `hashSessionToken`, `secretsMatch`, `SESSION_COOKIE` and `sessionCookieOptions`, while `store/auth-sessions.ts` owns every row — `beginBrowserSession`, `findAuthSession`, `deleteAuthSession`, `purgeExpiredAuthSessions`, all taking a hash and never a raw token
     - `authenticate(event)` needs a `RequestEvent` and a lookup, so it belongs to neither and lives in `src/hooks.server.ts` with the rest of the `Auth_Hook` (task 7.4)
     - `verifyPassphrase` checks the submitted passphrase against `WORKLOG_PASSPHRASE_HASH` with `Bun.password.verify`; hashes are produced with the `ARGON2ID` constant — `memoryCost: 65536` (64 MiB), `timeCost: 3` — and the plaintext is never stored anywhere
@@ -376,7 +376,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `safeRedirectTarget` accepts only a path starting with a single `/`, never `//` or a scheme, and falls back to `/`
     - _Requirements: 11.2, 11.3, 11.6, 11.7, 11.8, 11.9, 11.10, 11.11, 11.14, 11.15, 11.18, 11.21, 11.22, 13.30_
 
-  - [ ] 7.2 Implement rate limiting in `src/lib/server/core/rate-limit.ts`
+  - [x] 7.2 Implement rate limiting in `src/lib/server/core/rate-limit.ts`
     - A per-address **fixed-window counter** — one count and one window-start instant, reset when the window rolls over — allowing `RATE_LIMIT_PER_MINUTE` requests per 60 seconds. Fixed window rather than token bucket because `Retry-After` then has an exact answer, the seconds left in the window, instead of an invented one. `GET /api/health` is exempt: a platform health check polls it from one address forever and would otherwise eat the whole allowance, returning 429 with `Retry-After` set to the seconds left in the current window and `details.scope` of `request`; the login bucket answers with `scope` of `login`
     - A stricter bucket for the login route: `LOGIN_ATTEMPT_LIMIT` (5) per address per `LOGIN_ATTEMPT_WINDOW_MINUTES` (15), not configurable
     - The address comes from `clientAddress(event, TRUSTED_PROXY_HOPS)`: drop that many entries from the **right** of `X-Forwarded-For` and take the next, or use the socket address when the count is zero or the header is absent. Taking the leftmost entry lets a caller mint a new identity per request by prepending one, which would defeat the login bucket entirely
@@ -384,7 +384,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - State plainly in the module's doc comment that this state is in-process: it resets on restart and is not shared between instances, which is why Requirement 13.25 fixes the deployment at one instance. Do not describe it as a distributed limit
     - _Requirements: 11.13, 11.20, 11.26, 12.7, 12.21, 13.23, 13.25, 13.30_
 
-  - [ ] 7.3 Implement the idempotency and day-boundary stores
+  - [x] 7.3 Implement the idempotency and day-boundary stores
     - `src/lib/server/store/idempotency.ts` — **not** `core/idempotency.ts`: `idempotency_keys` is a table, and `core` holds no persistence
     - On a POST to `/api/activities` carrying `Idempotency-Key`, look the key up first and replay the stored **status and body** when the stored `request_hash` matches the sha256 of this request's canonical body
     - When the key exists with a **different** body, answer 409 `IDEMPOTENCY_KEY_REUSED` and write nothing — replaying the first answer would silently discard the second request
@@ -395,7 +395,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `src/lib/server/store/day-boundary.ts` — `readDayBoundaryConfig` and `writeDayBoundaryConfig` over the single `day_boundary_config` row, for the startup check in task 7.4
     - _Requirements: 10.10, 10.11, 10.12, 12.8, 12.9, 12.17, 12.18_
 
-  - [ ] 7.4 Compose `src/hooks.server.ts`
+  - [x] 7.4 Compose `src/hooks.server.ts`
     - Export each handle individually, then `sequence(handleRequestId, handleReadiness, handleRequestLog, handleLocals, handleSecurityHeaders, handleCors, handleRateLimit, handleAuth)`
     - **Two kinds of startup failure, handled two different ways.** Bad configuration — missing, unparseable, out of range, or breaking a `Gauge_Window` invariant — is caught synchronously by `loadConfig()` at module load, which logs every problem and **exits non-zero**; no request is ever served and a restart cannot help. An unmigrated database or a disagreeing `Day_Boundary_Config` is asynchronous, so the process **keeps running** and `handleReadiness` answers 503 `SERVICE_UNAVAILABLE` until it is repaired by `scripts/migrate.sh` or by fixing the environment. One hook cannot both answer 503 and exit, and an earlier draft asked for exactly that
     - `handleReadiness` runs **after** `handleRequestId` so its 503 carries a `requestId`, and it exempts `GET /api/health` — otherwise the endpoint that reports `degraded` is shadowed by the failure it exists to report
@@ -413,12 +413,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Cap request bodies at 1 MiB **while reading the stream**, returning `PAYLOAD_TOO_LARGE`; a `Content-Length` check alone is bypassed by a chunked request that declares no length
     - _Requirements: 10.10, 10.11, 10.12, 10.17, 10.18, 11.1, 11.4, 11.5, 11.17, 11.19, 11.22, 11.23, 11.24, 11.27, 12.6, 12.10, 12.11, 12.12, 12.16, 12.25, 12.26, 12.27, 12.28, 12.29, 12.30, 12.31, 12.32, 13.4, 13.8, 13.14, 13.15, 13.24, 13.31, 13.32_
 
-  - [ ] 7.5 Implement the login and logout routes
+  - [x] 7.5 Implement the login and logout routes
     - `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts` — **these two files are owned by this specification**, load functions and form actions included. `002` owns the matching `+page.svelte` files and nothing else in these routes; the split is by file, so neither spec edits the other's half
     - Compare in constant time, create a session on success, redirect to the originally requested path, return a generic failure key otherwise
     - _Requirements: 11.5, 11.6, 11.10, 11.12, 11.14, 11.25_
 
-  - [ ] 7.6 Write tests for authentication, rate limiting and idempotency
+  - [x] 7.6 Write tests for authentication, rate limiting and idempotency
     - `tests/lib/server/core/auth.test.ts`: missing, malformed and wrong credentials each yield 401 on `/api`; a valid cookie passes; a valid bearer token passes; `/api/health` needs neither; no log line contains a secret; cookie flags exactly as specified; a cross-origin request with only a cookie is refused
     - A wrong passphrase returns the same generic key as an empty one; logout invalidates server-side; an expired session is rejected; the stored hash never equals the submitted passphrase
     - `tests/lib/server/core/rate-limit.test.ts`: over `RATE_LIMIT_PER_MINUTE` returns 429 with `Retry-After`; a lowered configured limit trips correspondingly sooner; the login bucket trips after 5 attempts in 15 minutes and is unaffected by that configuration
