@@ -1,0 +1,13 @@
+.svelte-kit/
+build/
+node_modules/
+src/lib/paraglide/
+coverage/
+playwright-report/
+bun.lock
+
+# Owned by other tooling / other phases — never reformatted by this project's prettier
+.design/
+.kiro/
+.agents/
+README.md
