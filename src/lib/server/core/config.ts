@@ -453,3 +453,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 export { ConfigError };
+
+let cachedConfig: Config | null = null;
+
+/**
+ * A memoized `loadConfig()` over the real process environment, for runtime code that
+ * just wants the effective configuration and would otherwise re-validate it (DST scan
+ * included) on every call. `loadConfig()` itself stays uncached and takes an explicit
+ * `env` so tests can probe many configurations without touching this cache.
+ */
+export function getConfig(): Config {
+	if (cachedConfig === null) cachedConfig = loadConfig();
+	return cachedConfig;
+}
+
+/** Clears the memoized config — tests only, after changing `process.env`. */
+export function resetConfigCache(): void {
+	cachedConfig = null;
+}
