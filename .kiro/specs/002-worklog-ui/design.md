@@ -79,6 +79,30 @@ Two files are split down the middle, and the split is exact:
 | `src/hooks.client.ts` | **002** | reports an uncaught client error through the interface's own error surface |
 | `messages/{cs,en}.json`, `project.inlang/` | **002** | 001 emits `messageKey` values; 002 owns the translations |
 
+### What the Server Hands the Interface
+
+Five things the browser must never work out for itself. Each is a field `001` puts in a payload `002` already loads; none costs an extra request.
+
+| Value | Where it arrives | Why not client-side |
+|---|---|---|
+| the current `Logical_Day` and its bounds | `event.locals.today` → root `+layout.server.ts` → context | working it out means reimplementing `DAY_START_HOUR`, the server's zone and its DST rules in the browser |
+| `sessionCount`, `longestBlockSeconds`, `eveningSeconds` for a day | `DayResponse.totals` | the day page's *tvar dne* panel needs them, and a second endpoint call for three integers is waste |
+| the `Placement_Anchor` a request resolved to | the **successful** `Dry_Run` response | the anchor is a reconciliation rule; reading it out of an error payload only works when the request fails |
+| the `Quick_Log` interval and project | `DayResponse.quickLog` | the pill has to name what it will do *before* it is pressed, and the answer is the anchor rule again |
+| `colorIndex` on every interval and total | `ProjectInterval`, `ProjectTotal`, `ActivityEntry` | a client-side join is wrong for an archived project and stale after a recolour |
+
+```ts
+// additions 002 depends on, in 001's contracts module
+type DayTotals = { …; sessionCount: number; longestBlockSeconds: number; eveningSeconds: number };
+type QuickLogHint = { projectId: string; projectName: string; colorIndex: number;
+                      from: Date; to: Date; seconds: number } | null;   // DayResponse.quickLog
+type ProjectInterval = Interval & { projectId: string; colorIndex: number };
+type Anchor = { at: Date; source: 'explicit' | 'last-segment' | 'first-session' } | null;
+type Today = { date: string; bounds: Interval };                        // event.locals.today
+```
+
+`DayResponse.quickLog` is `null` when there is nothing to log, which is what disables the pill — the interface never computes that condition either.
+
 ### The Shared Zod Schemas
 
 `001` declares one Zod schema per write and forbids a second copy. `002` therefore has **no `schema.ts` of its own** in any module — form actions import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `deleteSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`.
@@ -282,7 +306,9 @@ Beyond eight projects `color_index` wraps and two projects share a hue — anoth
 
 ### Typography
 
-**Inter Tight**, weights 300 / 400 / 500 / 600, falling back to `system-ui, sans-serif`, with `-webkit-font-smoothing: antialiased`. Every numeric readout carries `font-variant-numeric: tabular-nums` so digits do not jitter as the timer ticks.
+**Inter Tight**, weights 300 / 400 / 500 / 600, falling back to `system-ui, sans-serif`, with `-webkit-font-smoothing: antialiased`.
+
+**The faces are served from this origin, not from Google Fonts.** The artboards link `fonts.googleapis.com` because they are previews opened straight from disk; production does not, and cannot: the CSP from `001` carries no `font-src` beyond `'self'` and no third-party stylesheet host, so a linked webfont would simply be blocked and the entire type scale would fall back to `system-ui`. Four `woff2` files — 300, 400, 500, 600, `latin` + `latin-ext` subset, which is what Czech needs — live in `static/fonts/` and are declared as `@font-face` in `theme.css` with `font-display: swap`. `001` serves `font-src 'self'`. Every numeric readout carries `font-variant-numeric: tabular-nums` so digits do not jitter as the timer ticks.
 
 | Role | Size / weight / tracking |
 |---|---|
@@ -303,7 +329,53 @@ Beyond eight projects `color_index` wraps and two projects share a hue — anoth
 | Break label, `Long_Break` | 12 / 500 `--text-dim` — mobile 11 / 500 |
 | Caps label (`.lbl`) | 11 / `letter-spacing: 0.16em` / uppercase / `--text-faint` — mobile 10 |
 
+**Line height is part of the contract, because the layout budget counts it.** A block whose head is 29 px is 29 px because of its line height, and `layOutDay` reserves exactly that:
+
+| Role | `line-height` |
+|---|---|
+| Hero elapsed | `1` — the readout is a single line and any leading pushes the gauge down |
+| Stats KPI, timer figure | `1.1` |
+| Page and dialog headings, brand, summary values | `1.3` |
+| Nav, fields, project names, buttons, block head | `1.4` |
+| Description, preview prose, observation line, panel rows | `1.55` |
+| Times, legend, break labels, caps labels | `1.35` |
+| Gauge numerals | `1` — SVG text, positioned by baseline |
+
 Durations read as `14 h 15 min`. Mobile drops the unit on the hero and the timer figures only: `14 h 15`.
+
+### Surface Tokens
+
+Every place the artboards write a bare `rgba(255,255,255,…)` gets a name, because the light theme needs a different value at the same job and a literal cannot carry one. The light column follows the same ladder the drawn light artboards use — a light ground needs roughly the same alpha in black that a dark ground needs in white, one step lower where the surface is large.
+
+| Token | Dark | Light | Used by |
+|---|---|---|---|
+| `--chip` | `rgba(255,255,255,0.07)` | `rgba(0,0,0,0.06)` | settings gear chip, dialog close button, round icon buttons |
+| `--menu-border` | `rgba(255,255,255,0.06)` | `rgba(0,0,0,0.08)` | settings menu outline |
+| `--menu-shadow` | `0 18px 44px rgba(0,0,0,0.55)` | `0 18px 44px rgba(43,36,32,0.18)` | settings menu |
+| `--dialog-shadow` | `0 28px 70px rgba(0,0,0,0.6)` | `0 28px 70px rgba(43,36,32,0.22)` | both write dialogs |
+| `--grabber` | `rgba(255,255,255,0.14)` | `rgba(0,0,0,0.16)` | settings sheet handle |
+| `--group` | `rgba(255,255,255,0.04)` | `rgba(0,0,0,0.04)` | segmented-control groups |
+| `--segment-active` | `rgba(209,138,106,0.16)` | `rgba(165,82,46,0.14)` | selected segment |
+| `--footer` | `rgba(255,255,255,0.02)` | `rgba(0,0,0,0.025)` | dialog footer band |
+| `--row` | `rgba(255,255,255,0.035)` | `rgba(0,0,0,0.035)` | `Orphan_Panel` rows, inset boxes |
+| `--track` | `rgba(255,255,255,0.05)` | `rgba(0,0,0,0.055)` | rhythm strip, breakdown bar track |
+| `--meter-track` | `rgba(255,255,255,0.07)` | `rgba(0,0,0,0.09)` | 4 px coverage meters |
+| `--hairline` | `rgba(255,255,255,0.14)` | `rgba(0,0,0,0.20)` | dashed break rules |
+
+`SettingsLight` is the artboard for the first five rows. Until it lands these values are the contract and are implemented as written; when it lands, any value it draws differently is a defect against this table, fixed by correcting the table — never by an implementer guessing between the two.
+
+### Interaction States
+
+The artboards draw resting states only — about thirty surfaces, none of them with a hover, active, disabled or focus variant. Rather than draw thirty more, the states are **derived from the resting tokens by one rule, and that rule is binding**:
+
+| State | Rule | Example on `--chip` dark (`0.07`) |
+|---|---|---|
+| hover | surface alpha **+0.03**; text token moves one level brighter (`faint → dim → text`) | `0.10` |
+| active / pressed | surface alpha **+0.06**, and the element takes `transform: none` — nothing moves | `0.13` |
+| disabled | the whole element at `opacity: 0.4`, no hover, no pointer cursor, `aria-disabled` | — |
+| focus-visible | the focus ring, unchanged by any of the above | — |
+
+On a filled accent control — `Timer_Control`, FAB, primary pill — hover is `--accent-hover` and active is `--accent-hover` with the halo dropped to `0.06`; there is no alpha to raise. On a `Segment_Block` hover raises `--pj-tint` by half again, which is the same rule expressed in the tint's own units. Transitions are 200 ms as Requirement 14.8 states, and disabled controls animate not at all.
 
 ### Radii, Heights, Widths
 
@@ -334,7 +406,7 @@ The production CSP from `001` carries `style-src 'self' 'nonce-…'` with no `un
 
 `projectSlotClass(colorIndex)` returns `pj-0` … `pj-7` (wrapping at eight); `Segment_Block` uses `background: var(--pj-tint); border-left-color: var(--pj)` from its own stylesheet. `projectColorVar()` — which built an inline custom property — is deleted.
 
-2. **Computed block heights** are quantised to a 2 px ladder and applied through precompiled classes `.tl-h-26` … `.tl-h-320`, a continuous sequence in which every drawn height — 26, 36, 38, 44, 48, 58, 60, 62, 74, 96, 98, 106 — is a member by construction. `layOutDay` returns an exact `heightPx`; the component rounds it **down** to the ladder step and gives the remainder to the last block of the group, so the sum still fits the available height. 148 rules in the compiled stylesheet cost less than one nonce round trip. If a future layout needs a height outside the ladder, the alternative is a single nonced `<style>` element rendered from `locals.nonce` — never an inline attribute.
+2. **Computed block heights** are quantised to a 2 px ladder and applied through precompiled classes `.tl-h-26` … `.tl-h-320`, a continuous sequence in which every drawn height — 26, 36, 38, 44, 48, 58, 60, 62, 74, 96, 98, **106** — is a member by construction. A block taller than 320 px — a day with one entry easily reaches 700 — takes **`.tl-h-fill`** (`flex: 1 1 auto`) instead and absorbs whatever the flex column has left; a block column contains at most one such block, which is the tallest, and `layOutDay` marks it. `layOutDay` returns an exact `heightPx`; the component rounds it **down** to the ladder step and gives the remainder to the last block of the group, so the sum still fits the available height. 148 rules in the compiled stylesheet cost less than one nonce round trip. If a future layout needs a height outside the ladder, the alternative is a single nonced `<style>` element rendered from `locals.nonce` — never an inline attribute.
 
 3. **SVG is unaffected.** `d`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `x`, `y` are SVG presentation attributes, not CSS, and no CSP directive applies to them. The `Day_Gauge` may therefore compute its geometry per render and write it straight onto the elements. The `Day_Rhythm_Strip` may not — its segment offsets are CSS percentages, so it renders as an inline SVG with `<rect>` elements instead of positioned `<div>` elements.
 
@@ -344,7 +416,7 @@ Transcribed from `.design/DESIGN.md` § 6 and the artboards named beside each it
 
 ### Application Shell
 
-**Top bar** (`Main`, `DayCollapsed`, `Stats`) — `grid-template-columns: 1fr auto 1fr`, height 84 (88 on the day page), horizontal page padding 48. Brand `Worklog` 15/600 at the left; navigation centred with `gap: 30`, items 14 in `--text-faint`, the active one 14/500 in `--text`; at the right, `gap: 14`, the `Running_Indicator` (6 px round accent dot + elapsed in 13 tabular `--text-dim`, internal `gap: 8`) and the `Settings_Menu` chip.
+**Top bar** (`Main`, `DayCollapsed`, `Stats`) — `grid-template-columns: 1fr auto 1fr`, height **84 on every page**, horizontal page padding 48. Brand `Worklog` 15/600 at the left; navigation centred with `gap: 30`, items 14 in `--text-faint`, the active one 14/500 in `--text`; at the right, `gap: 14`, the `Running_Indicator` (6 px round accent dot + elapsed in 13 tabular `--text-dim`, internal `gap: 8`) and the `Settings_Menu` chip.
 
 **Mobile shell** (`TimerMobile`, `DayMobile`, `SettingsMobile`) — top bar 56–60 with the brand, the `Running_Indicator` (12 px elapsed) and the `Settings_Menu` chip; bottom navigation 66–68 with a 1 px top divider and four tabs, each an icon of 20 above a 10 px label; the active tab is drawn in `--accent`, not in full-strength text. A create action appears as a 54 px round accent FAB, 18 from the right and 12 above the bottom bar, with the same halo as the timer control.
 
@@ -381,7 +453,7 @@ Centred column, in this order, `gap: 18` (mobile 20):
 
 ### Day Page, Desktop (`DayCollapsed`, `DayCollapsedLight`)
 
-Heading line: the date at 20/500 beside `08:00 – 03:00 · odpracováno 14 h 15 min` at 13 `--text-faint`. Below it a two-column layout, `gap: 24`: the `Day_Timeline` growing to fill, and a fixed **290 px** column at the right holding two panels of radius 14 on `--panel`, `gap: 14`:
+Heading line: the date at 20/500 beside `08:00 – 03:00 · odpracováno 14 h 15 min` at 13 `--text-faint`. `DayCollapsed` draws its top bar at 88; **84 is the value** — the shell is one component with one height, and those four pixels are a drawing slip rather than a per-page rule. Below it a two-column layout, `gap: 24`: the `Day_Timeline` growing to fill, and a fixed **290 px** column at the right holding two panels of radius 14 on `--panel`, `gap: 14`:
 
 - **`souhrn dne`** — worked / described / missing as label-value rows (13 `--text-dim` against 15/500 tabular, the missing value in `--accent`), a 4 px meter on `--meter-track` filled to 81 %, and `81 % odpracovaného času má popis` at 12 `--text-faint`
 - **`tvar dne`** — work blocks (`sessionCount`), longest unbroken (`longestBlockSeconds`), time after the `Evening_Hour` (`eveningSeconds`)
@@ -460,6 +532,8 @@ The bigger fields and type are a touch decision, not a scaling accident: 48 px c
 
 **The `Change_Preview` keeps its full form on mobile** — the resulting blocks, the warning and the `Uncovered_Policy` control, all of it. It is the reason the dialog exists; shrinking it away on the smaller screen would remove the point of the screen. `SessionDialog` follows the same rules, with its preview replacing the body as it does on desktop.
 
+**Adding a `Work_Session`** uses the `SessionDialog` in its create mode, reached from a `+ úsek` ghost pill in the day page's heading line on desktop. On mobile the FAB opens a two-item sheet — *Přidat úkol* and *Přidat úsek timeru* — because one round button cannot mean two things and the day page needs both. Every other page's FAB performs its single create action directly, with no sheet.
+
 **Add task.** Segmented control of three modes (`Přesně od–do` / `Jen délka` / `Od posledního`), items 36 tall and radius 9 inside a radius-12 group on `rgba(255,255,255,0.04)`; the active item is `rgba(209,138,106,0.16)` with accent 13/500 text. The field row is a grid whose columns follow the mode, because the modes need different fields: `Explicit_Mode` shows day, from, to and project (`1fr 0.8fr 0.8fr 1.4fr`), `Duration_Mode` shows day, duration and project (`1fr 1fr 1.2fr`, the layout the artboard draws), and `Open_Mode` shows day and project alone (`1fr 1.6fr`) since the server resolves both ends. The day field appears in all three — `Explicit_Mode` composes its timestamps from it, and the other two send it as the `Target_Day`. Fields are `gap: 12`, each 44 tall at radius 11 on `--field`; the field the active mode derives is drawn with `--field-active-bg` and `--field-active-ring`. The description field is 66 tall. An inference is explained in a tinted note with an info icon. The live preview panel is radius 14 on `--panel`, headed by an eye icon and the caps label `uloží se takto` in accent, and renders the resulting segments as miniature blocks, then a dashed accent warning for anything that does not fit, then the `Untracked_Policy` segmented control (`Zahodit` / `Prodloužit timer`). Footer hint: `Esc zavře · nic se neuloží, dokud nepotvrdíš`.
 
 **Edit session.** Start and end as two 44 px fields; the changed one carries the new value with the old one struck through at 12 `--text-faint`. The consequence panel is radius 14 on `rgba(209,138,106,0.07)` with a `1px solid rgba(209,138,106,0.28)` border: a warning row naming the loss with **one** total at 15/500 accent — `removedSeconds + lostUncoveredSeconds`, which is where the artboard's `−2 h 00 min` comes from, being 30 min taken from an entry plus 1 h 30 of uncovered time — then one row per affected entry inside a radius-11 `--panel` box — a 3 × 18 slot-coloured tick, the project name at 13.5/500, the loss at 12.5 accent, and beneath it a `1fr 20px 1fr` grid of *teď* → *po úpravě* with an arrow between. An entry that would be emptied — becoming an `Orphaned_Entry` — gets prose instead of columns, and so does the `Uncovered_Time` row (see below). The panel closes with `Celkem 2 záznamy · 2 h 00 min zmizí z výkazu.` — the **duration** is the combined total, while the **count** counts `Activity_Entry` records only, because uncovered time is not a record. Directly under the headline total the two parts are broken out, so no reader has to work out why the headline is larger than the entries listed beneath it. Deletion is an inline `--destructive` text link. Footer hint: `Počítá to server, ne prohlížeč — co vidíš, to se stane`.
@@ -477,7 +551,7 @@ Heading row: `Statistiky` 20/500, the range segmented control, the resolved rang
 - **`KPI_Row`** — `repeat(4, 1fr)`, `gap: 18`, panels of radius 14 padded `18px 20px`, each a caps label over a 30/300 tabular figure. The four are: `odpracováno` (`Tracked_Time`), `popsáno` (`Covered_Time`), `podíl popsaného` (percentage plus a 4 px meter), `mimo obvyklé hodiny` (`Overtime`, summed from `overtimeSeconds`, with its share of `Tracked_Time` at 11.5 `--text-faint` beneath). The artboard's fourth card showed the `Evening_Hour` figure; that number moves to the rhythm panel, and the card's shape is unchanged.
 - **`Day_Rhythm_Strip`** — a panel headed `Kam v čase práce padla` with the sub-line `každý řádek je jeden logický den, 03:00 → 03:00` (rendered from the server's `DAY_START_HOUR`, not from a literal) and the project legend at the right. One row per day: the day label in a 58 px gutter, a 22 px strip of radius 5 on `rgba(255,255,255,0.05)` with three recessive tick lines, the day's segments, and the day total in a 62 px right gutter.
 
-**What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**: a 45° `<pattern>` of 1 px accent lines 4 px apart at 45 % over a 6 % accent fill, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis line of five labels from `DAY_START_HOUR` back to `DAY_START_HOUR`. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
+**What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**: a 45° `<pattern>` of 1 px accent lines 4 px apart at 45 % over a 6 % accent fill, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis of five labels: `DAY_START_HOUR` at each end and three interior ticks at 25 %, 50 % and 75 % of the span. With the default 3 that reads `03:00 · 09:00 · 15:00 · 21:00 · 03:00`; with a `DAY_START_HOUR` of 5 it reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` interior labels are a drawing convenience — the rule is even divisions, and it is the rule that is implemented. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
 - **Breakdown and rhythm panel** — `grid-template-columns: 1.4fr 1fr`. The breakdown lists projects descending: a 9 × 9 swatch, the name at 14, the duration at 14/300 tabular, the share at 12 `--text-faint` in a 42 px gutter, and beneath each a 8 px track of radius 4 filled to that project's **share of the range's total `Covered_Time`**. Below a divider, `Bez popisu` as a plain figure in `--accent` — never a bar. The rhythm panel lists days worked, average per working day, longest day, longest unbroken block, total blocks, and time after the `Evening_Hour`, closing with the observation line at 12.5 `--text-faint`.
 
 **The observation line is three fixed templates.** Exactly one renders — the first whose condition holds — and when none holds the line is **omitted**, not replaced by filler and not left as blank space.
@@ -487,6 +561,17 @@ Heading row: `Statistiky` 20/500, the range segmented control, the resolved rang
 | 1 | `nights ≥ 1` | `stats_observation_nights` | `Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}.` | `Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}.` |
 | 2 | `longest ≥ 2 h` | `stats_observation_longest` | `Nejdelší nepřerušený úsek: {duration}, {weekday}.` | `Longest unbroken stretch: {duration}, {weekday}.` |
 | 3 | `idleDays ≥ 1` | `stats_observation_idle` | `Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}.` | `No work on {idleDays, plural, one {# day} other {# days}}.` |
+
+Each variable is one field of the range payload, so nothing here is a judgement call:
+
+| Variable | Source |
+|---|---|
+| `nights` | days whose `eveningSeconds > 0` |
+| `workdays` | days whose `trackedSeconds > 0` |
+| `eveningHour` | the `Evening_Hour` from context, formatted as a wall-clock time |
+| `longest` / `duration` | `max(longestBlockSeconds)` over the range, and its formatted duration |
+| `weekday` | the `date` of the day holding that maximum, formatted as a weekday name |
+| `idleDays` | days in the range whose `trackedSeconds === 0` |
 
 Two rules these templates follow deliberately, and both hold for **every** message in the interface, not only these three:
 
@@ -509,7 +594,13 @@ Nine surfaces are specified here in tokens rather than as artboards. All nine ar
 
 **Empty state.** Centred in the space its content would have filled: a 20 px icon in `--text-faint`, a line at 14 `--text-dim`, and where there is an obvious next step, one filled accent pill. `padding: 48px 24px`, `gap: 12`. Every empty state in this interface has a next step — start the timer, create the first project, pick another range.
 
+**Stale-session notice.** Above the hero readout on the timer page: a `--panel` box at radius 14, `padding: 14px 16px`, `gap: 10`, with a `1px solid rgba(209,138,106,0.28)` accent border like the `Orphan_Panel`. A 15 px warning icon and a line at 13 `--text-dim` saying the timer has run since its start and stopped counting, then a row holding a 44 px time field prefilled with the instant counting stopped (`startedAt + MAX_OPEN_SESSION_HOURS`) and one filled accent pill, 42 px, that stops the session at that time. No second action: dismissing a stale timer without deciding is what created it.
+
 **Skeleton.** The shape and radius of the block it stands in, on `--panel`, with a 1.2 s shimmer sweeping left to right; never a spinner.
+
+Skeletons have exactly three callers, because every first load is server-rendered and arrives complete: a client-side navigation between days or statistics ranges, an `invalidate` after a write or on `visibilitychange`, and the statistics range switch. Nothing renders a skeleton on mount.
+
+**What reaches `/offline`.** A page `load` that fails with `SERVICE_UNAVAILABLE` or with no response at all redirects there, carrying `?next=<path>`; its retry action navigates back to `next`. A *later* failure — a `Dry_Run`, the timer refresh, a form action — never navigates: it surfaces as a retryable message where the user is, because taking someone away from a filled-in dialog to an error page loses their input, which Requirement 15.7 forbids.
 
 **Login, error and offline pages.** The page shell with a centred column at `max-width: 420`, `gap: 16`: a 20/500 heading, a line at 14 `--text-dim`, then the form or the single action as a filled accent pill. The login page adds the passphrase field at the standard 44 px (48 on mobile); the offline page adds a ghost *retry* pill beside the primary action.
 
@@ -519,7 +610,7 @@ Nine surfaces are specified here in tokens rather than as artboards. All nine ar
 
 ### Projects (`Projects`)
 
-Content max 940. Rows of `padding: 16px 18px` separated by 1 px dividers, each with a 32 px icon box of radius 9 tinted from the project's slot and carrying a 13 px rounded swatch, the name, the thirty-day `Covered_Time`, a share bar, and row actions. The colour control opens a row of eight swatches, each 38 tall at radius 11, the current one ringed with `0 0 0 2px var(--dialog), 0 0 0 4px var(--text)`.
+Content max 940. Rows of `padding: 16px 18px` separated by 1 px dividers, each with a 32 px icon box of radius 9 tinted from the project's slot and carrying a 13 px rounded swatch, the name, the thirty-day `Covered_Time`, a share bar, and row actions. The colour control belongs to the row it changes: activating the row's swatch expands a strip of eight swatches **inside that row**, each 38 tall at radius 11, the current one ringed with `0 0 0 2px var(--bg), 0 0 0 4px var(--text)`; choosing one saves and collapses the strip. The artboard draws the strip as a standalone panel to show all eight at once, which is a presentation of the control rather than its placement — a page-level picker would have no way of saying which project it is about.
 
 ## Project Structure
 
@@ -544,7 +635,7 @@ worklog/
 │   │   ├── theme/
 │   │   │   ├── theme.css                # both themes as custom properties
 │   │   │   ├── palette.css              # .pj-0 … .pj-7, generated from palette.ts
-│   │   │   ├── timeline-heights.css     # .tl-h-26 … .tl-h-320, the 2 px ladder
+│   │   │   ├── timeline-heights.css     # .tl-h-26 … .tl-h-320 + .tl-h-fill (generated)
 │   │   │   └── theme.svelte.ts          # ThemePreference rune, resolution, persistence
 │   │   ├── ui/                          # Design_System, ported subset
 │   │   │   ├── elements/                # Button, Badge, Icon, Input, Select,
@@ -610,6 +701,14 @@ Test files mirror the source tree exactly — `tests/modules/day/components/day-
 
 ## Components and Interfaces
 
+### 0. What the `Design_System` Port Actually Is
+
+`src/lib/ui/` starts from `template-crm/src/lib/ui/`, and the port is not a copy. Two things differ, and both are settled here rather than discovered mid-task.
+
+**Tokens.** The template's components speak their own token vocabulary. Every reference is rewritten to this project's tokens as the component is ported — no compatibility layer, no aliasing shim, because a second vocabulary is how a design contract rots. The mapping is mechanical: surface → `--panel`, elevated surface → `--dialog`, border → `--divider`, muted text → `--text-dim`, subtle text → `--text-faint`, primary → `--accent`, on-primary → `--ink-on-accent`, danger → `--destructive`, input → `--field`. Anything with no counterpart here is dropped along with the component that needed it.
+
+**Missing components.** `BottomNav`, `Fab` and `SettingsMenu` do not exist in the template and are written for this project from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour described under Dialogs. Everything else — `Button`, `Badge`, `Icon`, `Input`, `Select`, `Checkbox`, `Spinner`, `Tooltip`, `FormField`, `DatePicker`, `TimeInput`, `SearchInput`, `Shell`, `Topbar`, `PageHeader`, `Section`, `ConfirmDialog`, `Toast`, `ToastContainer`, `LoadingSkeleton`, `StatCard`, `EmptyState`, `DataTable` — ports with a token rewrite and no structural change.
+
 ### 1. Colour Palette (`src/lib/viz/palette.ts`)
 
 ```ts
@@ -639,7 +738,7 @@ There is no `projectColorVar` and no `labelInkOn`. The first wrote an inline cus
 
 **Where `colorIndex` comes from.** Every read shape that names a project carries it: `ActivityEntry.colorIndex` for a `Segment_Block` and a gauge arc, `ProjectTotal.colorIndex` for the statistics breakdown, the `Project_Legend` and the projects page, and the interval attribution of a `DaySummary` for the `Day_Rhythm_Strip`. The interface never looks a colour up by joining the projects list against an id — a join would be wrong for an archived project missing from that list, and stale for one recoloured in another tab.
 
-`palette.css` is generated from this module, not maintained by hand — one class per slot per theme, carrying `--pj` and `--pj-tint`. The tint alpha is **0.16 in the dark theme and 0.13 in the light one**: the lighter ground needs less of it to read at the same weight.
+`palette.css` and `timeline-heights.css` are **generated, and both are committed**. A small script under `scripts/` writes them from `palette.ts` and from the ladder constants, and `bun run check` fails if regenerating produces a diff. They are committed rather than built at install time so a clean checkout renders correctly without a pre-step, and generated rather than hand-written so the hexes exist in exactly one place. The tint alpha is **0.16 in the dark theme and 0.13 in the light one**: the lighter ground needs less of it to read at the same weight.
 
 ### 2. Timeline Geometry (`src/modules/day/components/timeline-geometry.ts`)
 
@@ -651,7 +750,9 @@ type Interval = { start: Date; end: Date };
 export const MIN_BLOCK_PX = { desktop: 36, mobile: 26 } as const;
 /** Below this a block shows name and times only. Desktop only — mobile never shows one. */
 export const DESCRIPTION_MIN_PX = 60;
-export const BLOCK_GAP_PX = 4;
+export const BLOCK_GAP_PX = 4;                 // between two segments of one block
+export const HEAD_GAP_PX = { desktop: 8, mobile: 6 } as const;      // head to segment column
+export const BLOCK_TO_BREAK_PX = { desktop: 11, mobile: 9 } as const; // block to Break_Marker
 export const BLOCK_HEAD_PX = { desktop: 29, mobile: 24 } as const;
 export const BREAK_MARKER_PX = { short: 38, long: 42 } as const;
 export const LONG_BREAK_SECONDS = 3600;
@@ -702,13 +803,19 @@ export function layOutDay(
 
 A single proportional axis over the whole day was tried and rejected: on a real day of 08:00–03:00 with a four-hour evening break, the break consumed 21 % of the height while showing nothing, and a twenty-minute task rendered 13 px tall — unreadable and unclickable. Collapsing the break costs the property that distance equals time *across* blocks; proportions still hold *inside* a block, which is where the reading happens. The shape of the whole day is read from the `Day_Gauge` instead.
 
-**`availablePx` is the height of the timeline column, measured by the component** — the viewport height less the shell, the page heading and the page padding — and passed in. It is re-measured on resize and on an orientation change, and the layout is recomputed; nothing about it is stored. It is a **budget, not a limit**.
+**`availablePx` is the height of the timeline column** — the viewport height less the shell, the page heading and the page padding. It exists on the server too, which is what makes a server-rendered day deterministic:
+
+- the `viewport` cookie carries the last known viewport as `<width>x<height>`;
+- with no cookie — a first visit — the server assumes **1440 × 900**, which resolves to `density: 'desktop'` and `availablePx = 900 − 84 (shell) − 56 (heading) − 48 (padding) = 712`;
+- on mount the client measures the real viewport, and **only if it differs** writes the cookie and lays out again. A returning desktop user sees no relayout at all.
+
+It is a **budget, not a limit**.
 
 **The algorithm, which is normative.** The heights drawn in the artboards illustrate it; they do not define it, and reproducing them exactly is not a requirement (Requirement 17.13).
 
 1. **Reserve the fixed rows.** `fixed = Σ BLOCK_HEAD_PX + Σ BREAK_MARKER_PX + Σ BLOCK_GAP_PX` over every block, break and inter-segment gap. What remains, `flex = availablePx − fixed`, is what the segments share.
-2. **Distribute proportionally.** Each segment gets `flex × its seconds / total segment seconds`.
-3. **Lift to the floor.** Any segment below `MIN_BLOCK_PX` is raised to it and pinned. The deficit this creates is taken back from the unpinned segments **in descending height order, one step at a time**, so the tallest gives first and no segment is pushed below the floor by the repayment. Repeat until the deficit is settled or every segment is pinned.
+2. **Distribute proportionally.** Each segment gets `flex × its seconds / total segment seconds`. The denominator counts **every** stretch inside the blocks, including uncovered stretches under `MIN_UNCOVERED_SECONDS` that will get no block of their own — their share stays with the block and is absorbed by the segment that follows them, so what is drawn still sums to the session.
+3. **Lift to the floor.** Any segment below `MIN_BLOCK_PX` is raised to it and pinned. The deficit this creates is repaid by the unpinned segments in **descending current height**, one `HEIGHT_STEP_PX` at a time — take 2 px from the tallest, re-sort, take 2 px from the new tallest, and so on — stopping when the deficit is settled or every segment has reached the floor and is pinned. Repaying in steps rather than proportionally is what keeps a segment from being pushed under the floor by the repayment itself. This runs **before** quantisation, so step 4 has nothing left to undo.
 4. **Quantise.** Round each height **down** to `HEIGHT_STEP_PX`. The remainder — at most 2 px per segment — is given back to the tallest segment of each block, so the block's own total is exact.
 5. **The floor outranks the budget.** If every segment is pinned and the total still exceeds `availablePx`, the layout returns the larger total and the page scrolls. A block too small to read is worse than a page that scrolls, and this is why Property 2's premise is `MIN_BLOCK_PX × segments + Σ heads + Σ breaks + Σ gaps ≤ availablePx` — outside that premise there is nothing to prove.
 
@@ -745,9 +852,35 @@ type DayTimelineProps = {
 
 There is no `orientation` prop: the timeline is vertical at every width, and desktop and mobile differ in density — block floor, padding, type sizes and whether the break label carries its bounds. There is no `compact` prop either: the timer page shows the `Day_Gauge`, never a second timeline. There is no `bounds` prop: `layOutDay` never used it, because a block's axis is its own session.
 
+**The element tree, because a button inside a button is invalid HTML.** A `Work_Block` head has to be activatable *and* its segments have to be activatable, and neither may nest inside the other:
+
+```html
+<section aria-labelledby="wb-3-head">                <!-- one Work_Block -->
+  <div class="wb-head">
+    <button id="wb-3-head" class="wb-head-btn">08:00 – 12:30 · 4 h 30 min v kuse</button>
+  </div>
+  <div class="wb-body">                              <!-- rail + column, side by side -->
+    <div class="wb-rail">                            <!-- 8 px, not a button itself -->
+      <button class="wb-rail-edge wb-rail-start" aria-label="…">…</button>
+      <button class="wb-rail-mid"   aria-label="…">…</button>
+      <button class="wb-rail-edge wb-rail-end"   aria-label="…">…</button>
+    </div>
+    <ol class="wb-col">
+      <li><button class="sb pj-0 tl-h-98" data-entry-id="…">…</button></li>
+      <li><button class="sb uncovered tl-h-38">…</button></li>
+    </ol>
+  </div>
+</section>
+<div class="break-marker" role="separator" aria-label="pauza 45 min, 12:30 – 13:15">…</div>
+```
+
+The rail is a container of three sibling buttons — two 12 px edges and the middle — so the edge targets exist without nesting. The segment column is an `<ol>` so its order is exposed, each `<li>` holding exactly one button. `BreakMarker` is a `role="separator"` with a label, not a control: there is nothing to activate on a break.
+
 The component renders `WorkBlock` and `BreakMarker` in DOM order and owns nothing else. `WorkBlock` renders the head, the `Session_Rail` (with drag handles when `editable` and density is `desktop`) and its `SegmentBlock` children. `SegmentBlock` carries `data-entry-id` so the `Split_Marker` hover state can link the parts of one entry.
 
-**Dragging a rail edge versus clicking the rail.** The top and bottom 12 px of the `Session_Rail` are drag handles; the rest of it is a plain target that opens the `Session_Dialog`. A press on a handle becomes a drag only after the pointer has moved **4 px**; released below that it counts as a click and opens the dialog. Both thresholds are needed because the rail is 8 px wide and a session edge is a precise thing to grab — without the movement threshold every mis-grab would silently move a boundary. A drag snaps to five-minute steps. On release the component does **not** commit — it calls `onSessionResize`, which opens the `SessionDialog` already carrying the dragged values, so the change still passes through a `Change_Preview`.
+**There is no dragging.** An earlier draft let a `Session_Rail` edge be dragged with five-minute snapping, and it cannot work: a block's height is proportional only *within* its block, every segment is clamped at `MIN_BLOCK_PX`, and a break is a fixed row rather than a span of time. The moment any segment is pinned to the floor the axis stops being linear, so there is no pixel-to-minute conversion — a drag would report a time it is not setting, on exactly the surface where being wrong costs recorded work.
+
+The rail still carries the affordance where the edge is: its top and bottom 12 px are their own targets, and activating one opens the `Session_Dialog` with that end's field focused and its content selected, ready to be typed or stepped. The rest of the rail opens the same dialog with neither field focused. Every boundary change therefore goes through a field and a `Change_Preview`, which is where it was always going to end up.
 
 ### 4. Day Gauge (`src/modules/timer/components/DayGauge.svelte`, `gauge-geometry.ts`)
 
@@ -800,7 +933,7 @@ Numerals are **two-digit hours with no minutes** — `06 09 12 15 18 21 00` — 
 | `Activity_Segment` | `--pj` of its slot, 6 px |
 | `Uncovered_Time` | `--uncovered-dash`, 6 px, `stroke-dasharray="3 6"`, `stroke-linecap="round"` |
 | `Gauge_Gap` | nothing at all — no groove, no mark, no numeral, at any coverage |
-| `Overtime_Arc` | same stroke widths, floating in the gap; a filled `r=4` accent dot at the track end and the reached time at 12/500 accent at **r = 162** on the arc's end angle |
+| `Overtime_Arc` | same stroke widths, floating in the gap. **One per stretch outside the window, so a day can carry two** — one before `GAUGE_START`, one after `GAUGE_END`. Each gets a filled `r=4` accent dot at the track end it left and its own 12/500 accent label at **r = 162** on its far end: the earlier arc labels its start, the later one its end, since those are the two instants the gap cannot be read against |
 | Centre | the `Timer_Control`: 104 px (mobile 98), icon 42 (40), halo `0 0 0 12px rgba(accent,0.09)` |
 | Elapsed | above the circle, never inside it |
 
@@ -821,6 +954,10 @@ On top of that, an inner arc responds to **hover** with a label naming the proje
 ```ts
 export type ActivityPreview = {
   kind: 'activity';
+  /** The anchor the server resolved, for Duration_Mode and Open_Mode. */
+  anchor: Anchor;
+  /** Segments dropped for falling under MIN_INTERVAL_SECONDS — discarded time the user must see. */
+  slivers: Interval[];
   /** The entry as it would be stored, carrying its resulting segments — the server's shape. */
   entry: ActivityEntry;
   discarded: Interval[];
@@ -849,12 +986,18 @@ export type SessionPreview = {
 export type Rejection = { code: string; messageKey: string; details?: Record<string, unknown> };
 export type Preview = ActivityPreview | SessionPreview;
 
-/** POSTs the pending change with dryRun: true and maps the response. Computes nothing locally. */
-export function previewActivity(input: CreateActivityInput, signal: AbortSignal): Promise<ActivityPreview>;
-export function previewSessionChange(input: SessionChangeInput, signal: AbortSignal): Promise<SessionPreview>;
+/** Every call posts or sends dryRun and maps the response. None computes anything locally. */
+export function previewCreateActivity(input: CreateActivityInput, signal: AbortSignal): Promise<ActivityPreview>;
+export function previewPatchActivity(id: string, input: PatchActivityInput, signal: AbortSignal): Promise<ActivityPreview>;
+export function previewCreateSession(input: CreateSessionInput, signal: AbortSignal): Promise<SessionPreview>;
+export function previewPatchSession(id: string, input: PatchSessionInput, signal: AbortSignal): Promise<SessionPreview>;
+/** DELETE carries no body, so its flags are query parameters: ?dryRun=true&previewToken=… */
+export function previewDeleteSession(id: string, previewToken: string | null, signal: AbortSignal): Promise<SessionPreview>;
 ```
 
-Both shapes mirror `001`'s `ActivityResponse` and `SessionChangePreview` field for field, including `lostUncoveredSeconds` and `lostUncovered`. The single addition is `rejection`, the client's mapping of a non-2xx envelope — the server has no such field. `segments` is not a field: the segments live inside `entry`, exactly as the server returns them, so the interface cannot hold a second opinion about them. Neither function takes the day data, because neither computes anything from it.
+Five functions rather than two, because five writes can destroy something: creating and editing an activity, creating, editing and deleting a session. `DELETE /api/sessions/{id}` takes `dryRun` and `previewToken` as **query parameters** — a DELETE has no body to put them in.
+
+Both shapes mirror `001`'s `ActivityResponse` and `SessionChangePreview` field for field, including `anchor`, `slivers`, `lostUncoveredSeconds` and `lostUncovered`. `slivers` is rendered beside `discarded` — a segment dropped for being shorter than `MIN_INTERVAL_SECONDS` is time that disappears, and a preview that hides it is lying by omission. The single addition is `rejection`, the client's mapping of a non-2xx envelope — the server has no such field. `segments` is not a field: the segments live inside `entry`, exactly as the server returns them, so the interface cannot hold a second opinion about them. Neither function takes the day data, because neither computes anything from it.
 
 The component renders, in this order: what will be stored, what will be lost, and what is unresolved. A rejection replaces the whole body with the translated `messageKey` and disables the confirm action. In-flight requests are aborted when the user edits a field again, and a new `Dry_Run` is requested only after a 400 ms pause in typing, so editing a time field cannot exhaust the rate limit.
 
@@ -885,6 +1028,8 @@ The mode switch is a segmented control with **three** items, all first class: `P
 `Open_Mode` is reachable **from both** the dialog and the `Quick_Log` pill. The pill is the one-tap path for the common case; the dialog's third mode is the same request with a description and a project picker attached. Both post the identical body, so the anchor rule stays in exactly one place — on the server, where a shell script gets the same behaviour.
 
 Prefill sources, in precedence order: an explicit `prefill` from a clicked gap; then the `Project` and description of the most recent entry of the day; then empty.
+
+**Where the requested values show.** When an entry's stored segments differ from what was asked for, the dialog says so above the field row: one line at 12.5 `--text-faint` — `žádáno 13:00 – 16:00 · uloženo ve 2 částech` — with the requested interval or duration from `requestedStartedAt` / `requestedEndedAt` / `requestedDurationMinutes`. It is a statement, not a field; editing the times replaces them. This is the only place the difference is shown, because it is the only place it can be acted on.
 
 ### 7. Timer Control (`src/modules/timer/`)
 
@@ -958,6 +1103,16 @@ All five components follow the mark specs: 2 px surface gaps between adjacent se
 
 ### 10. Theme (`src/lib/theme/theme.svelte.ts`, `src/app.html`)
 
+**Everything that decides the first paint is a cookie, never `localStorage`.** The server cannot read `localStorage`, so a preference kept there means the server renders one thing and the client corrects it — the flash Requirement 17.7 forbids, and worse for the gauge, whose arc colours are SVG attributes a pre-paint script would not repaint. Three values are therefore cookies, all readable by both sides, `SameSite=Lax`, one year, not `HttpOnly`:
+
+| Cookie | Value | Read by |
+|---|---|---|
+| `theme` | `system` \| `light` \| `dark` | `+layout.server.ts` → `%theme%` |
+| `locale` | `cs` \| `en` | `+layout.server.ts` → `%lang%` |
+| `viewport` | `<width>x<height>` in CSS pixels | `+layout.server.ts` → density and `availablePx` |
+
+`src/app.html` carries `<html lang="%lang%" data-theme="%theme%">`. `002` owns that file and writes the placeholders; **`001` substitutes them** in its `transformPageChunk`, from the values its hook resolved — the same hook that already fills `%sveltekit.nonce%`. Neither half can do it alone: the file is `002`'s and the hook is `001`'s.
+
 ```ts
 /** What the user chose. */
 export type ThemePreference = 'system' | 'light' | 'dark';
@@ -973,9 +1128,11 @@ export const theme: { readonly preference: ThemePreference; readonly current: Th
 
 The distinction matters: the `Theme_Switcher` is three-way (`Systém` / `Světlý` / `Tmavý`) and its default is `system`, so what is persisted is the **preference**, not the resolved theme. While the preference is `system` the store listens to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves when the browser flips at dusk — a stored `dark` would not do that.
 
+`system` is the one case the server cannot resolve, because `prefers-color-scheme` never reaches it. The server renders `dark` for it, and the client corrects to `light` on hydration if the browser asks for light. That single case is why `setThemePreference` also writes the **resolved** theme into the `theme` cookie whenever the preference is `system` — after the first paint of the first visit, even `system` is server-known.
+
 Both themes live in `theme.css` as `[data-theme='dark']` and `[data-theme='light']` blocks over a `:root` default, so switching is one attribute write with no reload and no flash.
 
-The first paint is handled in `app.html` by a **nonced** inline script — `<script nonce="%sveltekit.nonce%">` — that reads the persisted preference, resolves it against `prefers-color-scheme` and sets `data-theme` before the body renders. `001` fills the nonce through `transformPageChunk`, so the script satisfies `script-src 'self' 'nonce-…'` without weakening the policy. This is the only script in `app.html`, and it does nothing but set one attribute.
+There is **no** pre-paint script: `data-theme` arrives already correct in the HTML. The only inline script `app.html` carries is the nonced one-liner that corrects the `system` case described above and writes the resolved value back into the cookie, so it runs at most once per browser.
 
 ### 10a. Settings Menu (`src/lib/ui/layout/SettingsMenu.svelte`)
 
@@ -1004,28 +1161,36 @@ So: `switchLocale()` writes a `locale` cookie (a year, `SameSite=Lax`, not `Http
 
 **Plurals are not optional in Czech.** Czech selects between one / few (2–4) / many (5+), and this interface counts things constantly: `2 záznamy` against `5 záznamů`, `Bloky práce 3`, `6 ze 7 dnů`, `část 2 ze 3`. Every message carrying a count is declared with plural forms and called with the number; a flat string with the count interpolated is wrong in Czech for two thirds of the values it can take. The English forms are the trivial two-way case, which is precisely why this breaks silently if only English is checked.
 
-Key naming follows the workspace's domain prefix convention: `common_*`, `errors_*`, `timer_*`, `day_*`, `activity_*`, `session_*`, `projects_*`, `stats_*`.
+Key naming follows the workspace's domain prefix convention: `common_*`, `nav_*`, `shell_*`, `settings_*`, `auth_*`, `timer_*`, `day_*`, `activity_*`, `session_*`, `preview_*`, `projects_*`, `stats_*`, `feedback_*`, `errors_*`, `aria_*`. **The complete catalogue — every key with its Czech and English value — is the Message Catalogue section below.** `messages/cs.json` and `messages/en.json` are written from it, and a string that is not in it does not appear on screen.
 
-The server sends the key: every error envelope carries `messageKey` beside the English `message`, so the interface renders `m[messageKey]()` and never derives, parses or displays the raw `error` code. `001` owns the code-to-key mapping in one function; a test asserts every key it can emit exists in both message files.
+The server sends the key: every error envelope carries `messageKey` beside the English `message`, so the interface renders `m[messageKey]()` and never derives, parses or displays the raw `error` code. `001` owns the code-to-key mapping in one function — `messageKeyFor('ACTIVITY_OVERLAP')` → `errors_activity_overlap` — and the catalogue's `errors_*` block carries one key per `ErrorCode`. Three codes whose `details` change the sentence (`NOTHING_TO_LOG` by `reason`, `RATE_LIMITED` by `scope`, `SESSION_OVERLAP` by whether the conflict is the open session) take one key per value, suffixed; the interface reads the field and selects, and never composes a sentence itself. A test asserts every key `messageKeyFor` can emit exists in both files.
 
 ### 12. Formatting (`src/lib/viz/format.ts`)
 
 ```ts
-/** "2 h 14 min" — never a bare decimal of hours. Below a minute renders as "< 1 min". */
+/** "5:12:08" — the running clock. Hero readout and tab title while a session is open. */
+export function formatClock(seconds: number): string;
+/** "2 h 14 min" — never a bare decimal. Under a minute renders as "< 1 min". Everywhere else. */
 export function formatDuration(seconds: number, locale: string): string;
-/** "14 h 15" — the hero and timer-figure form on mobile, unit dropped. */
+/** "14 h 15" — unit dropped. Mobile hero and the three mobile timer figures only. */
 export function formatDurationShort(seconds: number, locale: string): string;
+/** "−2 h 00 min" / "+30 min" — signed, for preview deltas only. */
+export function formatDelta(seconds: number, locale: string): string;
 
 /**
  * Every wall-clock rendering and every parse goes through these, in the SERVER's
  * zone — never the device's. `/api/health` reports it; the root layout loads it once.
  */
 export function formatTimeOfDay(t: Date, locale: string, timeZone: string): string;
-export function formatDayLabel(date: string, locale: string, today: string): string;
+export function formatDayLabel(date: string, locale: string, today: string, form: 'relative' | 'long' | 'short'): string;
 export function parseTimeOfDay(text: string, date: string, timeZone: string): Date;
 ```
 
+Four forms, and each has exactly one home: `formatClock` for the hero and the tab title, where the value ticks every second and has to read as a clock; `formatDuration` for every total, every block, every panel row; `formatDurationShort` for the mobile hero and the three mobile timer figures, where the units do not fit; `formatDelta` for the `Change_Preview`, where the sign is the point. `formatClock` is the only one that is not localised — a colon-separated clock is the same in both languages.
+
 Passing the zone explicitly is what closes a whole class of bugs: a laptop set to the wrong zone would otherwise render times in local time while the day boundaries came from Prague, and a hand-typed "14:00" would be sent with the device offset and clipped away as outside `Tracked_Time`. When the two zones differ the shell says which one the times are in.
+
+`formatDayLabel` answers three different questions and takes a `form` to say which: `relative` gives `dnes` / `včera` and otherwise falls through to `long` — the day page heading and `formatDayLabel`'s own default; `long` gives `pátek 21. srpna` for a heading; `short` gives `pá 21.` for the rhythm strip's 58 px gutter and the mobile date row. A single function with three call sites that each wanted something else was the bug this parameter prevents.
 
 Timestamps arrive as RFC 3339 strings and are revived into `Date` at the boundary — the load function for server-rendered data, `dry-run.ts` for `fetch` responses. Nothing downstream handles a string where the types say `Date`.
 
@@ -1055,18 +1220,23 @@ Nothing about the timer, the day or the projects is cached in the browser. Requi
 *For any* set of `Work_Session` and `Activity_Segment` records and any `availablePx` at least
 
 ```
-MIN_BLOCK_PX × segmentCount  +  Σ BLOCK_HEAD_PX  +  Σ BREAK_MARKER_PX  +  Σ BLOCK_GAP_PX
+  MIN_BLOCK_PX × segmentCount
++ BLOCK_HEAD_PX      × blockCount
++ HEAD_GAP_PX        × blockCount        // head to segment column
++ BLOCK_GAP_PX       × (segmentCount − blockCount)   // between segments of a block
++ BREAK_MARKER_PX    × breakCount        // label row incl. its own vertical padding
++ BLOCK_TO_BREAK_PX  × 2 × breakCount    // block to marker, marker to next head
 ```
 
-— that is, at least the space the fixed rows and the floors already claim — the layout returned by `layOutDay` SHALL satisfy both invariants at once: the sum of every block height, every block head, every `Break_Marker` and every gap SHALL be at most `availablePx`, **and** every `LaidOutSegment.heightPx` SHALL be at least `MIN_BLOCK_PX` for the density.
+— that is, at least the space the fixed rows, the gaps between them and the floors already claim — the layout returned by `layOutDay` SHALL satisfy both invariants at once: the sum of every block height, every block head, every `Break_Marker` and every gap SHALL be at most `availablePx`, **and** every `LaidOutSegment.heightPx` SHALL be at least `MIN_BLOCK_PX` for the density.
 
-The premise has to name all four terms. Two segments in two sessions at `availablePx = 72` satisfies `MIN_BLOCK_PX × 2` and is still impossible — two heads and a `Break_Marker` have to go somewhere — so a generator built on the shorter premise fails on its first case for a reason that is not a defect. Below the premise the floor wins and the page scrolls, which is a stated behaviour rather than an invariant to prove.
+The premise has to name every term, gaps included. Two segments in two sessions at `availablePx = 72` satisfies `MIN_BLOCK_PX × 2` and is still impossible — two heads and a `Break_Marker` have to go somewhere — so a generator built on the shorter premise fails on its first case for a reason that is not a defect. Below the premise the floor wins and the page scrolls, which is a stated behaviour rather than an invariant to prove.
 
 **Validates: Requirements 4.3, 4.20, 4.23, 14.3**
 
 ### Property 3: The gap is never graduated
 
-*For any* `Gauge_Window` the server can report and any coverage of the day up to and including 24 hours, `graduations()` SHALL return only marks whose angle lies within `[trackStart, trackEnd]`, and SHALL never return a mark or a label for an instant inside the `Gauge_Gap`.
+*For any* `Gauge_Window` the server can report and any coverage of the day up to and including 24 hours, every mark `graduations()` returns SHALL lie on the track — tested as `((angle − trackStart) mod 360) ≤ ((trackEnd − trackStart) mod 360)`, not as `trackStart ≤ angle ≤ trackEnd`, because the window wraps past 360° whenever it crosses midnight and the naive comparison then describes an empty interval — and no mark or label SHALL fall inside the `Gauge_Gap`.
 
 **Validates: Requirements 16.2, 16.9, 16.12**
 
@@ -1104,6 +1274,311 @@ A write that succeeds but reports `discarded` intervals or `unplacedMinutes` is 
 
 **The session-expired message.** `001`'s `Auth_Hook` redirects an unauthenticated *navigation* to the login route carrying only the requested path, so a server-issued redirect cannot say whether a session expired or never existed, and the login page stays silent. The message exists for the other case: when the browser's own `fetch` — a `Dry_Run`, the timer refresh, inline project creation — receives `UNAUTHORIZED`, the interface navigates to the login route itself and appends `reason=session_expired`. That is the only source of the message, and Requirement 2.7 pins it.
 
+## Message Catalogue
+
+Every user-facing string, in both languages. This is the contract Requirement 13.1 promises and the file `messages/cs.json` and `messages/en.json` are written from; a string that is not here does not appear on screen. Keys are flat snake_case with a domain prefix. `{…}` are Paraglide placeholders; `{n, plural, …}` selects Czech one / few / other.
+
+### common_*
+
+| Key | Czech | English |
+|---|---|---|
+| `common_save` | Uložit | Save |
+| `common_cancel` | Zrušit | Cancel |
+| `common_delete` | Smazat | Delete |
+| `common_confirm` | Potvrdit | Confirm |
+| `common_back` | Zpět | Back |
+| `common_close` | Zavřít | Close |
+| `common_retry` | Zkusit znovu | Try again |
+| `common_today` | dnes | today |
+| `common_yesterday` | včera | yesterday |
+| `common_none` | — | — |
+| `common_of_total` | {value} z {total} | {value} of {total} |
+| `common_esc_hint` | Esc zavře · nic se neuloží, dokud nepotvrdíš | Esc closes · nothing is saved until you confirm |
+| `common_server_computed` | Počítá to server, ne prohlížeč — co vidíš, to se stane | The server computes this, not the browser — what you see is what happens |
+
+### nav_* and shell
+
+| Key | Czech | English |
+|---|---|---|
+| `nav_timer` | Timer | Timer |
+| `nav_day` | Den | Day |
+| `nav_projects` | Projekty | Projects |
+| `nav_stats` | Statistiky | Statistics |
+| `nav_brand` | Worklog | Worklog |
+| `shell_settings_open` | Nastavení | Settings |
+| `shell_running_label` | Timer běží, {elapsed} | Timer running, {elapsed} |
+| `shell_timezone_notice` | Časy jsou v pásmu {timeZone}, ne v pásmu tvého zařízení | Times are shown in {timeZone}, not your device's zone |
+
+### settings_*
+
+| Key | Czech | English |
+|---|---|---|
+| `settings_theme_label` | motiv | theme |
+| `settings_theme_system` | Systém | System |
+| `settings_theme_light` | Světlý | Light |
+| `settings_theme_dark` | Tmavý | Dark |
+| `settings_language_label` | jazyk | language |
+| `settings_language_cs` | Čeština | Czech |
+| `settings_language_en` | English | English |
+| `settings_logout` | Odhlásit se | Log out |
+
+### auth_*
+
+| Key | Czech | English |
+|---|---|---|
+| `auth_title` | Worklog | Worklog |
+| `auth_passphrase_label` | Heslo | Passphrase |
+| `auth_submit` | Odemknout | Unlock |
+| `auth_failed` | Nesprávné heslo | Incorrect passphrase |
+| `auth_session_expired` | Přihlášení vypršelo, přihlas se znovu | Your session expired, please log in again |
+
+### timer_*
+
+| Key | Czech | English |
+|---|---|---|
+| `timer_start` | Spustit timer | Start the timer |
+| `timer_stop` | Zastavit timer | Stop the timer |
+| `timer_running_since` | běží od {time} | running since {time} |
+| `timer_idle_caption` | timer neběží | timer is not running |
+| `timer_worked` | odpracováno | worked |
+| `timer_covered` | popsáno | described |
+| `timer_uncovered` | chybí popis | not described |
+| `timer_worked_short` | odprac. | worked |
+| `timer_covered_short` | popsáno | described |
+| `timer_uncovered_short` | chybí | missing |
+| `timer_legend_uncovered` | bez popisu | not described |
+| `timer_gauge_label` | Den {date}: odpracováno {worked}, popsáno {covered}, chybí popis {uncovered}{running, select, true { · timer běží} other {}} | Day {date}: worked {worked}, described {covered}, not described {uncovered}{running, select, true { · timer running} other {}} |
+| `timer_stale_title` | Timer běží od {start} a už se nezapočítává | The timer has run since {start} and stopped counting |
+| `timer_stale_body` | Po {hours, plural, one {# hodině} few {# hodinách} other {# hodinách}} server přestal čas počítat. Vyber, kdy skončil. | After {hours, plural, one {# hour} other {# hours}} the server stopped counting. Choose when it ended. |
+| `timer_stale_stop` | Zastavit v tomto čase | Stop at this time |
+| `timer_quicklog` | Zapsat {from} → teď | Log {from} → now |
+| `timer_quicklog_remaining` | {duration} bez popisu | {duration} not described |
+| `timer_quicklog_open_dialog` | Otevřít dialog | Open the dialog |
+| `timer_quicklog_no_project` | Nejdřív vytvoř projekt | Create a project first |
+
+### day_*
+
+| Key | Czech | English |
+|---|---|---|
+| `day_prev` | Předchozí den | Previous day |
+| `day_next` | Následující den | Next day |
+| `day_pick` | Vybrat datum | Pick a date |
+| `day_heading_meta` | {from} – {to} · odpracováno {worked} | {from} – {to} · worked {worked} |
+| `day_add_activity` | Přidat úkol | Add a task |
+| `day_add_session` | Přidat úsek timeru | Add a timer block |
+| `day_empty_title` | Zatím nic | Nothing yet |
+| `day_empty_body` | Spusť timer a den se začne plnit sám. | Start the timer and the day fills itself in. |
+| `day_block_head` | {from} – {to} | {from} – {to} |
+| `day_block_duration` | {duration} v kuse | {duration} unbroken |
+| `day_block_night` | noční | night |
+| `day_block_running` | běží | running |
+| `day_block_capped` | timer běží, ale už se nezapočítává | still running, no longer counting |
+| `day_block_continues` | pokračuje do {time} | continues to {time} |
+| `day_segment_label` | {project}, {from} – {to}, {duration}{part, select, true { · část {index} ze {count}} other {}} | {project}, {from} – {to}, {duration}{part, select, true { · part {index} of {count}} other {}} |
+| `day_segment_part` | část {index} ze {count} | part {index} of {count} |
+| `day_segment_part_short` | {index}/{count} | {index}/{count} |
+| `day_break` | pauza {duration} · {from} – {to} | break {duration} · {from} – {to} |
+| `day_break_short` | pauza {duration} | break {duration} |
+| `day_uncovered_title` | Zatím bez popisu | Not described yet |
+| `day_uncovered_title_short` | Bez popisu | Not described |
+| `day_uncovered_hint` | {from} – {to} · {duration} — klikni a doplň | {from} – {to} · {duration} — click to fill in |
+| `day_uncovered_action` | doplnit | fill in |
+| `day_summary_label` | souhrn dne | day summary |
+| `day_summary_worked` | Odpracováno | Worked |
+| `day_summary_covered` | Popsáno | Described |
+| `day_summary_uncovered` | Chybí popis | Not described |
+| `day_summary_share` | {percent} % odpracovaného času má popis | {percent} % of worked time has a description |
+| `day_summary_complete` | Celý den je popsaný. | The whole day is described. |
+| `day_shape_label` | tvar dne | shape of the day |
+| `day_shape_blocks` | Bloky práce | Work blocks |
+| `day_shape_longest` | Nejdelší v kuse | Longest unbroken |
+| `day_shape_evening` | Po {eveningHour} | After {eveningHour} |
+| `day_orphans_label` | mimo výkaz | outside the log |
+| `day_orphans_body` | Zápisy, kterým po úpravě timeru nezbyl žádný čas. Na ose je nevidíš, protože nikde neleží. | Entries left with no time after the timer was edited. They are not on the timeline, because they are nowhere. |
+| `day_orphans_row` | žádáno {from} – {to} · zbylo 0 min | asked for {from} – {to} · 0 min left |
+| `day_orphans_reenter` | Přepsat čas | Re-enter the time |
+
+### activity_*
+
+| Key | Czech | English |
+|---|---|---|
+| `activity_add_title` | Přidat úkol | Add a task |
+| `activity_edit_title` | Upravit úkol | Edit the task |
+| `activity_mode_label` | jak to zadáš | how you enter it |
+| `activity_mode_explicit` | Přesně od–do | Exact from–to |
+| `activity_mode_explicit_short` | Od–do | From–to |
+| `activity_mode_duration` | Jen délka | Duration only |
+| `activity_mode_open` | Od posledního | Since the last one |
+| `activity_field_day` | den | day |
+| `activity_field_from` | od | from |
+| `activity_field_to` | do | to |
+| `activity_field_duration` | jak dlouho | how long |
+| `activity_field_project` | projekt | project |
+| `activity_field_description` | co jsi dělal | what you did |
+| `activity_anchor_note` | Začne se od {time} — konec posledního záznamu. Do {duration} se počítá jen čistá práce, pauzy se přeskakují. | Starts at {time} — the end of the last entry. Only worked time counts towards {duration}; breaks are skipped. |
+| `activity_anchor_first_session` | Začne se od {time} — začátek prvního úseku timeru. | Starts at {time} — the beginning of the first timer block. |
+| `activity_requested_note` | žádáno {requested} · uloženo {stored} | asked for {requested} · stored as {stored} |
+| `activity_submit` | Uložit úkol | Save the task |
+| `activity_delete_title` | Smazat úkol? | Delete this task? |
+| `activity_delete_body` | {project}, {from} – {to} · {duration}. Zmizí z výkazu. | {project}, {from} – {to} · {duration}. It will disappear from the log. |
+
+### session_*
+
+| Key | Czech | English |
+|---|---|---|
+| `session_add_title` | Přidat úsek timeru | Add a timer block |
+| `session_edit_title` | Upravit úsek timeru | Edit the timer block |
+| `session_field_start` | začátek | start |
+| `session_field_end` | konec | end |
+| `session_delete_link` | Smazat celý úsek {from} – {to} | Delete the whole block {from} – {to} |
+| `session_delete_title` | Smazat úsek timeru? | Delete this timer block? |
+| `session_confirm_save` | Potvrdit a uložit | Confirm and save |
+| `session_back_to_edit` | Zpět k úpravě | Back to editing |
+
+### preview_*
+
+| Key | Czech | English |
+|---|---|---|
+| `preview_label` | uloží se takto | this is what will be saved |
+| `preview_parts` | Uloží se {count, plural, one {# část} few {# části} other {# částí}} kolem pauzy. | Saved as {count, plural, one {# part} other {# parts}} around a break. |
+| `preview_unplaced` | {duration} se nevejde. | {duration} will not fit. |
+| `preview_unplaced_why` | Po {time} už timer neběžel, takže z {requested} se zapíše {stored}. | The timer was not running after {time}, so {stored} of {requested} is recorded. |
+| `preview_sliver` | {duration} se zahodí — kratší úsek než {minimum} se neukládá. | {duration} is dropped — anything shorter than {minimum} is not stored. |
+| `preview_policy_label` | Se zbytkem: | The remainder: |
+| `preview_policy_clip` | Zahodit | Discard |
+| `preview_policy_extend` | Prodloužit timer | Extend the timer |
+| `preview_loss_title` | Zkrácením přijdeš o zapsaný čas | Shortening this loses recorded time |
+| `preview_now` | teď | now |
+| `preview_after` | po úpravě | after |
+| `preview_entry_loss` | −{duration} | −{duration} |
+| `preview_emptied` | Úsek {from} – {to} zmizí celý — po zkrácení už nebude uvnitř běhu timeru. | {from} – {to} disappears entirely — after the change it is outside the timer's run. |
+| `preview_uncovered_row` | Zatím bez popisu | Not described yet |
+| `preview_total` | Celkem {count, plural, one {# záznam} few {# záznamy} other {# záznamů}} · {duration} zmizí z výkazu. | {count, plural, one {# entry} other {# entries}} · {duration} disappears from the log. |
+| `preview_no_change` | Nic se neztratí. | Nothing is lost. |
+
+### projects_*
+
+| Key | Czech | English |
+|---|---|---|
+| `projects_title` | Projekty | Projects |
+| `projects_meta` | {count, plural, one {# aktivní} few {# aktivní} other {# aktivních}} · za posledních 30 dní | {count, plural, one {# active} other {# active}} · over the last 30 days |
+| `projects_new` | Nový projekt | New project |
+| `projects_show_archived` | Zobrazit archivované | Show archived |
+| `projects_hide_archived` | Skrýt archivované | Hide archived |
+| `projects_name_label` | Název projektu | Project name |
+| `projects_rename` | Přejmenovat | Rename |
+| `projects_archive` | Archivovat | Archive |
+| `projects_unarchive` | Vrátit z archivu | Unarchive |
+| `projects_archived_badge` | archivovaný | archived |
+| `projects_colour_label` | barva projektu | project colour |
+| `projects_colour_auto` | přiřazena automaticky | assigned automatically |
+| `projects_colour_help` | Osm ověřených barev. Nový projekt dostane první volnou, ale přepsat ji můžeš kdykoliv. | Eight validated colours. A new project takes the first free one, and you can change it whenever. |
+| `projects_empty_title` | Zatím žádný projekt | No projects yet |
+| `projects_empty_body` | Založ první projekt a začni k němu psát čas. | Create the first project and start logging time against it. |
+| `projects_delete_title` | Smazat projekt? | Delete this project? |
+| `projects_delete_body` | {project} nemá žádný záznam, takže po smazání nic nezmizí. | {project} has no entries, so nothing disappears with it. |
+| `projects_picker_search` | Hledat projekt | Search projects |
+| `projects_picker_create` | Vytvořit „{name}" | Create "{name}" |
+| `projects_picker_empty` | Žádný projekt neodpovídá | No project matches |
+
+### stats_*
+
+| Key | Czech | English |
+|---|---|---|
+| `stats_title` | Statistiky | Statistics |
+| `stats_range_day` | Den | Day |
+| `stats_range_week` | Týden | Week |
+| `stats_range_month` | Měsíc | Month |
+| `stats_kpi_worked` | odpracováno | worked |
+| `stats_kpi_covered` | popsáno | described |
+| `stats_kpi_share` | podíl popsaného | described share |
+| `stats_kpi_overtime` | mimo obvyklé hodiny | outside usual hours |
+| `stats_kpi_overtime_share` | {percent} % rozsahu | {percent} % of the range |
+| `stats_rhythm_title` | Kam v čase práce padla | Where the work fell |
+| `stats_rhythm_sub` | každý řádek je jeden logický den, {from} → {to} | one row per logical day, {from} → {to} |
+| `stats_breakdown_label` | podle projektu | by project |
+| `stats_breakdown_uncovered` | Bez popisu | Not described |
+| `stats_panel_label` | rytmus období | rhythm of the range |
+| `stats_days_worked` | Dnů s prací | Days worked |
+| `stats_average_day` | Průměr na pracovní den | Average per working day |
+| `stats_longest_day` | Nejdelší den | Longest day |
+| `stats_longest_block` | Nejdelší blok v kuse | Longest unbroken block |
+| `stats_total_blocks` | Bloků práce celkem | Work blocks in total |
+| `stats_evening` | Po {eveningHour} | After {eveningHour} |
+| `stats_observation_nights` | Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}. | Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}. |
+| `stats_observation_longest` | Nejdelší nepřerušený úsek: {duration}, {weekday}. | Longest unbroken stretch: {duration}, {weekday}. |
+| `stats_observation_idle` | Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}. | No work on {idleDays, plural, one {# day} other {# days}}. |
+| `stats_empty_title` | V tomhle období nic není | Nothing in this range |
+| `stats_empty_body` | Vyber jiný rozsah nebo spusť timer. | Pick another range, or start the timer. |
+| `stats_rhythm_unavailable` | Pás se kreslí do {days} dnů. | The strip is drawn for ranges up to {days} days. |
+| `stats_window_suggestion` | Podle posledních týdnů sedí okno {start} – {end}. Nastav `GAUGE_START` a `GAUGE_END` v konfiguraci serveru a restartuj ho. | The last few weeks fit a {start} – {end} window. Set `GAUGE_START` and `GAUGE_END` in the server configuration and restart it. |
+
+### feedback_* and offline
+
+| Key | Czech | English |
+|---|---|---|
+| `feedback_saved` | Uloženo | Saved |
+| `feedback_deleted` | Smazáno | Deleted |
+| `feedback_saved_partial` | Uloženo, ale {duration} se nevešlo | Saved, but {duration} did not fit |
+| `feedback_open_conflict` | Otevřít záznam | Open the entry |
+| `feedback_unsaved_title` | Zahodit rozepsané? | Discard your changes? |
+| `feedback_unsaved_body` | Máš rozepsaný formulář, který se neuložil. | You have an unsaved form open. |
+| `offline_title` | Server neodpovídá | The server is not responding |
+| `offline_body` | Zkus to za chvíli znovu. Nic, co jsi napsal, se neztratilo. | Try again in a moment. Nothing you typed was lost. |
+| `error_page_title` | Tady nic není | Nothing here |
+| `error_page_body` | Stránka, kterou hledáš, neexistuje. | The page you are looking for does not exist. |
+| `error_page_home` | Zpět na timer | Back to the timer |
+
+### errors_*
+
+One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_OVERLAP` → `errors_activity_overlap`). Three codes carry a `details.reason` or `details.scope` that changes the sentence, so they take one key per value — the interface reads the field and picks; it never composes the sentence itself.
+
+| Key | Czech | English |
+|---|---|---|
+| `errors_validation_error` | Zkontroluj vyplněná pole. | Check the fields you filled in. |
+| `errors_invalid_interval` | Konec musí být po začátku. | The end has to be after the start. |
+| `errors_ambiguous_mode` | Zadej buď konec, nebo délku — ne obojí. | Give either an end or a duration, not both. |
+| `errors_range_too_large` | Rozsah je moc velký, nejvíc {maxDays} dnů. | That range is too large; {maxDays} days at most. |
+| `errors_unauthorized` | Přihlášení vypršelo, přihlas se znovu. | Your session expired, please log in again. |
+| `errors_not_found` | Záznam už neexistuje. | That record no longer exists. |
+| `errors_session_already_running` | Timer už běží od {startedAt}. | The timer has been running since {startedAt}. |
+| `errors_no_session_running` | Timer neběží. | The timer is not running. |
+| `errors_session_overlap` | Překrývá se s úsekem {from} – {to}. | This overlaps the block {from} – {to}. |
+| `errors_session_overlap_open` | Překrývá se s běžícím timerem od {from}. | This overlaps the running timer, going since {from}. |
+| `errors_activity_overlap` | Překrývá se se záznamem {project} ({from} – {to}). | This overlaps {project} ({from} – {to}). |
+| `errors_outside_tracked_time` | {duration} je mimo běh timeru. | {duration} falls outside the timer's run. |
+| `errors_no_placement_anchor` | {date} nemá žádný záznam ani úsek timeru, od kterého by se dalo začít. | {date} has no entry and no timer block to start from. |
+| `errors_nothing_to_log_empty_interval` | Od posledního záznamu neuplynul žádný čas. | No time has passed since your last entry. |
+| `errors_nothing_to_log_no_tracked_time` | V tu dobu timer neběžel. | The timer was not running then. |
+| `errors_nothing_to_log_already_covered` | Ten čas už popsaný je. | That time is already described. |
+| `errors_project_exists` | Projekt {projectName} už existuje. | A project called {projectName} already exists. |
+| `errors_project_in_use` | {projectName} má {entryCount, plural, one {# záznam} few {# záznamy} other {# záznamů}}, takže ho nejde smazat. Archivace ho schová z nabídky. | {projectName} has {entryCount, plural, one {# entry} other {# entries}}, so it cannot be deleted. Archiving hides it from the picker. |
+| `errors_project_archived` | {projectName} je archivovaný. | {projectName} is archived. |
+| `errors_future_timestamp` | Čas nemůže být v budoucnosti. | That time cannot be in the future. |
+| `errors_interval_too_short` | Úsek musí trvat aspoň {minSeconds} s. | A block has to last at least {minSeconds} s. |
+| `errors_stale_preview` | Mezitím se něco změnilo — tady je nový náhled. | Something changed in the meantime — here is the new preview. |
+| `errors_payload_too_large` | Popis je moc dlouhý. | That description is too long. |
+| `errors_rate_limited_request` | Moc požadavků. Zkus to za {retryAfterSeconds} s. | Too many requests. Try again in {retryAfterSeconds} s. |
+| `errors_rate_limited_login` | Moc pokusů o přihlášení. Zkus to za {retryAfterSeconds} s. | Too many login attempts. Try again in {retryAfterSeconds} s. |
+| `errors_service_unavailable` | Server teď nemůže odpovědět. Zkus to za {retryAfterSeconds} s. | The server cannot answer right now. Try again in {retryAfterSeconds} s. |
+| `errors_internal_error` | Něco se pokazilo. Když to nahlásíš, přilož kód {requestId}. | Something went wrong. If you report it, quote {requestId}. |
+
+### aria_*
+
+Labels with no visible text of their own.
+
+| Key | Czech | English |
+|---|---|---|
+| `aria_timeline` | Časová osa dne {date} | Timeline for {date} |
+| `aria_session_block` | Úsek timeru {from} – {to}, {duration} | Timer block {from} – {to}, {duration} |
+| `aria_session_start_edge` | Upravit začátek úseku, {time} | Edit the block's start, {time} |
+| `aria_session_end_edge` | Upravit konec úseku, {time} | Edit the block's end, {time} |
+| `aria_uncovered_block` | Bez popisu, {from} – {to}, {duration}, doplnit | Not described, {from} – {to}, {duration}, fill in |
+| `aria_rhythm_row` | {date}, odpracováno {worked} | {date}, worked {worked} |
+| `aria_project_swatch` | Barva projektu {project} | Colour of {project} |
+| `aria_close_dialog` | Zavřít dialog | Close the dialog |
+| `aria_open_settings` | Otevřít nastavení | Open settings |
+
 ## Testing Strategy
 
 **Unit tests** (Vitest, node) — `tests/modules/timer/components/gauge-geometry.test.ts` pins the mapping: one hour is exactly 15°; the same clock time yields the same angle on any date; the default window produces a 270° track and a 90° gap; graduations exist only inside the window and carry the three levels with the right lengths; `03` is never labelled; an instant past the window returns an angle beyond `trackEnd` rather than being clamped; a full day closes the circle without adding a graduation.
@@ -1134,4 +1609,4 @@ A write that succeeds but reports `discarded` intervals or `unplacedMinutes` is 
 
 **Accessibility checks** — the Playwright suite runs an axe pass on the timer, day, projects and statistics pages in **both themes**, and a keyboard-only walk of the day page that reaches every block, opens a dialog, and completes a save without a pointer.
 
-**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` holds 19; **14 are screens and all 14 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.
+**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` is the list, so an artboard added later joins the comparison by appearing there. It holds 19 today; **14 are screens and all 14 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. `Demo` and `DemoSideBySide` in particular are **not** geometric references: they shrink the gauge to fit a teaching layout, so their radii, stroke widths and control size do not match the production figures. Read geometry from `GaugeNormal`, `GaugeOverrun` and `GaugeNonstop` only, and read placement from `Main`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.

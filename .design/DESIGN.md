@@ -311,13 +311,15 @@ Inside a block: project name 14/500 → description 12.5 dim → `08:00 – 10:1
 side by side, description dropped.
 
 Uncovered time is filled `rgba(209,138,106,0.06)` with a `1px dashed rgba(209,138,106,0.45)`
-border and an accent title, in three variants: a tall block (`Zatím bez popisu` plus
-`01:30 – 03:00 · 1 h 30 min — klikni a doplň`), a short block (`Bez popisu`, the time, and an
-accent `doplnit` at the right), and a mobile pill.
+border and an accent title, in **four** variants: a tall desktop block (`Zatím bez popisu`
+plus `01:30 – 03:00 · 1 h 30 min — klikni a doplň`), a short desktop block (`Bez popisu`, the
+time, and an accent `doplnit` at the right), a tall mobile block carrying the `doplnit` pill,
+and a short mobile one at the 26px floor that carries the label alone.
 
 **Mobile** — four-tab bottom navigation with custom SVG icons, a 54px `+` FAB bottom right,
 and day-to-day arrows with the date centred (the next day at `opacity: 0.3`). The desktop day
-page has **no** date navigation drawn, though the spec requires it.
+page carries the same two arrows beside its heading, at 30px, the forward one dimmed to
+`opacity: 0.3` on the current day because there is nothing after it.
 
 The desktop day timeline is **already vertical**. The difference between desktop and mobile is
 density, not orientation.
@@ -337,9 +339,14 @@ The third mode is Open Mode. **Requirement 6.2 explicitly forbids it as a dialog
 routes it through Quick Log instead. Direct contradiction; see § 9.
 
 **Edit session** — the screen the whole dry-run exists for. The new end value sits beside the
-old one struck through. Each affected entry is shown in two columns, *now* → *after*, with the
-total `−2 h 00 min` in the panel header, and a closing `Celkem 2 záznamy · 2 h 00 min zmizí
-z výkazu.` An entry emptied completely gets prose instead of columns. Deletion is an inline
+old one struck through. Each affected entry is shown in two columns, *now* → *after*.
+
+Two numbers appear here and they count different things, which is exactly why both are
+spelled out. The header total is `removedSeconds + lostUncoveredSeconds` — everything that
+leaves the report — broken down beneath into described and undescribed time. The closing
+count (`2 záznamy`) counts **entries only**: undescribed time is not an entry, so it gets its
+own row and stays out of that number. An entry emptied completely gets prose instead of
+columns. Deletion is an inline
 destructive-coloured text link — with no confirmation step drawn, though the spec requires one.
 
 The two dialogs use **different preview patterns**: live-under-the-form here, a distinct

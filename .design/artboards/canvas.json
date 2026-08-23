@@ -67,7 +67,7 @@
     {
       "file": "Projects.dc.html",
       "x": 0,
-      "y": 2220,
+      "y": 2400,
       "w": 1440,
       "h": 900,
       "title": "Projekty"
@@ -83,7 +83,7 @@
     {
       "file": "GaugeNormal.dc.html",
       "x": 0,
-      "y": 3400,
+      "y": 3580,
       "w": 560,
       "h": 760,
       "title": "A · běžný den"
@@ -91,7 +91,7 @@
     {
       "file": "GaugeOverrun.dc.html",
       "x": 640,
-      "y": 3400,
+      "y": 3580,
       "w": 560,
       "h": 760,
       "title": "B · přetažená noc"
@@ -99,7 +99,7 @@
     {
       "file": "GaugeNonstop.dc.html",
       "x": 1280,
-      "y": 3400,
+      "y": 3580,
       "w": 560,
       "h": 760,
       "title": "C · nonstop"
@@ -107,7 +107,7 @@
     {
       "file": "Demo.dc.html",
       "x": 0,
-      "y": 4320,
+      "y": 4500,
       "w": 640,
       "h": 780,
       "title": "Ukázka · přepínač"
@@ -115,7 +115,7 @@
     {
       "file": "DemoSideBySide.dc.html",
       "x": 740,
-      "y": 4320,
+      "y": 4500,
       "w": 1120,
       "h": 600,
       "title": "Ukázka · vedle sebe"
@@ -123,7 +123,7 @@
     {
       "file": "Settings.dc.html",
       "x": 0,
-      "y": 5250,
+      "y": 5430,
       "w": 1440,
       "h": 560,
       "title": "Nastavení · desktop"
@@ -131,7 +131,7 @@
     {
       "file": "SettingsMobile.dc.html",
       "x": 1560,
-      "y": 5250,
+      "y": 5430,
       "w": 390,
       "h": 844,
       "title": "Nastavení · mobil"
@@ -139,7 +139,7 @@
     {
       "file": "AddTaskLight.dc.html",
       "x": 2060,
-      "y": 5250,
+      "y": 5430,
       "w": 820,
       "h": 780,
       "title": "Přidat úkol · světlý"
@@ -147,10 +147,18 @@
     {
       "file": "AddTaskMobile.dc.html",
       "x": 2980,
-      "y": 5250,
+      "y": 5430,
       "w": 390,
       "h": 844,
       "title": "Přidat úkol · mobil"
+    },
+    {
+      "file": "SettingsLight.dc.html",
+      "x": 1560,
+      "y": 6360,
+      "w": 1440,
+      "h": 560,
+      "title": "Nastavení · světlý"
     }
   ],
   "annotations": [
@@ -171,42 +179,42 @@
     {
       "id": "note-stats",
       "x": 1560,
-      "y": 3260,
+      "y": 3440,
       "w": 1440,
       "text": "STATISTIKY\n\nHlavní prvek je pás „kam v čase práce padla“ — jeden řádek na logický den, 03:00 → 03:00. To je přesně to, co má TimeLog a co ze součtů nevyčteš: u tebe je na první pohled vidět, že tři z pěti dnů měly noční blok.\n\nŠrafovaně je nepopsaný čas, takže poznáš i to, kdy sis zapomněl dopsat popis. KPI „v noci po 21:00“ je tam schválně — u tvého režimu je to zajímavější číslo než průměr."
     },
     {
       "id": "note-projects",
       "x": 0,
-      "y": 3140,
+      "y": 3320,
       "w": 900,
       "text": "PROJEKTY\n\nOsm barevných slotů, nový projekt dostane první volnou. Ověřeně rozlišitelných je prvních pět — osm vzájemně odlišitelných kategorických barev neexistuje, optimum pro osm je ΔE 6,0. Proto barvu všude doprovází název.\n\nPruh v řádku měří podíl z celku, stejně jako ve statistikách. Koš zůstává aktivní: pokus o smazání proběhne a server vysvětlí, proč to nejde, i co dělat místo toho."
     },
     {
       "id": "note-axis",
       "x": 1920,
-      "y": 3320,
+      "y": 3500,
       "w": 900,
       "text": "CIFERNÍK A PŘESČAS\n\nOkno 06:00 → 00:00. Celý den (24 h) leží na 360°, 1 hodina = 15°, dráha 18 h = 270°, mezera 6 h = 90°.\n\nRysky i čísla jsou POUZE na dráze — 19 rysek po hodinách, popisky 06 09 12 15 18 21 00. Mezera 00:00–06:00 je úplně prázdná.\n\nTo je celý smysl: když práce přeteče za půlnoc, neleží „dál po stupnici“, ale v prázdné ploše, kde žádná stupnice není. Čte se to jako přesčas, ne jako normální pokračování dne.\n\nProtože v prázdnu není podle čeho odečítat, dostane přesah na špičce vlastní popisek s časem, kdy skončil."
     },
     {
       "id": "note-demo",
       "x": 0,
-      "y": 4990,
+      "y": 5170,
       "w": 1500,
       "text": "UKÁZKA S PŘESAHEM A BEZ\n\nVlevo artboard s přepínačem „presah“ nad ním — klikni a stejný den se překlopí.\n\nBez přesahu končí den o půlnoci přesně na značce 00 a oblouk sedí na dráze celou dobu.\n\nS přesahem pokračuje do 03:00 — tedy do prázdné mezery, kde nejsou žádné rysky ani čísla. Oblouk tam visí ve vzduchu a na jeho konci je popisek 03:00, protože jinak by nebylo podle čeho poznat, kam až došel."
     },
     {
       "id": "note-settings",
       "x": 2060,
-      "y": 5250,
+      "y": 5430,
       "w": 900,
       "text": "NASTAVENÍ\n\nMotiv, jazyk a odhlášení za jednou ikonou vpravo v liště. Odhlášení do teď nemělo v celém návrhu kde být, přestože ho požadavky vyžadují — tahle nabídka zavírá tři díry najednou.\n\nNa desktopu rozbalovací nabídka pod ikonou, na mobilu spodní sheet. Stejný obsah, jiná forma; v mobilní horní liště pro dvě samostatná ovládání není místo.\n\nCenou je, že jazyk už nepřepneš jedním klikem jako dřív. U věci, kterou nastavíš jednou za rok, je to správná výměna."
     },
     {
       "id": "note-closing",
       "x": 3470,
-      "y": 5250,
+      "y": 5430,
       "w": 900,
       "text": "POSLEDNÍ TŘI PŘEDLOHY\n\nSvětlý dialog existuje proto, že šest světlých tokenů — dialog, scrim, pole, aktivní pole, oddělovač a destruktivní barva — se do té doby jen dopočítávalo ze vztahů tmavého motivu. Teď jsou nakreslené a změřené.\n\nMobilní dialog je celoobrazovkový: jedno pole na řádek, náhled zůstává, patička je ukotvená dole a tlačítka jsou pod sebou, aby se palcem trefila.\n\nPanel „mimo výkaz\" na stránce Den drží zápisy, kterým po zkrácení timeru nezbyl žádný čas. Na ose je vidět nejde — nikde neleží — a bez tohohle místa by zůstaly navždy neviditelné a blokovaly mazání projektu. Zobrazuje se jen tehdy, když nějaký takový zápis existuje."
     }

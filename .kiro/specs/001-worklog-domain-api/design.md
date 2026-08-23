@@ -124,7 +124,8 @@ flowchart TD
 Three rules govern the tail of that diagram, and each exists because the obvious implementation gets it wrong:
 
 - **`extend` clears `unplacedMs` only by what it actually placed** (Requirement 6.15). The naive version appends "an interval of length `remainder`" and zeroes the counter. When the last tracked instant is already `now`, that interval is empty, and two hours of the user's work disappear into a counter that was reset anyway.
-- **`extend` never crosses `min(now, dayBounds.end)`** (Requirements 6.8, 6.13) and never overlaps an existing `Work_Session` (Requirement 6.14). A `Target_Day` in the past has no room after its end, and a later session already occupies the time the naive append would claim. Where it cannot place, it reports unplaced — that is not an error.
+- **`extend` never crosses `min(now, dayBounds.end)`** (Requirements 6.8, 6.13), never overlaps an existing `Work_Session` (Requirement 6.14), and **never creates a session shorter than `MIN_INTERVAL_SECONDS`** (Requirement 6.17) — that last one is what keeps Property 17 true, since a session the policy creates is as much a stored session as one the user starts. Where it cannot place, it reports unplaced; that is not an error.
+- **A write that both extends and creates runs in one fixed order** (Requirement 2.12): create the `Work_Session`, then re-clip the affected entries, then place the new entry against the coverage that leaves. Any other order is non-deterministic — put the new entry first and it claims time that an `Orphaned_Entry` rescued by the same extension had a prior claim to, and which of the two wins depends on nothing the user can see.
 - **A write producing zero segments is `NOTHING_TO_LOG`** (Requirement 6.12), in every mode. Previously `Explicit_Mode` wrote an entry with no segments, `Duration_Mode` reported everything unplaced and `Open_Mode` answered 409 — three behaviors for one situation. An accepted write must never manufacture an `Orphaned_Entry`; those exist only because a *later* frame change emptied an entry that was once real.
 
 `take` is what makes the user's example work. Given `eligible = [14:00–14:45, 15:00–17:00]` and `durationMs = 2h`, it consumes the first interval whole (45 min), then takes the first 1h15 of the second, returning `[14:00–14:45, 15:00–16:15]`. The break survives, and the segments still total exactly two hours.
@@ -172,7 +173,7 @@ worklog/
 │   └── test-e2e.sh
 ├── src/
 │   ├── app.d.ts                          # 001: App.Locals — requestId, auth, cspNonce
-│   ├── app.html                          # 002 owns the file; 001 only fills %sveltekit.nonce%
+│   ├── app.html                          # 002 owns it; 001 only substitutes %lang%
 │   ├── hooks.server.ts                   # 001: sequence of handles
 │   ├── db/schema/                        # 001: Drizzle table definitions
 │   │   ├── projects.ts
@@ -315,10 +316,21 @@ export function clamp(input: Interval[], window: Interval): Interval[];
 export function total(input: Interval[]): number;       // milliseconds
 
 /**
- * Walks `input` forward consuming exactly `ms`, splitting the interval in which
- * it runs out. `remainder` is how much could not be consumed.
+ * Walks `input` forward consuming up to `ms`, splitting the interval in which it runs
+ * out, and **never emitting a piece shorter than `minIntervalMs`**. A tail that would
+ * fall below the floor is not emitted at all; its time lands in `remainder` instead.
+ *
+ * Without the floor here the walk cannot satisfy both Requirement 5.10 and Requirement
+ * 6.5: eligible `[11:00–12:00, 13:00–16:00]` with `ms = 1 h 0 min 20 s` would emit a
+ * 20-second tail that Clipping must then throw away, so the totals no longer add up.
+ * `total(taken) + remainder === ms` always; `total(taken) === min(total(input), ms)`
+ * only when no piece was refused by the floor.
  */
-export function take(input: Interval[], ms: number): { taken: Interval[]; remainder: number };
+export function take(
+  input: Interval[],
+  ms: number,
+  minIntervalMs: number
+): { taken: Interval[]; remainder: number };
 
 /** The complement of `input` within `window`. */
 export function gaps(input: Interval[], window: Interval): Interval[];
@@ -334,7 +346,13 @@ export type DayResolver = {
   bounds(date: string): Interval;
   /** Name of the Logical_Day containing `t`; instants before startHour belong to the previous date. */
   dateOf(t: Date): string;
-  /** One window per Logical_Day from dateOf(from) to dateOf(to). */
+  /**
+   * One window per Logical_Day whose bounds intersect the half-open instant range
+   * `[from, to)` — Requirement 10.15. A `to` landing exactly on a day boundary yields
+   * an empty intersection with that day, so it is NOT included; without that rule a
+   * week query returns eight days, the eighth always empty, and every per-day total
+   * has a phantom row. `from >= to` yields an empty array rather than throwing.
+   */
   range(from: Date, to: Date): Interval[];
 };
 
@@ -409,10 +427,14 @@ export type ClipResult = {
   /** Explicit mode: overlaps with `covered`. Non-empty means the caller must reject. */
   conflicts: Interval[];
   /**
-   * Requested time that reached no segment — eligible time ran out, `extend` could
-   * not lawfully place it, or it was discarded as a sliver. The invariant is
-   * conservation: `total(segments) + unplacedMs === requested duration` in
-   * Duration_Mode (Property 2). It is never zeroed by more than was placed.
+   * Duration_Mode only, and **always 0 in Explicit_Mode and Open_Mode** (Requirement
+   * 6.16): in those modes time removed by a policy is reported in `discarded` and time
+   * below the floor in `slivers`, so a third counter would double-count.
+   *
+   * In Duration_Mode it holds requested time that reached no segment — eligible time
+   * ran out, the floor refused a tail, or `extend` could not lawfully place it. The
+   * invariant is conservation: `total(segments) + unplacedMs === durationMs`
+   * (Property 2). It is never reduced by more than was actually placed.
    */
   unplacedMs: number;
 };
@@ -477,7 +499,6 @@ export type ReclipOutcome = {
  */
 export function reclipAffected(
   ports: ReclipPorts,
-  days: DayResolver,
   affected: Interval[],          // normalized; a moved session yields two stretches
   now: Date,
   minIntervalMs: number
@@ -486,7 +507,13 @@ export function reclipAffected(
 
 `ReclipOutcome` carries `before` and `after` so that a `Dry_Run` on a session change can show the user exactly which entries lose time and how much, satisfying Requirements 14.2 and 14.6.
 
-Ordering is by `requestedStartedAt` then `createdAt`, which is a **total** order only because every mode now stores a resolved requested interval — `Duration_Mode` included (Requirement 5.13). While that column could be null for a duration entry, the sort key was null for exactly the entries re-clipping most needed to place, and the result was not deterministic.
+Ordering is by `requestedStartedAt`, then `createdAt`, then `id` — a **total** order, and the same one every listing uses (Requirement 7.1). It is total only because every mode stores a resolved requested interval, `Duration_Mode` included (Requirement 5.13).
+
+Three points that decide how re-clipping actually runs, and each of which has exactly one right answer:
+
+- **A `Duration_Mode` entry re-clips as an explicit request over its frozen requested interval** (Requirement 2.11). The `Placement_Anchor` is *not* resolved again. Re-walking it would move the entry to wherever the day's eligible time now begins — a session edit in the morning would silently relocate an afternoon entry — and it would break Property 11. That is why `reclipAffected` takes no `DayResolver`: nothing in re-clipping needs to know where a day starts, and having the parameter invites exactly the wrong implementation.
+- **`trackedIntervals` is queried over the union of the selected entries' requested intervals**, not over `affected`. An entry may reach well outside the changed stretch; clipping it against tracked time loaded only for `affected` would delete the parts of it that the change never touched.
+- **`removedMs = total(subtract(before, after))`** — time that was there and is now gone. Never negative, and exactly zero when a session grew, which is the case a naive `total(before) - total(after)` also gets right and a naive `total(after) - total(before)` gets backwards.
 
 ### 5. Transaction Helper (`src/lib/server/store/tx.ts`)
 
@@ -512,12 +539,26 @@ export type Tx = PostgresJsTransaction<typeof schema, ExtractTablesWithRelations
 export function withTx<T>(fn: (tx: Tx) => Promise<T>, opts?: { dryRun?: boolean }): Promise<T>;
 
 /**
+ * `DB_QUERY_TIMEOUT_SECONDS` is enforced as `statement_timeout` set on every connection
+ * (`postgres.js` `connection: { statement_timeout: … }`), not as a JavaScript timer.
+ * A timer abandons the client while the server keeps executing; `statement_timeout`
+ * actually cancels the query, which is what Requirement 13.6 asks for. A cancellation
+ * surfaces as SQLSTATE 57014 and is translated to 503 `SERVICE_UNAVAILABLE`.
+ */
+
+/**
  * A transaction WITHOUT the exclusive lock, for every read-only path: all GET routes,
  * the interface's load functions, and the session lookup the Auth_Hook performs on
  * every single request. `withTx` serializes globally by design, which is right for
  * writes and catastrophic for reads — with authentication reading through the store,
  * one slow write would queue every request behind it until the query timeout fired
  * and healthy traffic started failing. Callers must not write through this handle.
+ *
+ * It runs at **REPEATABLE READ**. A day response issues several statements — sessions,
+ * segments, aggregates — and at READ COMMITTED a concurrent write lands between two of
+ * them, so `covered` can come from after a write whose `tracked` came from before it.
+ * The response then contradicts itself and Property 7 fails intermittently, which is
+ * the worst possible way for it to fail.
  */
 export function withReadTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
 
@@ -664,6 +705,21 @@ export function beginBrowserSession(tx: Tx, tokenHash: string, expiresAt: Date):
 export type AuthResult = { kind: 'browser' } | { kind: 'token' } | { kind: 'none' };
 export function authenticate(event: RequestEvent): Promise<AuthResult>;
 
+/**
+ * The login form contract, owned by 001 because the form action is (Requirement 11.25).
+ * `002` renders the page against exactly these names and no others:
+ *
+ *   field   `passphrase`      the only form field; POSTed to /login
+ *   query   `next`            where to go afterwards, validated by safeRedirectTarget
+ *   query   `reason`          why the login page was reached; `session_expired` is the
+ *                             one value 001 ever sets, and 002 renders a message for it
+ *
+ * On success: create the session, set the cookie, 303 to `next`. On failure: 400 with
+ * `messageKey` `errors_login_failed` — the same key for a wrong passphrase and an empty
+ * one, since Requirement 11.12 forbids distinguishing them.
+ */
+export const loginSchema = z.object({ passphrase: z.string().min(1).max(1024) }).strict();
+
 /** Only a path beginning with a single "/" is accepted; anything else becomes "/". */
 export function safeRedirectTarget(raw: string | null): string;
 
@@ -687,21 +743,97 @@ The cookie is set with `httpOnly: true`, `sameSite: 'strict'`, `path: '/'`, an e
 
 ```ts
 export const handle = sequence(
-  handleStartupGuard,    // awaits the one-time init; 503 SERVICE_UNAVAILABLE while it failed
   handleRequestId,       // X-Request-Id in, echoed out, stored on locals
+  handleReadiness,       // 503 while the DB is unmigrated or misconfigured; /api/health exempt
   handleRequestLog,      // structured JSON line per request
-  handleSecurityHeaders, // the headers kit.csp does not set
+  handleLocals,          // today's Logical_Day, its bounds, locale and theme onto locals
+  handleSecurityHeaders, // the headers kit.csp does not set; %lang% substitution
   handleCors,            // configured origins only; answers OPTIONS preflight and returns
   handleRateLimit,       // per clientAddress(), plus the stricter login bucket
   handleAuth,            // the Auth_Hook: populates locals.auth; 401 for /api, redirect otherwise
 );
 ```
 
-Three details that are easy to get wrong and each break something visible:
+**Startup failures are two different things and are handled two different ways.** An
+earlier draft had one guard that both answered 503 and killed the process, which cannot
+be done at once, and it sat before `handleRequestId` so its own error envelope had no
+`requestId` to carry.
 
-- **`handleStartupGuard` is first, and it is a hook rather than module-level code.** The checks are asynchronous — reach the database, compare `schema_migrations`, read or write the `Day_Boundary_Config` — and a module body cannot await them, so "refuse to start" cannot be implemented where an earlier draft implied it was. Instead one `Promise` is created at module load and every request awaits it; while it is rejected the guard answers 503 `SERVICE_UNAVAILABLE` and the process also exits non-zero, so a supervised deployment restarts rather than serving a half-configured server (Requirement 13.24).
-- **`handleCors` answers a preflight itself and returns**, before `handleAuth` runs. An `OPTIONS` preflight carries no credentials by definition; letting it reach the `Auth_Hook` answers it with 401 and the browser reports a CORS failure for a request that was perfectly legal (Requirement 11.19).
-- **`handleAuth` exempts the framework's static assets** as well as `/api/health`, the login route and preflights (Requirement 11.1). Without that the login page is served as unstyled HTML with no hydration, because its own stylesheet and JavaScript are redirected to the login page they are being requested for.
+| Failure | When it is detected | What happens |
+|---|---|---|
+| Configuration — missing, unparseable, out of range, or a `Gauge_Window` invariant | `loadConfig()`, synchronously at module load | log every problem at once and **exit non-zero** (Requirement 13.24). No request is ever served; a restart cannot fix it, so there is nothing to serve |
+| Database unmigrated, or `Day_Boundary_Config` disagreeing with the environment | the async readiness probe, first awaited by the first request | the process **keeps running** and `handleReadiness` answers 503 `SERVICE_UNAVAILABLE` (Requirement 13.31). Running `scripts/migrate.sh` repairs it with no restart |
+
+`handleReadiness` sits **after** `handleRequestId` so its 503 carries a `requestId`, and
+it exempts `GET /api/health` (Requirement 13.32) — otherwise the one endpoint that could
+report `degraded` is the one shadowed by the failure it would report.
+
+The readiness probe is a single promise created at module load, re-run at most once per
+`CLEANUP_INTERVAL_MINUTES` while it is failing, and awaited by every request. That is the
+only mechanism available: a module body cannot await, so "refuses to start" for an async
+condition means "answers 503 until it passes".
+
+`handleLocals` populates `event.locals` per request:
+
+```ts
+// app.d.ts — App.Locals
+interface Locals {
+  requestId: string;
+  auth: AuthResult;
+  cspNonce: string;
+  /** Today as a Logical_Day, and its bounds. Requirement 10.17. */
+  today: { date: string; bounds: Interval };
+  locale: 'cs' | 'en';
+  theme: 'dark' | 'light' | 'system';
+}
+```
+
+`today` is computed **on every request**, never at module load. A server started before
+midnight would otherwise keep rendering yesterday for as long as it runs — the kind of
+bug that only appears in production and only at night. `002` reads `locals.today` in its
+load functions and never derives a `Logical_Day` in the browser: doing so would mean
+reimplementing `TIMEZONE`, `DAY_START_HOUR` and DST handling client-side, which both
+specifications forbid.
+
+Two exemptions in `handleAuth` that are easy to miss and each break something visible:
+
+- **A CORS preflight is answered by `handleCors` and returns** before `handleAuth` runs (Requirement 11.19). An `OPTIONS` preflight carries no credentials by definition; letting it reach the `Auth_Hook` answers it 401 and the browser reports a CORS failure for a request that was perfectly legal.
+- **The framework's static assets are exempt** as well as `/api/health` and the login route (Requirement 11.1). Without that the login page is served as unstyled HTML that never hydrates, because its own stylesheet and JavaScript are redirected to the login page they are being fetched for.
+
+**Preference cookies.** Locale and theme live in cookies rather than `localStorage`
+precisely so the server can see them while rendering — `localStorage` does not exist
+during SSR, and a theme read after hydration is a visible flash. Cookies are this
+specification's domain, so their attributes are fixed here:
+
+| Cookie | Value | Attributes |
+|---|---|---|
+| `worklog_locale` | `cs` \| `en`, default `cs` | `HttpOnly: false`, `SameSite=Lax`, `Path=/`, `Max-Age` 31536000 (one year), `Secure` outside development |
+| `worklog_theme` | `dark` \| `light` \| `system`, default `system` | the same attributes |
+
+`HttpOnly: false` is deliberate and is not a weakening: `002` toggles both from script
+without a round trip, and neither cookie is a credential. `SameSite=Lax` rather than the
+session cookie's `Strict`, so that arriving from an external link still renders in the
+user's own language. An unrecognised value is treated as the default rather than an
+error — a stale cookie must not break a page render.
+
+**CORS** (Requirements 11.23, 11.24). `CORS_ORIGINS` is comma-separated with no
+surrounding whitespace, and an `Origin` matches only on an exact scheme-host-port
+comparison. A preflight is answered by `handleCors` itself and returns immediately:
+
+| Header | Value |
+|---|---|
+| `Access-Control-Allow-Origin` | the matched origin, never `*` and never a reflected unmatched value |
+| `Access-Control-Allow-Methods` | `GET, POST, PATCH, DELETE, OPTIONS` |
+| `Access-Control-Allow-Headers` | `Authorization, Content-Type, Idempotency-Key, X-Request-Id` |
+| `Access-Control-Max-Age` | `600` |
+| `Access-Control-Allow-Credentials` | `false` — a cross-origin caller uses the `API_Token`; the `Browser_Session` is `SameSite=Strict` and is never valid cross-origin anyway |
+
+**Rate limiting** (Requirement 12.7) is a **fixed-window counter**, not a token bucket:
+one counter and one window-start instant per address, reset when the window rolls over.
+It is chosen because `Retry-After` then has an exact answer — the seconds remaining in
+the current window — whereas a token bucket has to invent one. `GET /api/health` is
+exempt (Requirement 11.26): a platform health check polls it from a single address on a
+fixed interval and would otherwise consume the whole allowance.
 
 ### 8. Error Envelope (`src/lib/server/core/errors.ts`)
 
@@ -713,6 +845,7 @@ export type ErrorCode =
   | 'ACTIVITY_OVERLAP' | 'OUTSIDE_TRACKED_TIME' | 'NO_PLACEMENT_ANCHOR' | 'NOTHING_TO_LOG'
   | 'PROJECT_EXISTS' | 'PROJECT_IN_USE' | 'PROJECT_ARCHIVED'
   | 'FUTURE_TIMESTAMP' | 'INTERVAL_TOO_SHORT' | 'STALE_PREVIEW'
+  | 'IDEMPOTENCY_KEY_REUSED' | 'METHOD_NOT_ALLOWED'
   | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED'
   | 'SERVICE_UNAVAILABLE' | 'INTERNAL_ERROR';
 
@@ -733,11 +866,43 @@ export class ApiError extends Error {
  */
 export function errorResponse(err: unknown, requestId: string): Response;
 
-/** `ACTIVITY_OVERLAP` → `errors_activity_overlap`. The one place the mapping lives. */
+/** The one place the mapping lives. Enumerated in the table below, never computed. */
 export function messageKeyFor(code: ErrorCode): string;
 ```
 
-Every code's `details` below is chosen so the interface can compose a complete sentence from the response alone — Requirement 12.18. Where the reason is genuinely one of several, the reason is a field rather than something the client infers. The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
+Every code's `details` below is chosen so the interface can compose a complete sentence from the response alone — Requirement 12.19. Where the reason is genuinely one of several, the reason is a field rather than something the client infers. The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
+
+**The complete `errors_*` catalogue.** `002` writes the Czech and English text for each of these keys, so they are enumerated here rather than left to a lowercasing rule that two people would apply differently. Every `ErrorCode` has exactly one key, and no key is shared:
+
+| `ErrorCode` | `messageKey` |
+|---|---|
+| `VALIDATION_ERROR` | `errors_validation_error` |
+| `INVALID_INTERVAL` | `errors_invalid_interval` |
+| `AMBIGUOUS_MODE` | `errors_ambiguous_mode` |
+| `RANGE_TOO_LARGE` | `errors_range_too_large` |
+| `UNAUTHORIZED` | `errors_unauthorized` |
+| `NOT_FOUND` | `errors_not_found` |
+| `METHOD_NOT_ALLOWED` | `errors_method_not_allowed` |
+| `SESSION_ALREADY_RUNNING` | `errors_session_already_running` |
+| `NO_SESSION_RUNNING` | `errors_no_session_running` |
+| `SESSION_OVERLAP` | `errors_session_overlap` |
+| `ACTIVITY_OVERLAP` | `errors_activity_overlap` |
+| `OUTSIDE_TRACKED_TIME` | `errors_outside_tracked_time` |
+| `NO_PLACEMENT_ANCHOR` | `errors_no_placement_anchor` |
+| `NOTHING_TO_LOG` | `errors_nothing_to_log` |
+| `PROJECT_EXISTS` | `errors_project_exists` |
+| `PROJECT_IN_USE` | `errors_project_in_use` |
+| `PROJECT_ARCHIVED` | `errors_project_archived` |
+| `FUTURE_TIMESTAMP` | `errors_future_timestamp` |
+| `INTERVAL_TOO_SHORT` | `errors_interval_too_short` |
+| `STALE_PREVIEW` | `errors_stale_preview` |
+| `IDEMPOTENCY_KEY_REUSED` | `errors_idempotency_key_reused` |
+| `PAYLOAD_TOO_LARGE` | `errors_payload_too_large` |
+| `RATE_LIMITED` | `errors_rate_limited` |
+| `SERVICE_UNAVAILABLE` | `errors_service_unavailable` |
+| `INTERNAL_ERROR` | `errors_internal_error` |
+
+One further key is not an `ErrorCode` and is listed because `002` needs it too: `errors_login_failed`, returned by the login action for a wrong **or** an empty passphrase — Requirement 11.12 requires the two to be indistinguishable. `NOTHING_TO_LOG` carries a `reason` in its details and `002` may render three sentences under that one key; the key set itself does not branch.
 
 ### 9. Security Headers (`src/lib/server/core/security-headers.ts`)
 
@@ -752,6 +917,7 @@ csp: {
     'script-src': ['self'],
     'style-src': ['self'],
     'img-src': ['self', 'data:'],
+    'font-src': ['self'],
     'connect-src': ['self'],
     'frame-ancestors': ['none'],
     'base-uri': ['none'],
@@ -768,7 +934,35 @@ csp: {
 | `X-Content-Type-Options` | `nosniff` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 
-`src/app.html` belongs to `002-worklog-ui` and `001` does not touch it: with `kit.csp` in charge there is no `transformPageChunk` injection to write, and `%sveltekit.nonce%` is a placeholder `002` may use if it ever adds an inline script of its own. One owner per file, and no hand-rolled mechanism competing with the framework's.
+**`src/app.html` — one version of this, and this is it.** The file belongs to
+`002-worklog-ui`, which authors it and is the only spec that edits it. It contains
+`<html lang="%lang%" data-theme="%theme%">`. `001` never writes the file, and `001` never
+injects a CSP nonce into it — `kit.csp` does that for SvelteKit's own scripts, and
+`%sveltekit.nonce%` is there for `002` to use if it ever adds an inline script of its own.
+
+`001` performs **two** substitutions, both in `handleSecurityHeaders` via
+`transformPageChunk` on every page render (Requirement 12.26): `%lang%` becomes
+`event.locals.locale`, and `%theme%` becomes `event.locals.theme` resolved to `light` or
+`dark` — never the literal `system`, and never the placeholder itself. When the cookie says
+`system` or is absent, the server substitutes `dark`, the documented default, so the
+attribute is always a real value and the markup never ships a `%theme%` to the browser.
+
+The server owns both because only the server knows them before hydration; `002` owns the
+markup that carries the placeholders. Neither side can do the other half. The theme matters
+as much as the language: the gauge paints its arcs from theme-dependent custom properties,
+so a page rendered without `data-theme` shows the wrong palette until hydration — which is
+the flash the cookie was introduced to remove.
+
+The `Content-Security-Policy` is set on **rendered pages only** (Requirement 12.12). A
+JSON response from `/api` executes nothing, so a policy on it protects nothing;
+`Strict-Transport-Security`, `X-Content-Type-Options` and `Referrer-Policy` still go on
+every response, API replies included.
+
+`font-src` is stated explicitly even though `default-src 'self'` would already cover it.
+Inter Tight is self-hosted from `static/fonts/`, the whole typographic contract in
+`.design/DESIGN.md` rests on it, and a later narrowing of `default-src` would then remove the
+font with no obvious cause. No directive names `fonts.googleapis.com` or `fonts.gstatic.com`
+in any environment — the Google Fonts link in the artboards is a `file://` preview only.
 
 `style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy in exactly one place and by exactly this much: `svelte.config.js` picks its `csp.directives` from `process.env.APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for the Vite dev server and HMR. `handleSecurityHeaders` additionally omits `Strict-Transport-Security` outside production. Nothing else differs, and the production set is never derived from the development one.
 
@@ -783,7 +977,7 @@ csp: {
 | PATCH · DELETE | `/api/sessions/[id]` | 2.5–2.10, 1.13, 1.14, 14.2 |
 | GET · POST | `/api/projects` | 3.1–3.5, 3.9 |
 | PATCH · DELETE | `/api/projects/[id]` | 3.6–3.8, 3.10, 3.11 |
-| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.6, 7.13, 7.14, 10.2, 12.4, 12.8, 12.9, 12.16, 12.17, 14.1, 15.x |
+| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.6, 7.13, 7.14, 10.2, 12.4, 12.8, 12.9, 12.17, 12.18, 14.1, 15.x |
 | GET · PATCH · DELETE | `/api/activities/[id]` | 7.7–7.12, 14.1 |
 | GET | `/api/days` · `/api/days/[date]` | 8.1–8.22, 10.7 |
 | GET | `/api/coverage` | 9.1–9.8 |
@@ -835,9 +1029,20 @@ export const patchActivitySchema = z.object({
   startedAt: isoOffset.optional(),
   endedAt: isoOffset.optional(),
   durationMinutes: z.number().int().positive().optional(),
+  /** Required whenever `durationMinutes` is sent — Requirement 7.21. */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   untrackedPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
   ...dryRunFields
-}).strict();
+}).strict()
+  // Requirement 7.20: the two bounds travel together or not at all. One alone has no
+  // meaning — there is no rule for inferring the other, and guessing would move the
+  // entry somewhere the user did not ask for.
+  .refine(v => (v.startedAt === undefined) === (v.endedAt === undefined),
+          { message: 'startedAt and endedAt must be supplied together' })
+  // Requirement 7.21: a duration must say which Target_Day to walk. The entry's old
+  // interval cannot supply it — the whole point of the PATCH may be to move the entry.
+  .refine(v => v.durationMinutes === undefined || v.date !== undefined,
+          { message: 'date is required when durationMinutes is supplied' });
 
 export const createSessionSchema = z.object({
   startedAt: isoOffset,
@@ -882,7 +1087,15 @@ export const listActivitiesQuery = z.object({
   from: isoOffset.optional(),
   to: isoOffset.optional(),
   project_id: z.uuid().optional(),
-  cursor: z.string().optional(),        // Requirement 7.14
+  cursor: z.string().optional(),                       // Requirement 7.14
+  order: z.enum(['asc', 'desc']).default('asc'),       // Requirement 7.23
+  limit: z.coerce.number().int().min(1).max(ACTIVITY_PAGE_SIZE).default(ACTIVITY_PAGE_SIZE)
+}).strict();                                           // Requirement 7.24
+
+/** DELETE takes its dry-run flags as query parameters, for the reason given below. */
+export const deleteActivityQuery = z.object({
+  dry_run: z.enum(['true', 'false']).default('false'),
+  preview_token: z.string().optional()
 }).strict();
 
 /**
@@ -910,6 +1123,14 @@ export type ActivityResponse = {
   unplacedMinutes: number;              // duration mode
   removedSeconds: number;               // time taken from other entries — always present
   slivers: Interval[];                  // dropped below MIN_INTERVAL_SECONDS (Req 6.5)
+  /**
+   * The Placement_Anchor this write resolved, or null in Explicit_Mode where none was
+   * needed (Requirement 5.16). It is in the SUCCESS body, not only in the details of
+   * NOTHING_TO_LOG and NO_PLACEMENT_ANCHOR: the add-task dialog names the start on the
+   * happy path — "Začne se od 01:30 — konec posledního záznamu" — and a value that
+   * only exists when the request fails cannot be shown before it is sent.
+   */
+  anchor: { at: string; source: 'explicit' | 'last-segment' | 'first-session' } | null;
   dryRun: boolean;
   previewToken: string;                 // see below
 };
@@ -1081,7 +1302,7 @@ export type DayResponse = {
   date: string;                         // YYYY-MM-DD
   bounds: Interval;
   sessions: WorkSession[];
-  entries: ActivityEntry[];
+  entries: ActivityEntry[];             // same order as /api/activities — Requirement 7.1
   coverage: CoverageResponse;
   totals: {
     trackedSeconds: number;
@@ -1089,7 +1310,30 @@ export type DayResponse = {
     uncoveredSeconds: number;
     /** ProjectTotal, so `archived` is present — Requirement 8.5 needs it. */
     byProject: ProjectTotal[];
+    /**
+     * The three figures the day page's "tvar dne" panel shows, defined exactly as in
+     * DaySummary (Requirement 8.24). They are here so the day page renders from ONE
+     * response; without them it would call /api/days for a single-day range purely to
+     * fill three lines, and the two answers could disagree.
+     */
+    sessionCount: number;
+    longestBlockSeconds: number;
+    eveningSeconds: number;
   };
+  /**
+   * The interval a one-touch Open_Mode write would record right now: from the end of
+   * the day's latest Activity_Segment — or the start of its earliest Work_Session when
+   * the day has no segment yet — to the current time. `null` when the day holds
+   * neither, and null is the signal the interface acts on: the quick-log pill labels
+   * itself with this interval when it is present, and opens the full dialog instead of
+   * writing when it is not.
+   *
+   * The server computes it because the browser may not: it is the Placement_Anchor rule
+   * (Requirements 5.5, 5.6), and a second copy of that rule in the client is exactly
+   * the drift this split exists to prevent. Computing it here also costs nothing — the
+   * segments and sessions it derives from are already loaded for this response.
+   */
+  quickLog: { start: string; end: string; anchorSource: 'last-segment' | 'first-session' } | null;
 };
 ```
 
@@ -1142,7 +1386,7 @@ export const ERROR_DETAIL_SAMPLE_SIZE = 10;     // conflicting records named in 
 export const FUTURE_TOLERANCE_SECONDS = 300;    // clock skew allowance — Req 1.13, 4.10
 export const SUGGESTED_WINDOW_COVERAGE = 0.9;   // share the suggestion must cover — Req 8.13
 export const CLEANUP_INTERVAL_MINUTES = 60;     // sweep cadence — Requirements 11.21, 13.30
-export const SERVICE_RETRY_AFTER_SECONDS = 5;   // Retry-After on 503 — Requirement 12.21
+export const SERVICE_RETRY_AFTER_SECONDS = 5;   // Retry-After on 503 — Requirement 12.22
 export const LOGIN_ATTEMPT_LIMIT = 5;           // Requirement 11.13, deliberately not config
 export const LOGIN_ATTEMPT_WINDOW_MINUTES = 15; // Requirement 11.13
 export const IDEMPOTENCY_RETENTION_HOURS = 24;  // Requirement 12.9
@@ -1150,6 +1394,10 @@ export const SESSION_TOKEN_BYTES = 32;          // entropy of a Browser_Session 
 export const MAX_BODY_BYTES = 1_048_576;        // 1 MiB — Requirement 12.6
 export const SHUTDOWN_GRACE_SECONDS = 30;       // Requirement 13.5
 export const WORKLOG_ADVISORY_LOCK = 4919372001;// the one write lock — component 5
+export const DEFAULT_RENDER_THEME = 'dark';     // substituted for %theme% when the
+                                                // cookie says `system` or is absent,
+                                                // so a rendered page never carries the
+                                                // placeholder — Requirement 12.29
 
 /** Argon2id parameters for the login passphrase (Requirement 11.6), passed to
  *  `Bun.password.hash`. Fixed here so every environment produces comparable hashes. */
@@ -1161,8 +1409,12 @@ export const ARGON2ID = { algorithm: 'argon2id', memoryCost: 65536, timeCost: 3 
 export function loadConfig(): Config;
 
 /**
- * True when the hour named by `dayStartHour` lies inside the Gauge_Gap — the
- * invariant of Requirements 13.14 and 13.15. Exported because it is checked twice:
+ * True when the INSTANT `dayStartHour:00` lies inside the Gauge_Gap — the invariant of
+ * Requirements 13.14 and 13.15. The comparison is at minute precision on both sides,
+ * because `GAUGE_START` and `GAUGE_END` carry minutes: with a window of `06:30`–`00:00`
+ * the gap is `00:00`–`06:30`, and `DAY_START_HOUR=6` (i.e. 06:00) is inside it. Reading
+ * either side as a whole hour would reject that valid configuration and accept an
+ * invalid one a few minutes away. Exported because it is checked twice:
  * once here, and once at startup beside the Day_Boundary_Config check, where the
  * stored day start rather than the configured one is the one that matters.
  */
@@ -1264,12 +1516,12 @@ export type ProjectTotal = {
 };
 
 /**
- * A stretch of Covered_Time with the Project it belongs to (Requirement 8.16). The
- * day-rhythm strip draws each stretch in that project's colour; the name and the
- * palette slot come from the `byProject` breakdown of the same summary, so the id is
- * all that has to travel per interval.
+ * A stretch of Covered_Time with the Project it belongs to (Requirement 8.16). It
+ * carries the palette slot as well as the id, because `002` is forbidden to join
+ * against the project list to colour a stretch — an interval whose colour requires a
+ * lookup is an interval the strip cannot draw in one pass.
  */
-export type ProjectInterval = Interval & { projectId: string };
+export type ProjectInterval = Interval & { projectId: string; colorIndex: number };
 ```
 
 Timestamps are `Date` inside the server and RFC 3339 UTC strings on the wire (Requirement 10.3). The interface revives them on receipt; `002` states where.
@@ -1279,6 +1531,11 @@ Timestamps are `Date` inside the server and RFC 3339 UTC strings on the wire (Re
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
+-- Every primary key is a UUID v7 generated in the application (`Bun.randomUUIDv7()`),
+-- never a v4 and never `gen_random_uuid()`. v7 is time-ordered, so inserts land at the
+-- right edge of every index instead of scattering across it, and `id` breaks ties in the
+-- listing order in the same direction as `created_at`.
+
 CREATE TABLE projects (
     id          uuid PRIMARY KEY,
     name        text NOT NULL,
@@ -1287,6 +1544,7 @@ CREATE TABLE projects (
     color_index smallint NOT NULL DEFAULT 0,
     archived_at timestamptz,
     created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),   -- Requirement 13.7
     CONSTRAINT projects_name_length CHECK (char_length(name) BETWEEN 1 AND 200),
     CONSTRAINT projects_color_index_range CHECK (color_index BETWEEN 0 AND 7)
 );
@@ -1384,13 +1642,19 @@ CREATE INDEX auth_sessions_expires_at ON auth_sessions (expires_at);
 -- entry_id is ON DELETE SET NULL, not CASCADE: with CASCADE, deleting the entry
 -- deletes the key, and the next retry of the same request creates a SECOND entry —
 -- the exact outcome the key exists to prevent. The status is stored beside the body
--- (Requirement 12.16), because replaying a 201 as a 200 is a different answer.
+-- (Requirement 12.17), because replaying a 201 as a 200 is a different answer.
 CREATE TABLE idempotency_keys (
-    key        text PRIMARY KEY,
-    entry_id   uuid REFERENCES activity_entries (id) ON DELETE SET NULL,
-    status     smallint NOT NULL,
-    response   jsonb NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    key            text PRIMARY KEY,
+    entry_id       uuid REFERENCES activity_entries (id) ON DELETE SET NULL,
+    status         smallint NOT NULL,
+    -- sha256 of the canonical request body, so replaying a DIFFERENT request under the
+    -- same key is caught (409 IDEMPOTENCY_KEY_REUSED, Requirement 12.23) rather than
+    -- answered with the first request's result.
+    request_hash   text NOT NULL,
+    response       jsonb NOT NULL,
+    created_at     timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT idempotency_keys_key_shape
+        CHECK (char_length(key) BETWEEN 1 AND 200 AND key ~ '^[A-Za-z0-9_-]+$')
 );
 
 CREATE INDEX idempotency_keys_created_at ON idempotency_keys (created_at);
@@ -1406,10 +1670,9 @@ CREATE TABLE day_boundary_config (
     created_at     timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE schema_migrations (
-    filename   text PRIMARY KEY,
-    applied_at timestamptz NOT NULL DEFAULT now()
-);
+-- `schema_migrations` is deliberately absent here. `scripts/migrate.sh` creates it
+-- before it applies anything, so declaring it again in the first migration raises
+-- 42P07 on a clean database and no migration ever succeeds. One owner: the script.
 
 -- Requirement 13.7: updated_at must reflect the last modification, not the insert.
 CREATE FUNCTION set_updated_at() RETURNS trigger AS $$
@@ -1423,6 +1686,9 @@ CREATE TRIGGER work_sessions_set_updated_at BEFORE UPDATE ON work_sessions
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER activity_entries_set_updated_at BEFORE UPDATE ON activity_entries
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER projects_set_updated_at BEFORE UPDATE ON projects
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 ```
 
@@ -1455,11 +1721,11 @@ stateDiagram-v2
 
 ### Property 2: Duration mode conserves the requested duration
 
-*For any* positive duration `d` and any `Tracked_Time`, `total(segments) + unplacedMs` SHALL equal `d` exactly — every millisecond asked for is either placed or reported as unplaced, including the time of intervals dropped for falling below `minIntervalMs`. Additionally, when the eligible time after the anchor and within the `Logical_Day` contains at least `d` of stretches each no shorter than `minIntervalMs`, `unplacedMs` SHALL be zero.
+*For any* positive duration `d` and any `Tracked_Time`, `total(segments) + unplacedMs` SHALL equal `d` exactly, **and** every produced segment SHALL last at least `minIntervalMs`.
 
-**Validates: Requirements 5.8, 5.10, 5.14, 6.5, 6.15**
+**Validates: Requirements 5.8, 5.10, 5.14, 5.15, 6.5, 6.15**
 
-Conservation is the form that always holds. The earlier statement — "the total equals `d` exactly and nothing is unplaced" — contradicts Requirement 6.5 on any fragmented day: a frame of thirty-second stretches cannot place two hours in segments that all clear the floor, so either the floor is violated or the total is short. Only the sum is invariant.
+Conservation plus the floor is the whole of it, and the "`unplacedMs` is zero whenever enough eligible time exists" clause is deliberately **gone**: it is falsifiable. Eligible `[11:00–12:00, 13:00–16:00]` holds four hours, far more than `d = 1 h 0 min 20 s`, yet no placement of that duration avoids leaving a 20-second tail — so either the floor breaks or something is unplaced. The two invariants above are the ones that survive every frame.
 
 ### Property 3: Breaks survive inside an entry
 
@@ -1481,7 +1747,7 @@ Conservation is the form that always holds. The earlier statement — "the total
 
 ### Property 6: Take is exact and order-preserving
 
-*For any* normalized list `input` and non-negative `ms`, `total(taken) + remainder` SHALL equal `ms`, `total(taken)` SHALL equal `min(total(input), ms)`, and `taken` SHALL be a time-ordered prefix of `input` — every instant in `taken` lies in `input`, and no instant of `input` before the end of `taken` is omitted.
+*For any* normalized list `input`, non-negative `ms` and non-negative `minIntervalMs`, `total(taken) + remainder` SHALL equal `ms`, every interval in `taken` SHALL last at least `minIntervalMs`, and `taken` SHALL be a time-ordered prefix of `input` — every instant in `taken` lies in `input`, and no instant of `input` before the end of `taken` is omitted except a final piece the floor refused.
 
 **Validates: Requirements 5.8, 5.10**
 
@@ -1499,7 +1765,7 @@ Conservation is the form that always holds. The earlier statement — "the total
 
 ### Property 9: Re-clipping is deterministic and idempotent
 
-*For any* database state, applying `reclipAffected` twice over the same interval SHALL produce the same `Activity_Segment` rows as applying it once.
+*For any* database state, applying `reclipAffected` twice over the same intervals SHALL produce the same `Activity_Segment` rows as applying it once — compared, as in Property 13, by each entry's sorted segment bounds, not by segment identifiers, which the delete-and-reinsert cycle necessarily changes.
 
 **Validates: Requirements 2.9, 2.10**
 
@@ -1526,6 +1792,8 @@ The wording matters: the entry does not store "what the user typed" in the infer
 ### Property 13: A dry run predicts the write exactly
 
 *For any* request, performing it as a `Dry_Run` and then performing it for real SHALL produce a database state matching what the `Dry_Run` reported, and the `Dry_Run` SHALL return the same status code as the real write.
+
+**Equality is over interval bounds and totals only** — the sorted `(startedAt, endedAt)` pairs of every `Activity_Segment`, the sorted `(startedAt, endedAt)` of every `Work_Session`, and the reported totals. Identifiers and timestamps are excluded by construction: the rolled-back dry run allocates UUIDs and `createdAt` values that the real write never reproduces, so comparing them would fail every time for a reason that means nothing.
 
 **Validates: Requirements 14.1, 14.3, 14.4**
 
@@ -1555,9 +1823,9 @@ The wording matters: the entry does not store "what the user typed" in the infer
 
 ### Property 18: Idempotent writes create one record
 
-*For any* `POST /api/activities` repeated with the same `Idempotency-Key`, the database SHALL hold exactly one resulting `Activity_Entry` and both responses SHALL be identical.
+*For any* `POST /api/activities` repeated with the same `Idempotency-Key` **and the same body**, the database SHALL hold exactly one resulting `Activity_Entry` and both responses SHALL be identical in status and body. *For any* repetition with the same key and a **different** body, the second response SHALL be 409 `IDEMPOTENCY_KEY_REUSED` and the database SHALL be unchanged by it.
 
-**Validates: Requirements 12.8, 12.9**
+**Validates: Requirements 12.8, 12.9, 12.17, 12.23**
 
 ### Property 19: Overtime and in-window time partition the day
 
@@ -1575,9 +1843,11 @@ This identity holds for *any* window, which is exactly why it is stated that way
 
 ### Property 21: The suggested window brackets the bulk of the work
 
-*For any* range holding at least one `Work_Session`, at least 90 percent of the range's `Tracked_Time` SHALL fall inside the window reported as `suggestedWindow`, materialised on each day of the range.
+*For any* range, **if** `suggestedWindow` is non-null, then at least `SUGGESTED_WINDOW_COVERAGE` of the range's `Tracked_Time` SHALL fall inside it, materialised on each day of the range, and the window SHALL itself satisfy the startup checks of Requirements 13.12, 13.15 and 13.22.
 
-**Validates: Requirements 8.13**
+**Validates: Requirements 8.13, 8.21, 8.22**
+
+The conditional is not a weakening. No window need exist: a habitual 22:00–04:00 worker under `DAY_START_HOUR=3` has no arc that both covers 90 % of the work and leaves the day boundary in the gap, and a property asserting one would fail on real data. `null` is the correct answer there, and Requirement 8.21 says so.
 
 ### Property 22: Stored segments always lie inside tracked time
 
@@ -1603,7 +1873,9 @@ The three numbers are computed by three different aggregations over the same row
 
 ### Property 25: Clipping is idempotent over its own output
 
-*For any* `ClipInput`, feeding the produced segments back as the requested interval against the same `Tracked_Time` — with the entry's own segments excluded from `covered`, as a PATCH does — SHALL produce those same segments, no `discarded`, no `slivers` and `unplacedMs` of zero.
+*For any* `ClipInput`, re-clipping each produced segment **individually** as an `Explicit_Mode` request over the same `Tracked_Time` — with the entry's own segments excluded from `covered`, as a PATCH does — SHALL return that segment unchanged, with no `discarded`, no `slivers` and `unplacedMs` of zero.
+
+One segment at a time, not the whole result as one interval: a clipped entry is generally several disjoint stretches, and the span from the first start to the last end covers the breaks between them, which are not tracked. Feeding that span back would legitimately report `discarded`, and the property would fail while nothing was wrong.
 
 **Validates: Requirements 6.1, 6.4, 7.10**
 
@@ -1627,13 +1899,15 @@ All error responses use the shape from Requirement 12.2: `{ error, message, mess
 | `ACTIVITY_OVERLAP` | 409 | a request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }`, at most `ERROR_DETAIL_SAMPLE_SIZE` of them, plus `conflictCount` — Requirement 4.5 wants the entry named, not only identified |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals, `outsideSeconds` |
 | `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date`, `dayBounds` — the message names the day and can offer to start the timer |
-| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'`, plus `anchor` and `requested`. Three different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described" — and the client must not have to guess which (Requirement 12.19) |
+| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'`, plus `anchor` and `requested`. Three different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described" — and the client must not have to guess which (Requirement 12.20) |
 | `PROJECT_ARCHIVED` | 400 | a new entry, or a PATCH, targets an archived `Project` | `projectId`, `projectName` |
 | `FUTURE_TIMESTAMP` | 400 | a supplied instant lies further ahead than `FUTURE_TOLERANCE_SECONDS` | `field`, `value`, `maxAllowed` |
 | `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds`, `actualSeconds` |
-| `STALE_PREVIEW` | 409 | a write carries a `Preview_Token` the stored rows no longer match | `submittedToken`, `currentToken` (Requirement 12.20). The client's response is to re-run the `Dry_Run` and show the new outcome; it is never asked to work out what changed |
+| `STALE_PREVIEW` | 409 | a write carries a `Preview_Token` the stored rows no longer match | `submittedToken`, `currentToken` (Requirement 12.21). The client's response is to re-run the `Dry_Run` and show the new outcome; it is never asked to work out what changed |
 | `PROJECT_EXISTS` | 409 | duplicate project name, ignoring case and surrounding whitespace | `projectId`, `projectName` — the existing project, so the client can offer to use it instead |
 | `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount`, and `entries[]` of `{ entryId, description, requestedStartedAt, requestedEndedAt }` for at most `ERROR_DETAIL_SAMPLE_SIZE` of them (Requirement 3.7). A bare count cannot tell the user *which* records block the delete, and a bare list of ids makes the client fetch them |
+| `IDEMPOTENCY_KEY_REUSED` | 409 | an `Idempotency-Key` seen before with a different request body | `key` — replaying the first answer would silently discard the second request |
+| `METHOD_NOT_ALLOWED` | 405 | an existing path reached with a method it does not implement | `allowed[]`, mirrored in the `Allow` header |
 | `PAYLOAD_TOO_LARGE` | 413 | request body over `MAX_BODY_BYTES` | `maxBytes` |
 | `RATE_LIMITED` | 429 | over `RATE_LIMIT_PER_MINUTE`, or over `LOGIN_ATTEMPT_LIMIT` on the login route | `retryAfterSeconds`, `scope`: `'request'` \| `'login'` — the two need different wording |
 | `SERVICE_UNAVAILABLE` | 503 | database unreachable, query past `DB_QUERY_TIMEOUT_SECONDS`, or a startup check still failing | `retryAfterSeconds` = `SERVICE_RETRY_AFTER_SECONDS` |

@@ -11,18 +11,19 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - [ ] 1. Project scaffolding and server infrastructure
   - [ ] 1.1 Initialize the SvelteKit project
     - Scaffold with Bun 1.2.15; set `packageManager`, `engines.bun`, `.npmrc` with `engine-strict=true`, and `bunfig.toml` with `[run] bun = true`
-    - Dependencies: `@sveltejs/kit` ^2.63, `svelte` ^5.56, `vite` ^8, `@sveltejs/adapter-node` ^5.5, `typescript` ^6 strict, `drizzle-orm` ^0.45, `postgres` ^3.4, `zod` ^4, `@date-fns/tz` ^1.5, `@inlang/paraglide-js` ^2.18
-    - Dev dependencies: `vitest` ^4, `fast-check` ^4 declared explicitly, `@playwright/test`, `drizzle-kit`, `eslint`, `prettier`
+    - Dependencies, at the versions the workspace already resolves — `@sveltejs/kit` ^2.63.0, `svelte` ^5.56.1, `vite` ^8.0.16, `@sveltejs/adapter-node` ^5.5.7, `typescript` ^6.0.3 strict, `drizzle-orm` ^0.45.2, `zod` ^4.4.3, `@inlang/paraglide-js` ^2.18.2
+    - Two dependencies no other workspace project uses, so take the major only and let `bun install` pin the exact version into `bun.lock`: `postgres` ^3.4.0 and `@date-fns/tz` ^1.0.0. Run `bun install` and read the lockfile before committing — a version that does not resolve stops this task, and every other task, dead
+    - Dev dependencies: `vitest` ^4.1.10, `fast-check` ^4.9.0 declared explicitly, `@playwright/test` ^1.62.1, `drizzle-kit` ^0.31.10, `bun-types` ^1.3.14, `eslint`, `prettier`
     - Scripts matching the workspace: `dev`, `build`, `preview`, `prepare`, `messages:compile`, `check`, `test`, `test:watch`, `test:coverage`, `test:e2e`, `test:e2e:local`, `test:all`, `lint`, `format`
     - Set `version` in `package.json` to `0.1.0` as the single source of truth; nothing else may declare a version
     - Aliases in `svelte.config.js`: `$lib`, `$db`, `$modules`; `compilerOptions.runes: true`
-    - Configure `kit.csp` in `svelte.config.js` with `mode: 'nonce'` and the directives from design component 9. This is where the `Content-Security-Policy` is built: only SvelteKit can nonce its own inline hydration script, so a hand-assembled strict policy blocks hydration in a production build
+    - Configure `kit.csp` in `svelte.config.js` with `mode: 'nonce'` and the directives from design component 9, `'font-src': ['self']` among them — Inter Tight is self-hosted and must not depend on the `default-src` fallback, and no directive in any environment names a Google Fonts host. This is where the `Content-Security-Policy` is built: only SvelteKit can nonce its own inline hydration script, so a hand-assembled strict policy blocks hydration in a production build
     - Commit `bun.lock`
-    - _Requirements: 13.8, 13.9, 13.10_
+    - _Requirements: 12.14, 13.8, 13.9, 13.10_
 
   - [ ] 1.2 Implement configuration in `src/lib/server/core/config.ts`
     - Define `Config` and `loadConfig()` per design component 12, reading `version` from `package.json`
-    - Defaults: `PORT=3000`, `TIMEZONE=Europe/Prague`, `DAY_START_HOUR=3`, `GAUGE_START=06:00`, `GAUGE_END=00:00`, `EVENING_HOUR=21`, `APP_ENV=production`, `DB_QUERY_TIMEOUT_SECONDS=5`, `RATE_LIMIT_PER_MINUTE=120`, `SESSION_DURATION_HOURS=720`, `MAX_OPEN_SESSION_HOURS=12`, `MIN_INTERVAL_SECONDS=60`, `ALLOW_DAY_BOUNDARY_CHANGE=false`
+    - Defaults: `PORT=3000`, `TIMEZONE=Europe/Prague`, `DAY_START_HOUR=3`, `GAUGE_START=06:00`, `GAUGE_END=00:00`, `EVENING_HOUR=21`, `APP_ENV=production` (accepting `development`, `test` and `production` only — `test` exists so the E2E run has an environment of its own), `DB_QUERY_TIMEOUT_SECONDS=5`, `RATE_LIMIT_PER_MINUTE=120`, `SESSION_DURATION_HOURS=720`, `MAX_OPEN_SESSION_HOURS=12`, `MIN_INTERVAL_SECONDS=60`, `ALLOW_DAY_BOUNDARY_CHANGE=false`
     - When `GAUGE_END` is less than or equal to `GAUGE_START`, take the end as falling on the following date — without this the default `06:00`–`00:00` measures zero hours
     - Reject a `Gauge_Window` shorter than 1 hour or longer than 24
     - Implement and apply `dayStartIsInGaugeGap`: reject a configuration in which the hour named by `DAY_START_HOUR` falls inside the `Gauge_Window`, because the window would then straddle a `Logical_Day` boundary and stop being one continuous stretch
@@ -35,7 +36,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Validate: `DATABASE_URL` non-empty; `WORKLOG_API_TOKEN` at least 32 characters; `WORKLOG_PASSPHRASE_HASH` present and parseable as argon2id; `DAY_START_HOUR` in 0..23; `EVENING_HOUR` in 0..23; `TRUSTED_PROXY_HOPS` a non-negative integer; `TIMEZONE` loadable
     - Reject `CORS_ORIGINS=*` unless `APP_ENV` is `development`
     - Throw once listing every problem, not just the first
-    - _Requirements: 1.13, 2.4, 3.7, 4.10, 7.5, 7.13, 8.10, 8.13, 8.18, 9.6, 10.4, 10.5, 10.9, 10.13, 11.6, 11.13, 11.16, 11.17, 11.20, 11.21, 12.6, 12.9, 12.21, 13.5, 13.6, 13.8, 13.9, 13.10, 13.11, 13.12, 13.13, 13.14, 13.15, 13.16, 13.17, 13.18, 13.19, 13.20, 13.21, 13.22, 13.23, 13.26, 13.27, 13.28, 13.29, 13.30_
+    - _Requirements: 1.13, 2.4, 3.7, 4.10, 7.5, 7.13, 8.10, 8.13, 8.18, 9.6, 10.4, 10.5, 10.9, 10.13, 11.6, 11.13, 11.16, 11.17, 11.20, 11.21, 12.6, 12.9, 12.22, 13.5, 13.6, 13.8, 13.9, 13.10, 13.11, 13.12, 13.13, 13.14, 13.15, 13.16, 13.17, 13.18, 13.19, 13.20, 13.21, 13.22, 13.23, 13.26, 13.27, 13.28, 13.29, 13.30, 13.33_
 
   - [ ] 1.3 Implement logging and request identity
     - `src/lib/server/core/logger.ts`: JSON lines to stdout carrying `timestamp`, `level`, `message`, `requestId`; a redaction helper used wherever a secret could reach a log call
@@ -51,12 +52,14 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Cap any list in `details` at `ERROR_DETAIL_SAMPLE_SIZE` and send the full count beside it
     - Map any unknown error to 500 `INTERNAL_ERROR`, logging the real cause with the `requestId`
     - Never place stack traces, SQL text or filesystem paths in a response body
-    - _Requirements: 3.7, 4.5, 12.1, 12.2, 12.3, 12.5, 12.14, 12.18, 12.19, 12.20_
+    - _Requirements: 3.7, 4.5, 12.1, 12.2, 12.3, 12.5, 12.15, 12.19, 12.20, 12.21_
 
   - [ ] 1.5 Implement security headers in `src/lib/server/core/security-headers.ts`
     - The `Content-Security-Policy` — including `frame-ancestors 'none'` — comes from `kit.csp` in `svelte.config.js` (task 1.1). **Do not assemble it in the hook.** A handwritten strict policy cannot nonce SvelteKit's own inline hydration script, so the production build renders a page that never hydrates, and the only way to make it work again is `unsafe-inline`, which Requirement 12.13 forbids
+    - The CSP goes on **rendered pages only**; `/api` JSON responses carry the other three headers and no policy, because a JSON body executes nothing
     - `handleSecurityHeaders` sets only what `kit.csp` does not: `Strict-Transport-Security` (production only), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`
-    - **Do not create or edit `src/app.html`.** That file belongs to `002-worklog-ui`; with `kit.csp` in charge there is nothing for this task to inject into it
+    - Its `transformPageChunk` performs two substitutions: `%lang%` → `locals.locale` and `%theme%` → `locals.theme` resolved to `light` or `dark`, never the literal `system` (task 7.4). It performs **no nonce injection** — that is `kit.csp`'s job
+    - **Do not create or edit `src/app.html`.** That file belongs to `002-worklog-ui`, which authors it with `<html lang="%lang%" data-theme="%theme%">` and with `%sveltekit.nonce%` for any inline script of its own
     - The production policy carries neither `unsafe-inline` nor `unsafe-eval` in `script-src` or `style-src`; `002` colours projects through eight static classes rather than an inline custom property, so nothing needs an inline `style`
     - Development relaxes the policy in one place only: `svelte.config.js` selects its `csp.directives` from `APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for Vite and HMR; `handleSecurityHeaders` omits `Strict-Transport-Security` outside production. Nothing else differs and the production set is never derived from the development one
     - _Requirements: 12.12, 12.13_
@@ -74,7 +77,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - _Requirements: 10.9, 11.16, 11.17, 12.2, 12.3, 12.12, 12.13, 13.9, 13.11, 13.12, 13.13, 13.14, 13.15, 13.16, 13.17_
 
   - [ ] 1.7 Create `.env.example` and fix `.gitignore`
-    - `.env.example` lists every variable `loadConfig` reads — including `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `SESSION_DURATION_HOURS` and `RATE_LIMIT_PER_MINUTE` — grouped by comments, placeholders for secrets and real defaults elsewhere
+    - `.env.example` lists every variable `loadConfig` reads, with no exceptions: `PORT`, `DATABASE_URL`, `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS`, `TRUSTED_PROXY_HOPS`, `DB_QUERY_TIMEOUT_SECONDS`, `DB_POOL_MAX`, `RATE_LIMIT_PER_MINUTE`, `SESSION_DURATION_HOURS`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `ALLOW_DAY_BOUNDARY_CHANGE` — grouped by comments, placeholders for the two secrets and real defaults everywhere else
+    - Point the `WORKLOG_PASSPHRASE_HASH` placeholder at `./scripts/hash-passphrase.sh`, so nobody has to work out how the value is produced
     - `.gitignore` covers `.env`, `.env.*`, `!.env.example`, `src/lib/paraglide/`, `build/`, `node_modules/`, `.svelte-kit/`
     - _Requirements: 13.8, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21_
 
@@ -91,14 +95,14 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - [ ] 2.1 Implement the interval algebra in `src/lib/server/domain/interval.ts`
     - Define `Interval` as half-open `[start, end)` and implement `isEmpty`, `duration`, `overlaps`, `normalize`, `union`, `intersect`, `subtract`, `clamp`, `total`, `take`, `gaps` per design component 1
     - `normalize` sorts by start, drops empty intervals, merges overlapping **and touching** ones
-    - `take` splits the interval in which the requested duration runs out and reports the remainder
+    - `take(input, ms, minIntervalMs)` splits the interval in which the requested duration runs out, **never emits a piece shorter than `minIntervalMs`**, and reports everything it could not place as the remainder. Without the floor here the walk ends in a sliver that `clip` must throw away, and then placed + unplaced no longer equals what was asked for
     - The module imports nothing from the project, no Drizzle and no SvelteKit
     - _Requirements: 9.2, 9.3_
 
   - [ ] 2.2 Write unit tests for the interval algebra
     - `tests/lib/server/domain/interval.test.ts`: empty input; single interval; touching merge; overlapping merge; disjoint stay separate
     - `subtract` producing a hole in the middle, at the head, at the tail, and eliminating an interval entirely
-    - `take` with zero, less than the first interval, exactly the first interval, spanning two intervals, and exceeding the total
+    - `take` with zero, less than the first interval, exactly the first interval, spanning two intervals, and exceeding the total; and the floor case — eligible `[11:00–12:00, 13:00–16:00]` with `ms = 1 h 0 min 20 s` and `minIntervalMs = 60 s` emits no 20-second tail and reports those 20 seconds as remainder
     - `gaps` over a window wider than, narrower than and equal to the input
     - _Requirements: 9.2, 9.3_
 
@@ -143,7 +147,11 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
 - [ ] 4. Schema and data layer
   - [ ] 4.1 Write `migrations/001_init.sql`
-    - Create `btree_gist`, then `projects`, `work_sessions`, `activity_entries`, `activity_segments`, `auth_sessions`, `idempotency_keys`, `day_boundary_config` and `schema_migrations` exactly as in the design Data Models section
+    - Create `btree_gist`, then `projects`, `work_sessions`, `activity_entries`, `activity_segments`, `auth_sessions`, `idempotency_keys` and `day_boundary_config` exactly as in the design Data Models section
+    - **Do not create `schema_migrations` here.** `scripts/migrate.sh` creates it before applying anything, so a second `CREATE TABLE` without `IF NOT EXISTS` raises 42P07 on a clean database and no migration ever succeeds. One owner: the script
+    - Primary keys are UUID v7 generated by the application (`Bun.randomUUIDv7()`), never v4 and never `gen_random_uuid()` — v7 is time-ordered, so inserts stay at the right edge of every index
+    - `projects` carries `updated_at` with its own `set_updated_at` trigger, like `work_sessions` and `activity_entries`
+    - `idempotency_keys` carries `status` and `request_hash` and constrains the key to 1–200 characters of `[A-Za-z0-9_-]`
     - Include `work_sessions_one_open`, the gist range index on `work_sessions`, both `EXCLUDE USING gist` constraints, `projects_name_unique` on `lower(btrim(name))`, and every check constraint
     - Declare `activity_segments_no_overlap` as `DEFERRABLE INITIALLY DEFERRED`
     - Create `set_updated_at()` and its triggers on `work_sessions` and `activity_entries`
@@ -151,15 +159,22 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `activity_entries_mode_fields` requires a resolved interval in **every** mode, with `requested_duration_minutes` additionally required for `duration` — a duration entry with no interval has a null sort key, nothing to re-place it by and no handle to find it by once it is emptied
     - Add `activity_entries_requested_range` as a gist index over `tstzrange(requested_started_at, requested_ended_at)`, because re-clipping and orphan lookup both select by requested interval
     - `idempotency_keys.entry_id` is `ON DELETE SET NULL`, never `CASCADE`: cascading deletes the key with the entry, so the next retry creates a second one. Store the HTTP `status` beside the response body
-    - _Requirements: 1.9, 2.9, 3.2, 3.3, 4.5, 4.8, 5.13, 6.4, 7.13, 10.10, 11.7, 12.8, 12.16, 12.17, 13.7_
+    - _Requirements: 1.9, 2.9, 3.2, 3.3, 4.5, 4.8, 5.13, 6.4, 7.13, 10.10, 11.7, 12.8, 12.17, 12.18, 13.7_
 
   - [ ] 4.2 Write `scripts/migrate.sh`
-    - `#!/bin/bash` with `set -euo pipefail` and the Script Portability preamble
+    - `#!/bin/bash` with `set -euo pipefail` and the **Script Portability preamble**, which is these three lines and is identical in every script of this project:
+      ```bash
+      SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+      cd "${PROJECT_ROOT}"
+      ```
+      It makes every script runnable from any working directory, which is what `dploy` and the deploy flow assume
     - Take the environment name as `$1`, defaulting to the local `.env`
     - Take a session advisory lock first, so two concurrent runs cannot interleave
     - Create `schema_migrations` when absent, then apply each unapplied `migrations/*.sql` in filename order inside a transaction, recording the filename
     - Idempotent — a second run applies nothing and exits 0
     - This is the only supported way to apply migrations; `drizzle-kit migrate` is not used, because the exclusion constraints are not expressible in the Drizzle DSL. There are no down migrations: a mistake is corrected by a new forward migration.
+    - The script **creates the database if it does not exist** (`CREATE DATABASE` against the maintenance database when the connection fails with 3D000), so a fresh machine needs only PostgreSQL running and a `DATABASE_URL`; nothing else provisions it
     - _Requirements: 13.8_
 
   - [ ] 4.3 Write the Drizzle schema in `src/db/schema/`
@@ -171,10 +186,10 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Build the Drizzle client over `postgres.js` with the configured query timeout
     - `withTx(fn, { dryRun })` opens a transaction, runs `select pg_advisory_xact_lock($1)` with `WORKLOG_ADVISORY_LOCK` imported from `core/config.ts` first, runs `fn`, then commits — or rolls back when `dryRun` is set, by throwing a private rollback signal caught outside
     - **In the `dryRun` branch, issue `SET CONSTRAINTS ALL IMMEDIATE` after `fn` resolves and before the rollback.** `activity_segments_no_overlap` is `DEFERRABLE INITIALLY DEFERRED`, so it is checked at `COMMIT` — which a dry run never reaches. Without this statement the dry run reports success for a write that then fails, and the guarantee the whole preview rests on is false
-    - Add `withReadTx(fn)`: the same transaction **without** the exclusive advisory lock, for every read-only path. The `Auth_Hook` looks a session up on every request, so routing reads through `withTx` would put the global write lock in front of all traffic and fail healthy requests at the query timeout
+    - Add `withReadTx(fn)`: the same transaction **without** the exclusive advisory lock and at **REPEATABLE READ**, for every read-only path. The isolation level is not optional — a day response issues several statements, and at READ COMMITTED a concurrent write lands between two of them, so `covered` can come from after a write whose `tracked` came from before it and Property 7 fails intermittently. The `Auth_Hook` looks a session up on every request, so routing reads through `withTx` would put the global write lock in front of all traffic and fail healthy requests at the query timeout
     - `translateConstraintError(err, op)` maps SQLSTATE and constraint name to `ApiError` codes, taking the operation because `activity_entries_project_id_fkey` means `PROJECT_IN_USE` (409) when deleting a project and `VALIDATION_ERROR` (400) when writing an entry against a project that does not exist
-    - Build the pool with `max: DB_POOL_MAX` (10) and the configured query timeout; register a shutdown handler on `sveltekit:shutdown` closing it, and set `SHUTDOWN_TIMEOUT` to `SHUTDOWN_GRACE_SECONDS` (30) so `adapter-node` drains before exiting 0
-    - _Requirements: 6.11, 12.14, 13.5, 13.6, 14.1, 14.3, 14.5_
+    - Build the pool with `max: DB_POOL_MAX` (10) and enforce `DB_QUERY_TIMEOUT_SECONDS` as `statement_timeout` **on the connection**, not as a JavaScript timer — a timer abandons the client while the server keeps executing. A cancellation arrives as SQLSTATE 57014 and maps to 503 `SERVICE_UNAVAILABLE`; register a shutdown handler on `sveltekit:shutdown` closing it, and set `SHUTDOWN_TIMEOUT` to `SHUTDOWN_GRACE_SECONDS` (30) so `adapter-node` drains before exiting 0
+    - _Requirements: 6.11, 12.15, 13.5, 13.6, 14.1, 14.3, 14.5_
 
   - [ ] 4.5 Implement `src/lib/server/store/work-sessions.ts`
     - Open, close, current, get, list overlapping, create closed, update, delete, insert many
@@ -190,7 +205,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - _Requirements: 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12_
 
   - [ ] 4.7 Implement `src/lib/server/store/activities.ts`
-    - Every function from design component 6, including `orphanedEntriesOverlapping` and `entryIdsForProject`
+    - Every function from design component 6, including `orphanedEntriesOverlapping` and `entryIdsForProject`; `listEntriesOverlapping` orders by `requestedStartedAt, createdAt, id` — the one total order every listing and the cursor share, and the only one an `Orphaned_Entry` has a key in
     - `createEntry` writes the `Activity_Entry` and its `Activity_Segment` rows together; `replaceSegments` deletes then reinserts, relying on the deferred constraint
     - `coveredIntervals` accepts an `Activity_Entry` to exclude; `entriesOverlapping` orders by `requestedStartedAt` then `createdAt`
     - `listEntriesOverlapping` joins the `Project` name, attaches the `Activity_Segment` rows, sets `orphaned`, and unions in every `Orphaned_Entry` selected by requested interval; it takes `ACTIVITY_PAGE_SIZE` and a cursor and returns `nextCursor`, keyed on `(requestedStartedAt, createdAt, id)` so paging is stable
@@ -200,6 +215,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 4.8 Write integration tests for the schema constraints
     - `tests/lib/server/store/schema.test.ts` against PostgreSQL 16 started with plain `docker run` on the sandbox network and reached by container name
+    - **Every database-touching Vitest project runs single-threaded** (`poolOptions.threads.singleThread: true`): the suites share one database and truncate between tests, so parallel workers would truncate each other's fixtures and fail at random. The pure-domain project keeps full parallelism
     - A second `Open_Session` rejected; overlapping closed `Work_Session` rows rejected; sessions touching at one instant accepted
     - Overlapping `Activity_Segment` rows rejected; a delete-then-reinsert reshuffle in one transaction succeeds
     - Deleting a referenced `Project` rejected; names differing only in case or whitespace collide
@@ -239,19 +255,19 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - [ ] 6.2 Implement `resolveAnchor` and `clip` for `Duration_Mode`
     - `resolveAnchor` returns the `Placement_Anchor`: the explicit start when given, else the end of the `Target_Day`'s latest `Activity_Segment`, else the start of its earliest `Work_Session`, else throws `NoPlacementAnchorError`
     - Declare `NoPlacementAnchorError` in `clipping.ts` carrying the `Target_Day` date. It is a domain error, not an `ErrorCode`; the route catches it and answers 409 `NO_PLACEMENT_ANCHOR`, so the domain still names no HTTP status
-    - Compute `eligible = subtract(clamp(tracked, [anchor, dayBounds.end)), covered)` and call `take(eligible, durationMs)`
+    - Compute `eligible = subtract(clamp(tracked, [anchor, dayBounds.end)), covered)` and call `take(eligible, durationMs, minIntervalMs)`
     - Record the interval the walk resolved to — first placed start to last placed end — as the entry's requested interval, beside the requested duration
-    - Under `extend`, place what it lawfully can after the last tracked instant in the window: never past `min(now, dayBounds.end)`, and never over an existing `Work_Session`. Where it cannot place, the time stays `unplaced` and the request still succeeds
+    - Under `extend`, place what it lawfully can after the last tracked instant in the window: never past `min(now, dayBounds.end)`, never over an existing `Work_Session`, and never as a session shorter than `MIN_INTERVAL_SECONDS`. Where it cannot place, the time stays `unplaced` and the request still succeeds
     - **Reduce `unplacedMs` only by what was actually placed.** Appending "an interval of length `unplacedMs`" and zeroing the counter loses the user's time whenever that interval comes out empty — which is exactly what happens when the last tracked instant is already `now`
     - `total(segments) + unplacedMs === durationMs` must hold on every path, sliver discards included
-    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 6.13, 6.14, 6.15_
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 5.15, 6.13, 6.14, 6.15_
 
   - [ ] 6.3 Implement `Open_Mode`
     - Resolve the start with `resolveAnchor`; the end is now for the current `Logical_Day`, or the end of the `Target_Day`'s last `Work_Session` for a past day — so a morning-after quick log still works
     - Run the `Explicit_Mode` path with the resolved interval; store it as the `Activity_Entry`'s requested interval with `mode` recording that it was inferred
     - Reject with `NOTHING_TO_LOG` when the resolved start is not before the resolved end, and equally when `Clipping` leaves no segment — the same answer the other two modes now give
     - Reject a `Target_Day` in the future with `VALIDATION_ERROR`: a day that has not begun has no `Placement_Anchor` and no end to log up to, which is reachable by calling at 02:00 with today's date under `DAY_START_HOUR=3`
-    - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.10, 6.12_
+    - _Requirements: 6.12, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.10_
 
   - [ ] 6.4 Write unit tests for `clip`
     - `tests/lib/server/domain/clipping.test.ts`
@@ -281,9 +297,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Declare `ReclipPorts` and `ReclipOutcome` per design component 4 so the module stays free of Drizzle
     - `affected` is an `Interval[]`, not one interval: moving a session across the week yields two disjoint stretches, and merging them re-clips everything in between for no reason. Define the boundary cases — `start` has no old interval and a new one of `[startedAt, now)`; `stop` reads the old one as `[startedAt, now)` and the new one as `[startedAt, endedAt)`; a delete has no new interval
     - `reclipAffected` loads the affected `Activity_Entry` records through `entriesAffectedBy` — segment overlap **or** requested-interval overlap — in deterministic order, clears their `Activity_Segment` rows, and re-applies `Clipping` to each with `Untracked_Policy` `clip`, treating already re-clipped entries as part of `Covered_Time`
+    - A `Duration_Mode` entry re-clips **as an explicit request over its frozen requested interval**; the `Placement_Anchor` is never resolved again, or a morning session edit would relocate an afternoon entry and Property 11 would fail. `reclipAffected` therefore takes **no `DayResolver`** — nothing here needs to know where a day starts, and the parameter would only invite the wrong implementation
+    - Load `trackedIntervals` over the **union of the selected entries' requested intervals**, not over `affected`: an entry can reach well outside the changed stretch, and tracked time loaded only for `affected` would delete the parts of it the change never touched
+    - `removedMs = total(subtract(before, after))` — time that was there and is gone. Never negative, and exactly zero when a session grew
     - Return `projectName`, `description`, `before`, `after`, `removedMs` and `orphaned` per `Activity_Entry` so a `Dry_Run` can name the consequence
     - Keep an `Activity_Entry` with zero `Activity_Segment` rows as an `Orphaned_Entry` rather than deleting it
-    - _Requirements: 2.9, 2.10, 14.2, 14.6_
+    - _Requirements: 2.9, 2.10, 2.11, 14.2, 14.6_
 
   - [ ] 6.7 Write tests for re-clipping against a fake `ReclipPorts`
     - `tests/lib/server/domain/reclip.test.ts` with an in-memory fake, no database
@@ -315,37 +334,44 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - _Requirements: 11.2, 11.3, 11.6, 11.7, 11.8, 11.9, 11.10, 11.11, 11.14, 11.15, 11.18, 11.21, 11.22, 13.30_
 
   - [ ] 7.2 Implement rate limiting in `src/lib/server/core/rate-limit.ts`
-    - Per-address token bucket allowing `RATE_LIMIT_PER_MINUTE` requests per 60 seconds, returning 429 with `Retry-After` set to the seconds left in the current window and `details.scope` of `request`; the login bucket answers with `scope` of `login`
+    - A per-address **fixed-window counter** — one count and one window-start instant, reset when the window rolls over — allowing `RATE_LIMIT_PER_MINUTE` requests per 60 seconds. Fixed window rather than token bucket because `Retry-After` then has an exact answer, the seconds left in the window, instead of an invented one. `GET /api/health` is exempt: a platform health check polls it from one address forever and would otherwise eat the whole allowance, returning 429 with `Retry-After` set to the seconds left in the current window and `details.scope` of `request`; the login bucket answers with `scope` of `login`
     - A stricter bucket for the login route: `LOGIN_ATTEMPT_LIMIT` (5) per address per `LOGIN_ATTEMPT_WINDOW_MINUTES` (15), not configurable
     - The address comes from `clientAddress(event, TRUSTED_PROXY_HOPS)`: drop that many entries from the **right** of `X-Forwarded-For` and take the next, or use the socket address when the count is zero or the header is absent. Taking the leftmost entry lets a caller mint a new identity per request by prepending one, which would defeat the login bucket entirely
     - Evict a bucket once it has been idle for twice its own window — 2 minutes for the request bucket, 30 minutes for the login bucket — on the sweep that runs every `CLEANUP_INTERVAL_MINUTES`, so memory cannot grow without bound
     - State plainly in the module's doc comment that this state is in-process: it resets on restart and is not shared between instances, which is why Requirement 13.25 fixes the deployment at one instance. Do not describe it as a distributed limit
-    - _Requirements: 11.13, 11.20, 12.7, 12.21, 13.23, 13.25, 13.30_
+    - _Requirements: 11.13, 11.20, 11.26, 12.7, 12.22, 13.23, 13.25, 13.30_
 
   - [ ] 7.3 Implement the idempotency and day-boundary stores
     - `src/lib/server/store/idempotency.ts` — **not** `core/idempotency.ts`: `idempotency_keys` is a table, and `core` holds no persistence
-    - On a POST to `/api/activities` carrying `Idempotency-Key`, look the key up first and replay the stored **status and body** when present
+    - On a POST to `/api/activities` carrying `Idempotency-Key`, look the key up first and replay the stored **status and body** when the stored `request_hash` matches the sha256 of this request's canonical body
+    - When the key exists with a **different** body, answer 409 `IDEMPOTENCY_KEY_REUSED` and write nothing — replaying the first answer would silently discard the second request
+    - Reject a key longer than 200 characters or outside `[A-Za-z0-9_-]` with `VALIDATION_ERROR`
     - Otherwise store the key, the status and the response inside the same transaction as the write
     - The key outlives the `Activity_Entry` it created (`ON DELETE SET NULL`), so a retry after a deletion replays instead of creating a second entry
     - Purge keys older than `IDEMPOTENCY_RETENTION_HOURS` (24) on the sweep that runs every `CLEANUP_INTERVAL_MINUTES` (60)
     - `src/lib/server/store/day-boundary.ts` — `readDayBoundaryConfig` and `writeDayBoundaryConfig` over the single `day_boundary_config` row, for the startup check in task 7.4
-    - _Requirements: 10.10, 10.11, 10.12, 12.8, 12.9, 12.16, 12.17_
+    - _Requirements: 10.10, 10.11, 10.12, 12.8, 12.9, 12.17, 12.18_
 
   - [ ] 7.4 Compose `src/hooks.server.ts`
-    - Export each handle individually, then `sequence(handleStartupGuard, handleRequestId, handleRequestLog, handleSecurityHeaders, handleCors, handleRateLimit, handleAuth)`
-    - `handleStartupGuard` is how "refuses to start" is actually implemented: the checks are asynchronous and a module body cannot await them, so create one promise at module load and have every request await it. While it is rejected, answer 503 `SERVICE_UNAVAILABLE` and also exit the process non-zero so a supervised deployment restarts rather than serving a half-configured server
-    - That guard refuses to serve when migrations are unapplied; writes the `Day_Boundary_Config` from the configuration when the row is absent; refuses when it disagrees with the environment without `ALLOW_DAY_BOUNDARY_CHANGE`; overwrites it and logs a warning when that flag is set
+    - Export each handle individually, then `sequence(handleRequestId, handleReadiness, handleRequestLog, handleLocals, handleSecurityHeaders, handleCors, handleRateLimit, handleAuth)`
+    - **Two kinds of startup failure, handled two different ways.** Bad configuration — missing, unparseable, out of range, or breaking a `Gauge_Window` invariant — is caught synchronously by `loadConfig()` at module load, which logs every problem and **exits non-zero**; no request is ever served and a restart cannot help. An unmigrated database or a disagreeing `Day_Boundary_Config` is asynchronous, so the process **keeps running** and `handleReadiness` answers 503 `SERVICE_UNAVAILABLE` until it is repaired by `scripts/migrate.sh` or by fixing the environment. One hook cannot both answer 503 and exit, and an earlier draft asked for exactly that
+    - `handleReadiness` runs **after** `handleRequestId` so its 503 carries a `requestId`, and it exempts `GET /api/health` — otherwise the endpoint that reports `degraded` is shadowed by the failure it exists to report
+    - The readiness probe is one promise created at module load, awaited by every request, and retried at most once per `CLEANUP_INTERVAL_MINUTES` while it fails. It writes the `Day_Boundary_Config` when the row is absent, refuses when it disagrees without a truthy `ALLOW_DAY_BOUNDARY_CHANGE`, and overwrites it with a warning when that flag is truthy — the flag is read as a value (`1`, `true`, `yes`), never as mere presence
+    - `handleLocals` fills `event.locals` per request with `today` (the current `Logical_Day` date and its bounds), `locale` and `theme`. **Per request, never at module load**: a server started before midnight would otherwise render yesterday for the rest of its life. `002` reads these and never derives a `Logical_Day` in the browser
+    - `handleSecurityHeaders` runs `transformPageChunk` replacing `%lang%` with `locals.locale` and `%theme%` with the resolved theme. A cookie value of `system`, an unrecognised value or no cookie at all all resolve to the default, so neither placeholder ever reaches the browser unsubstituted. Those are the only two substitutions `001` performs on `app.html`, a file `002` owns; the CSP nonce is `kit.csp`'s job
+    - Assert in a test that a rendered page contains neither `%lang%` nor `%theme%` literally, for a request with no cookies and for one whose theme cookie says `system`
+    - Read `worklog_locale` (`cs`|`en`, default `cs`) and `worklog_theme` (`dark`|`light`|`system`, default `system`) as cookies with `HttpOnly: false`, `SameSite=Lax`, `Path=/`, `Max-Age` 31536000 and `Secure` outside development; an unrecognised value falls back to the default rather than failing the render
     - Re-check `dayStartIsInGaugeGap` against the **stored** `DAY_START_HOUR` in the same guard, since that is the one the data was grouped by
     - `handleCors` allows only the configured origins, never reflects an arbitrary `Origin`, and **answers a preflight `OPTIONS` itself and returns** — a preflight carries no credentials by definition, so letting it reach `handleAuth` answers it 401 and the browser reports a CORS failure for a legal request
     - `handleAuth` is the `Auth_Hook` and holds `authenticate(event)`: it admits a valid `Browser_Session` or `API_Token`, exempts the `Health_Endpoint`, the login route, preflights and **the framework's static assets**, returns 401 for unauthenticated `/api` paths and redirects other paths to login carrying the originally requested path through `safeRedirectTarget`
     - Without the static-asset exemption the login page is served as unstyled HTML that never hydrates, because its own CSS and JavaScript are redirected to the login page they are being fetched for
     - Cap request bodies at 1 MiB **while reading the stream**, returning `PAYLOAD_TOO_LARGE`; a `Content-Length` check alone is bypassed by a chunked request that declares no length
-    - _Requirements: 10.10, 10.11, 10.12, 11.1, 11.4, 11.5, 11.17, 11.19, 11.22, 12.6, 12.10, 12.11, 12.15, 13.4, 13.8, 13.14, 13.15, 13.24_
+    - _Requirements: 10.10, 10.11, 10.12, 10.17, 11.1, 11.4, 11.5, 11.17, 11.19, 11.22, 11.23, 11.24, 11.27, 12.6, 12.10, 12.11, 12.12, 12.16, 12.25, 12.26, 12.27, 12.28, 12.29, 13.4, 13.8, 13.14, 13.15, 13.24, 13.31, 13.32_
 
   - [ ] 7.5 Implement the login and logout routes
     - `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts` — **these two files are owned by this specification**, load functions and form actions included. `002` owns the matching `+page.svelte` files and nothing else in these routes; the split is by file, so neither spec edits the other's half
     - Compare in constant time, create a session on success, redirect to the originally requested path, return a generic failure key otherwise
-    - _Requirements: 11.5, 11.6, 11.10, 11.12, 11.14_
+    - _Requirements: 11.5, 11.6, 11.10, 11.12, 11.14, 11.25_
 
   - [ ] 7.6 Write tests for authentication, rate limiting and idempotency
     - `tests/lib/server/core/auth.test.ts`: missing, malformed and wrong credentials each yield 401 on `/api`; a valid cookie passes; a valid bearer token passes; `/api/health` needs neither; no log line contains a secret; cookie flags exactly as specified; a cross-origin request with only a cookie is refused
@@ -362,7 +388,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - [ ] 8.1 Implement the session routes
     - `src/routes/api/sessions/{start,stop,current}/+server.ts`, `sessions/+server.ts` (GET list and **POST create closed**), `sessions/[id]/+server.ts`
     - Validate with `startSessionSchema`, `stopSessionSchema`, `createSessionSchema`, `patchSessionSchema` and `deleteSessionQuery` — **all five carry the dry-run fields**, DELETE taking them as the `dry_run` and `preview_token` **query** parameters because a DELETE body is not reliably transmitted, because start and stop create and modify a `Work_Session` and Requirement 14.2 covers them too
-    - Return `SESSION_ALREADY_RUNNING`, `NO_SESSION_RUNNING`, `SESSION_OVERLAP`, `FUTURE_TIMESTAMP` and `INTERVAL_TOO_SHORT` as specified
+    - Return `SESSION_ALREADY_RUNNING`, `NO_SESSION_RUNNING`, `SESSION_OVERLAP`, `FUTURE_TIMESTAMP` and `INTERVAL_TOO_SHORT` as specified; `current` reports `elapsedSeconds` as the true time since the start, uncapped even for a `Stale_Session`, because the interface shows it as the running clock
     - `current` returns `CurrentSessionResponse` with elapsed seconds and the `stale` flag; every route returning a `WorkSession` carries the same flag on the session itself
     - Start, stop, create, PATCH and DELETE call `reclipAffected` for the union of the old and new interval inside the same transaction, and honour `dryRun` by returning a `SessionChangePreview`
     - Check overlap with the `Open_Session` in the transaction through `sessionsConflictingWith` — the `EXCLUDE` constraint does not cover it, so nothing else stops a closed session being written across a running timer
@@ -370,7 +396,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Compute the `Preview_Token` in `core/preview-token.ts` as a hash over the `Work_Session` and `Activity_Segment` **rows** in the affected window — ids, bounds, `updatedAt` — and never over a derived `Tracked_Time`, which changes every second while the timer runs and would make every preview stale before it could be confirmed
     - A `SessionChangePreview` also carries `lostUncoveredSeconds` and `lostUncovered`: the `Uncovered_Time` that stops being `Tracked_Time`, computed inside the rolled-back transaction as the coverage before the change minus the coverage after it. It belongs to no `Activity_Entry`, so it appears nowhere in `reclipped` and would otherwise be invisible — and the interface must never reconstruct it by intersecting intervals of its own
     - Default the listing range to the current `Logical_Day` and reject spans over 366 days
-    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 14.2, 14.3, 14.6, 14.9, 14.10, 14.11, 14.12_
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 1.17, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 14.2, 14.3, 14.6, 14.9, 14.10, 14.11, 14.12_
 
   - [ ] 8.2 Write tests for the session routes
     - `tests/api/sessions.test.ts`: start 201, second start 409, stop 200, stop with none running 409, current with and without an open session including `stale`
@@ -391,7 +417,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 8.4 Write tests for the project routes
     - `tests/api/projects.test.ts`: create; duplicate differing only in case rejected, the response naming the existing project; empty and over-long names rejected; listing excludes archived by default; delete in use rejected with `entryCount` and the blocking entries' descriptions and requested intervals in the details, capped at `ERROR_DETAIL_SAMPLE_SIZE`; delete unused succeeds; PATCH sets a colour index another project already holds
-    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.11, 12.18_
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.11, 12.19_
 
   - [ ] 8.5 Implement the activity routes
     - `src/routes/api/activities/+server.ts` and `activities/[id]/+server.ts` with `createActivitySchema` and `patchActivitySchema`, both `.strict()`
@@ -403,19 +429,25 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Answer 409 `NOTHING_TO_LOG` whenever `Clipping` produced no segment, in every mode, so no accepted write creates an `Orphaned_Entry`
     - Report `slivers` separately from `discarded`; policy `reject` fails on a non-empty `discarded` and never on a sliver
     - Reject a PATCH moving an entry to an archived `Project` with `PROJECT_ARCHIVED`
-    - Page the listing at `ACTIVITY_PAGE_SIZE` with a `cursor` query parameter and a `nextCursor` in the body. The cursor is base64url of `requestedStartedAt|createdAt|id` — the exact sort key of `activity_entries_order`, so a page can neither skip nor repeat a row; a cursor that fails to decode is a `VALIDATION_ERROR`
+    - Page the listing at `ACTIVITY_PAGE_SIZE` with `cursor`, `order` (`asc` default, `desc` for the newest first — what a quick-log needs) and `limit` (capped at `ACTIVITY_PAGE_SIZE`) query parameters, and a `nextCursor` in the body. The cursor is base64url of `requestedStartedAt|createdAt|id` — the exact sort key of `activity_entries_order`, so a page can neither skip nor repeat a row; a cursor that fails to decode is a `VALIDATION_ERROR`
     - Every returned entry carries its project's `colorIndex` beside `projectName`
-    - Catch `NoPlacementAnchorError` and answer 409 `NO_PLACEMENT_ANCHOR` carrying the `Target_Day` date
+    - Catch `NoPlacementAnchorError` and answer 409 `NO_PLACEMENT_ANCHOR` carrying the `Target_Day` date and its bounds
+    - Report the resolved `Placement_Anchor` and its `source` in the **success** body too, not only in an error: the add-task dialog names the start on the happy path, and a value that exists only on failure cannot be shown before the request is sent
+    - `unplacedMinutes` is always 0 outside `Duration_Mode`; policy losses go to `discarded` and floor losses to `slivers`
     - An `ACTIVITY_OVERLAP` response carries, per conflict, the `Activity_Entry` id, its `Project` name, its description and the overlapping interval
     - Run each write in one `withTx` call; pass `dryRun` through; honour `Idempotency-Key`; verify `previewToken` and return `STALE_PREVIEW` on mismatch
     - Always report `discarded`, `extendedSessions`, `unplacedMinutes`, `removedSeconds`, `dryRun` and `previewToken`
     - GET returns every `Activity_Entry` including each `Orphaned_Entry` selected by requested interval, all flagged `orphaned`; range over 366 days rejected
     - A PATCH touching only description or `Project` skips `Clipping`; one touching the interval or duration replaces the `Activity_Segment` rows while ignoring the entry's own segments for overlap
+    - `startedAt` and `endedAt` travel together or not at all; `durationMinutes` requires a `date`. Ignore the entry's own segments when resolving the `Placement_Anchor` as well as when testing overlap, or the entry blocks itself
     - **A PATCH is the orphan rescue path** the day page's "mimo výkaz" panel calls for *Přepsat čas*: an `Orphaned_Entry` owns no segment, and nothing in validation may require one. Supplying both bounds replaces the requested interval, clears `requestedDurationMinutes` and sets `mode` to `explicit`; on success the entry comes back with `orphaned: false`; if the rewritten time still yields no segment, answer 409 `NOTHING_TO_LOG` and leave the entry byte-identical — a failed rescue must not destroy the record
-    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 5.1, 5.2, 5.3, 5.7, 5.11, 5.12, 5.13, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11, 7.12, 7.13, 7.14, 7.15, 7.16, 7.17, 7.18, 7.19, 10.2, 12.4, 12.8, 12.18, 12.19, 12.20, 14.1, 14.3, 14.4, 14.7, 14.8, 14.9, 15.1, 15.6, 15.7, 15.8, 15.9, 15.10_
+    - _Requirements: 2.12, 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 5.1, 5.2, 5.3, 5.7, 5.11, 5.12, 5.13, 5.16, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12, 6.16, 6.17, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11, 7.12, 7.13, 7.14, 7.15, 7.16, 7.17, 7.18, 7.19, 7.20, 7.21, 7.22, 7.23, 7.24, 10.2, 12.4, 12.8, 12.19, 12.20, 12.21, 12.23, 12.24, 14.1, 14.3, 14.4, 14.7, 14.8, 14.9, 15.1, 15.6, 15.7, 15.8, 15.9, 15.10_
 
   - [ ] 8.6 Write tests for the activity routes
     - `tests/api/activities.test.ts`, seeding the frame `[08:00–14:48, 15:12–18:00]` before each case
+    - The success body of a `Duration_Mode` and an `Open_Mode` write carries the resolved anchor and its source; an `Explicit_Mode` write carries `anchor: null`
+    - `order=desc` returns the newest first and `limit=1` returns exactly one entry
+    - A repeated `Idempotency-Key` with a **different** body returns 409 `IDEMPOTENCY_KEY_REUSED` and writes nothing; a key with an illegal character returns 400
     - Explicit `13:00–16:00` returns 201 with two `Activity_Segment` rows and the requested values preserved
     - Duration `2h` anchored at `14:00` totals exactly 120 minutes
     - `Duration_Mode` with `date` set to yesterday places against yesterday's frame, not today's
@@ -434,10 +466,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - An `Open_Mode` request naming a future `Target_Day` returns 400
     - An `Activity_Entry` emptied by a `Work_Session` delete is still returned by GET as an `Orphaned_Entry` with `orphaned: true`, carrying its `projectName`, `colorIndex` and requested interval — everything the "mimo výkaz" panel draws — and can be deleted
     - PATCHing that orphan onto tracked time succeeds despite it having no segments, returns it with `orphaned: false` and new segments, and sets `mode` to `explicit`; PATCHing it onto untracked time returns 409 `NOTHING_TO_LOG` and leaves every column unchanged
-    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7, 4.10, 5.1, 5.2, 5.11, 6.6, 6.7, 6.9, 7.2, 7.3, 7.7, 7.8, 7.9, 7.11, 7.16, 7.17, 7.18, 7.19, 10.2, 12.4, 12.8, 12.19, 14.1, 14.3, 14.5, 14.8, 15.1, 15.3, 15.7, 15.8_
+    - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7, 4.10, 5.1, 5.2, 5.11, 6.6, 6.7, 6.9, 7.2, 7.3, 7.7, 7.8, 7.9, 7.11, 7.16, 7.17, 7.18, 7.19, 10.2, 12.4, 12.8, 12.20, 14.1, 14.3, 14.5, 14.8, 15.1, 15.3, 15.7, 15.8_
 
   - [ ] 8.7 Implement the day, coverage and health routes
     - `days/[date]/+server.ts` returns bounds, `Work_Session` and `Activity_Entry` records with their true bounds, coverage, and totals **clamped to the day**, including every `Orphaned_Entry` and archived `Project`; `totals.byProject` is `ProjectTotal[]`, so `archived` travels with each row; an empty day returns 200 with zeroes
+    - `totals` also carries `sessionCount`, `longestBlockSeconds` and `eveningSeconds`, defined exactly as in `DaySummary`, so the day page fills its "tvar dne" panel from this one response instead of calling `/api/days` for a single day and risking two answers that disagree
+    - The response carries `quickLog`: the interval a one-touch `Open_Mode` write would record right now — `Placement_Anchor` to now — with its `anchorSource`, or `null` when the day holds neither a segment nor a session. The client labels the quick-log pill from it and opens the full dialog when it is null; it may not derive the anchor rule itself
     - `days/+server.ts` returns one `DaySummary` per `Logical_Day` carrying its date, totals, per-project breakdown, session count, longest uninterrupted block, overtime outside the `Gauge_Window` and the seconds after the `Evening_Hour`
     - The per-day `tracked`, `covered` and `uncovered` interval lists — the shape of the day rather than only its size — are **opt-in**: send them only for a request carrying `include=intervals`, and only when the range is at most `MAX_INTERVAL_RANGE_DAYS`. `covered` carries a `projectId` per stretch so the rhythm strip can colour it; `tracked` stays bare because sessions belong to no project; `uncovered` is sent rather than left for the caller to derive. Declare that constant as 62 in `core/config.ts` beside `MAX_RANGE_DAYS`; never write the number into a route
     - Report the outcome as `intervalsIncluded` on the range response. A request asking for intervals over a longer range is **not an error**: answer 200 with the summaries and `intervalsIncluded: false`, so a statistics page over a year keeps working and simply does not draw the rhythm strip
@@ -452,7 +486,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `coverage/+server.ts` returns `tracked`, `covered`, `uncovered` and `untracked`, plus a `totals` object of all four in seconds; `min_gap_seconds` filters the returned `uncovered` list only and never the totals; range limits as elsewhere
     - `health/+server.ts` is the `Health_Endpoint`: 200 with the `HealthResponse` — status `ok`, the version, the effective `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR` and `MAX_OPEN_SESSION_HOURS` — without a credential; 503 `degraded` when the database is unreachable or migrations are unapplied
     - `MAX_OPEN_SESSION_HOURS` is published here because the interface bounds how far it draws an `Open_Session` by it. Without it the client estimates that from a day's `trackedSeconds`, which is a guess standing in for a value the server already knows
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 8.15, 8.16, 8.17, 8.18, 8.19, 8.20, 8.21, 8.22, 8.23, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.8, 13.1, 13.2, 13.3, 13.4, 13.11, 13.13, 13.16, 13.18_
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 8.15, 8.16, 8.17, 8.18, 8.19, 8.20, 8.21, 8.22, 8.23, 8.24, 8.25, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.8, 10.15, 10.16, 13.1, 13.2, 13.3, 13.4, 13.11, 13.13, 13.16, 13.18_
 
   - [ ] 8.8 Write tests for the day, coverage and health routes
     - `tests/api/days.test.ts`: a populated day returns correct totals and per-project seconds; an empty day returns zeroes; a malformed date 400; a 400-day range `RANGE_TOO_LARGE`; **a session spanning the 03:00 boundary appears in both days with its true bounds but contributes its own part to each day's total, and the two parts sum to its full length**
@@ -464,11 +498,13 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `longestBlockSeconds` reports one block for two `Work_Session` rows that touch, while `sessionCount` reports two
     - `suggestedWindow` for an evening worker crosses midnight rather than widening to the whole day; an empty range returns `null`; the returned window satisfies the startup checks
     - `byProject` carries `colorIndex` and `archived`, and its `coveredSeconds` sum equals the day's `coveredSeconds`
-    - `/api/days` without `from` and `to` returns the current `Logical_Day`
+    - `/api/days` without `from` and `to` returns the current `Logical_Day`; a range whose `to` falls exactly on a day boundary does not add a trailing empty day
+    - The single-day response carries `sessionCount`, `longestBlockSeconds` and `eveningSeconds` matching what `/api/days` reports for the same day, and a `quickLog` interval that is `null` on an empty day and runs from the last segment's end to now otherwise
     - **With `include=intervals` over a range longer than `MAX_INTERVAL_RANGE_DAYS` — a full year — the response is still 200**, carries one summary per day with correct totals, omits all three interval lists, and reports `intervalsIncluded: false`; a range of exactly `MAX_INTERVAL_RANGE_DAYS` still carries them, so the boundary is pinned on both sides
     - `suggestedWindow` over a seeded week brackets the middle 90 % of `Tracked_Time` and ignores a single outlying night
     - `tests/api/coverage.test.ts`: `Covered_Time` and `Uncovered_Time` reconstruct `Tracked_Time` exactly; `untracked` holds the `Untracked_Time` breaks; `min_gap_seconds` filters the list while `totals.uncoveredSeconds` stays unchanged; all four totals present; `from` after `to` 400
-    - `tests/api/health.test.ts`: 200 with a reachable migrated database carrying version, timezone, day start, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR` and `MAX_OPEN_SESSION_HOURS`, each matching the loaded configuration; 503 when the database is closed; 503 when a migration is pending; no credential required
+    - `tests/api/health.test.ts`: 200 with a reachable migrated database carrying version, timezone, day start, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR` and `MAX_OPEN_SESSION_HOURS`, each matching the loaded configuration; 503 when the database is closed; 503 when a migration is pending; no credential required; **and `/api/health` still answers while every other route is 503 from the readiness probe** — that is the whole reason it is exempt
+    - A request to an existing path with an unimplemented method returns 405 `METHOD_NOT_ALLOWED` with an `Allow` header
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 8.15, 8.16, 8.17, 8.18, 8.19, 8.20, 8.21, 8.22, 8.23, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.7, 10.8, 13.1, 13.2, 13.3, 13.4, 13.13, 13.18_
 
 - [ ] 9. Checkpoint — API complete
@@ -526,7 +562,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - _Requirements: 11.16, 13.1, 13.10, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21_
 
   - [ ] 11.3 Write the operational scripts
-    - `scripts/build.sh`, `start-docker.sh`, `stop-docker.sh`, `deploy.sh`, `backup.sh` and `test-e2e.sh`, all with `#!/bin/bash`, `set -euo pipefail` and the Script Portability preamble, parsing the app name from the resolved fly config
+    - `scripts/build.sh`, `start-docker.sh`, `stop-docker.sh`, `deploy.sh`, `backup.sh`, `hash-passphrase.sh` and `test-e2e.sh`, all with `#!/bin/bash`, `set -euo pipefail` and the Script Portability preamble defined in task 4.2, parsing the app name from the resolved fly config
+    - `hash-passphrase.sh` is how `WORKLOG_PASSPHRASE_HASH` is produced — without it the variable is a value nobody can generate. It reads the passphrase from `/dev/tty` without echoing, prints the argon2id hash, and nothing else:
+      ```bash
+      read -rs -p 'Passphrase: ' PASSPHRASE < /dev/tty; echo
+      bun -e 'console.log(await Bun.password.hash(process.env.PASSPHRASE, { algorithm: "argon2id", memoryCost: 65536, timeCost: 3 }))'
+      ```
     - `deploy.sh` takes the environment as `$1` defaulting to `prod`, resolves `.env.<env>` and `fly.<env>.toml` with a `fly.toml` fallback, validates required files before any remote call and exits 2 when one is missing, resolves the org prompting through `/dev/tty` when absent and persisting the choice, creates the app only when missing, sets secrets skipping keys already in `[env]`, then deploys
     - `backup.sh` takes the environment as `$1`, runs `pg_dump` into a timestamped file, and prints the restore command — the data becomes invoicing evidence, so a backup path must exist from day one
     - `test-e2e.sh` starts PostgreSQL with plain `docker run`, migrates, runs Playwright and tears everything down
@@ -577,7 +618,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - **Logical day and DST**: with `DAY_START_HOUR=3` in `Europe/Prague`, the irregular day is the one **before** each transition — `2026-03-28` is 23 hours, `2026-10-24` is 25 hours — while the transition dates themselves are 24. This was measured, not assumed.
 - **A record crossing a day boundary is never split.** It is returned whole and each day counts only its own part. Getting this wrong double-counts night work in the yearly total.
 - **The gauge is a clock, not a scaled day.** The interface's dial is `angle(t) = 45° + minutes_since_midnight × 0.25` — one hour is always 15°, on the 23-hour day and the 25-hour day alike. The `Gauge_Window` is therefore a pair of wall-clock times, and two startup checks keep it coherent: `GAUGE_END` wraps to the following date when it is not after `GAUGE_START`, and `DAY_START_HOUR` must fall inside the `Gauge_Gap`. The second is what puts both Prague DST transitions — which happen between 02:00 and 03:00 — in the bare part of the circle, so the drawn track is 18 hours wide on all 365 days. Property 19 pins it.
-- **File ownership across the two specs is by file, not by folder.** `001` owns `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts`; `002` owns their `+page.svelte` halves and owns `src/app.html` outright, including the `%sveltekit.nonce%` placeholder. Task 1.5 injects into that placeholder and must not create the file.
+- **File ownership across the two specs is by file, not by folder.** `001` owns `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts`; `002` owns their `+page.svelte` halves and owns `src/app.html` outright, including `<html lang="%lang%" data-theme="%theme%">` and `%sveltekit.nonce%`. `001` never creates or edits that file: it substitutes `%lang%` and `%theme%` through `transformPageChunk`, and the nonce is stamped by `kit.csp`, not by a hook.
 - **`src/lib/contracts/` is owned by `001` but lives outside `lib/server/` on purpose.** It holds the Zod schemas, the domain types and the response types, because `002` validates the same forms through superforms *and* types its components with `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project` — none of which client code may import from `lib/server/`. The directory carries no database, no `$env`, no `$app`, no Drizzle and no SvelteKit; `lib/server/domain` imports its types from there like everyone else, and task 10.1 fails the build if that slips. There is exactly one definition of every request body and every shared type; `002` writes none of its own.
 - **Every shape that names a `Project` carries its `colorIndex`.** The timeline, the gauge, the legend, the statistics breakdown and the rhythm strip all colour by project; without it each of them would fetch the project list and join client-side.
 - **`Untracked_Policy`, not `Uncovered_Policy`.** It governs the part of a request lying outside the timer frame — `Untracked_Time`. `Uncovered_Time` is tracked but undescribed and no policy applies to it; the old name said the opposite of what the field does.
