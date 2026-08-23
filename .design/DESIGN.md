@@ -296,7 +296,10 @@ at its exact centre → **three** figures (worked / described / undescribed) →
 project legend. The middle figure (Covered_Time) and the legend are in the design but not in
 the spec.
 
-**Day page, desktop** — timeline left, a **290px column** right holding two panels: *souhrn
+**Day page, desktop** — the heading row carries the two day arrows at 30px, then the date and
+the day's summary line, then two actions pushed right: a ghost `+ úsek` at 34px for adding a
+`Work_Session`, and the primary `+ Přidat úkol` beside it. Below that, timeline left and a
+**290px column** right holding two panels: *souhrn
 dne* (worked / described / undescribed, a 4px meter, and "81 % of worked time has a
 description") and *tvar dne* (work blocks, longest unbroken, after 21:00).
 

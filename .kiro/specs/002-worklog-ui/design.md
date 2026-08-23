@@ -17,7 +17,7 @@ The third idea is that **the appearance is settled**. `.design/DESIGN.md` and th
 **Key design decisions:**
 
 - **Load functions and form actions by default.** Reads happen in `+page.server.ts`; writes are form actions with `sveltekit-superforms` and the Zod schemas declared by `001`. This gives progressive enhancement and keeps validation in one place. `fetch` is reserved for the `Dry_Run`, the timer refresh and inline project creation.
-- **One core, two entry points.** Form actions and the REST routes call the same store and domain modules and share the same Zod schemas, so the interface and an external script cannot diverge in behavior.
+- **One core, two entry points.** Form actions and the REST routes call the same `src/lib/server/services/` functions and share the same Zod schemas, so the interface and an external script cannot diverge in behavior. `002` writes no orchestration of its own: an action validates with `superValidate` and calls the service `001` declares. Reads go through the stores; writes always go through a service.
 - **Server owns the timer.** The elapsed readout ticks locally, but the authoritative state comes from `GET /api/sessions/current` on load and on tab focus. Closing the browser does not stop the timer, and a reload never invents state.
 - **`Change_Preview` is always server-computed.** It renders the `Dry_Run` response verbatim. The browser holds no clipping logic.
 - **Two themes, one token set.** Every colour is a CSS custom property with a `dark` and a `light` value. Nothing draws from a literal.
@@ -53,11 +53,17 @@ graph TD
 
 ### Read and Write Paths
 
+**Pages read the server layer directly. The REST routes are for other callers.**
+
+`+page.server.ts` imports `lib/server/store` and calls it — it does not `fetch` its own `/api` routes. Going through REST from a load function serialises everything twice, forces every `Date` to be revived from a string, and costs a network hop to the same process. `/api` exists for shell scripts and phone shortcuts, and `002` uses it only where the browser itself must talk to the server mid-page: the `Dry_Run`, the timer refresh, inline project creation.
+
+That is also what makes the module-boundary test pass. `+page.server.ts` and `+server.ts` are the only files allowed to import `lib/server/**`; nothing under `src/modules/**` may, which is why there are **no `modules/*/query.ts` and no `modules/*/actions.ts`** — form actions live in `+page.server.ts`, and the modules hold components and pure logic only.
+
 | Interaction | Path | Why |
 |---|---|---|
-| Loading a day, the projects list, statistics | `+page.server.ts` `load` | server-rendered, no client round trip, no loading flash on navigation |
+| Loading a day, the projects list, statistics | `+page.server.ts` `load`, calling the store directly | server-rendered, no double serialisation, no `Date` revival |
 | Start / stop timer | form action | works without JavaScript, one round trip, invalidates the page data |
-| Create / edit / delete an activity or session | form action | superforms keeps field-level errors and the user's input on failure |
+| Create / edit / delete an activity or session | form action in `+page.server.ts` | superforms keeps field-level errors and the user's input on failure |
 | `Change_Preview` | `fetch` to `/api/…` with `dryRun: true` | needs a result *before* submitting, so it cannot be a form action |
 | Timer refresh on tab focus | `fetch` to `/api/sessions/current` | no navigation, no page data invalidation needed |
 | Project creation from inside the `Project_Picker` | `fetch` to `/api/projects` | must not navigate away from the open dialog |
@@ -441,7 +447,7 @@ Both groups sit on `rgba(255,255,255,0.04)` with `padding: 4` and `gap: 4`; the 
 
 **The `Running_Indicator` is not on the timer page.** It appears in the top bar of the day, projects and statistics pages, and is deliberately absent from `Main`, `TimerLight` and `TimerMobile`, where the 68 px hero already states the elapsed time — two copies of one number in one view is noise. The `Settings` artboard draws the cluster with the indicator because it is demonstrating the menu, not the timer page.
 
-### Timer Page (`Main`, `TimerLight`, `TimerMobile`)
+### Timer Page (`Main`, `TimerLight`, `TimerMobile`; `GaugeNormal` for the resting state)
 
 Centred column, in this order, `gap: 18` (mobile 20):
 
@@ -549,6 +555,8 @@ The row is rendered last, marked as `Uncovered_Time` rather than as an entry, de
 Heading row: `Statistiky` 20/500, the range segmented control, the resolved range at 13 `--text-faint`. Then, `gap: 22`:
 
 - **`KPI_Row`** — `repeat(4, 1fr)`, `gap: 18`, panels of radius 14 padded `18px 20px`, each a caps label over a 30/300 tabular figure. The four are: `odpracováno` (`Tracked_Time`), `popsáno` (`Covered_Time`), `podíl popsaného` (percentage plus a 4 px meter), `mimo obvyklé hodiny` (`Overtime`, summed from `overtimeSeconds`, with its share of `Tracked_Time` at 11.5 `--text-faint` beneath). The artboard's fourth card showed the `Evening_Hour` figure; that number moves to the rhythm panel, and the card's shape is unchanged.
+**A one-day range drops both rhythm panels.** With a single `Logical_Day` selected there is no `Day_Rhythm_Strip` — one row on a shared axis says nothing the day page does not say better — and no rhythm panel, because *days worked*, *average per working day* and the observation line all compare days that are not there. The layout collapses to a single column: the `KPI_Row`, then the project breakdown. Both return at week and month.
+
 - **`Day_Rhythm_Strip`** — a panel headed `Kam v čase práce padla` with the sub-line `každý řádek je jeden logický den, 03:00 → 03:00` (rendered from the server's `DAY_START_HOUR`, not from a literal) and the project legend at the right. One row per day: the day label in a 58 px gutter, a 22 px strip of radius 5 on `rgba(255,255,255,0.05)` with three recessive tick lines, the day's segments, and the day total in a 62 px right gutter.
 
 **What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**: a 45° `<pattern>` of 1 px accent lines 4 px apart at 45 % over a 6 % accent fill, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis of five labels: `DAY_START_HOUR` at each end and three interior ticks at 25 %, 50 % and 75 % of the span. With the default 3 that reads `03:00 · 09:00 · 15:00 · 21:00 · 03:00`; with a `DAY_START_HOUR` of 5 it reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` interior labels are a drawing convenience — the rule is even divisions, and it is the rule that is implemented. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
@@ -651,14 +659,14 @@ worklog/
 │   │       └── format.ts                # duration, time and date formatting
 │   ├── modules/
 │   │   ├── timer/
-│   │   │   ├── actions.ts  elapsed.svelte.ts
+│   │   │   ├── elapsed.svelte.ts
 │   │   │   ├── components/DayGauge.svelte
 │   │   │   ├── components/gauge-geometry.ts   # PURE: angleOf, arc, graduations
 │   │   │   ├── components/TimerControl.svelte
 │   │   │   ├── components/ProjectLegend.svelte
 │   │   │   └── pages/TimerPage.svelte
 │   │   ├── day/                         # the centrepiece
-│   │   │   ├── actions.ts  query.ts  dry-run.ts
+│   │   │   ├── dry-run.ts
 │   │   │   ├── pages/DayPage.svelte
 │   │   │   └── components/
 │   │   │       ├── timeline-geometry.ts       # PURE: layOutDay, MIN_BLOCK_PX
@@ -672,11 +680,10 @@ worklog/
 │   │   │       ├── DaySummaryPanels.svelte    # souhrn dne · tvar dne · Orphan_Panel
 │   │   │       └── DayNav.svelte
 │   │   ├── projects/
-│   │   │   ├── actions.ts  query.ts
 │   │   │   ├── pages/ProjectsPage.svelte
 │   │   │   └── components/ProjectPicker.svelte, ProjectRow.svelte
 │   │   └── stats/
-│   │       ├── query.ts
+│   │       ├── aggregate.ts             # PURE: DaySummary[] → view models
 │   │       ├── pages/StatsPage.svelte
 │   │       └── components/KpiRow.svelte, ProjectBreakdown.svelte,
 │   │                       DayRhythm.svelte, RhythmPanel.svelte, CoverageMeter.svelte
@@ -695,7 +702,7 @@ worklog/
     └── e2e/                                          # Playwright
 ```
 
-Route files stay thin: `+page.server.ts` is the only place that touches `RequestEvent` and the stores, and `+page.svelte` renders the module's page component with props. `actions.ts` holds the form-action bodies a route delegates to; `query.ts` holds the read-side aggregation a load function delegates to. Modules never import from `src/routes/`.
+Route files hold the server contact: `+page.server.ts` is the only place that touches `RequestEvent` and the stores, and it carries the load function and the form actions. `+page.svelte` renders the module's page component with props. Modules hold components and **pure** logic — `timeline-geometry.ts`, `gauge-geometry.ts`, `aggregate.ts` — which take data as arguments and import nothing from `lib/server/`; that is what the boundary test enforces, and it is why the modules have no `query.ts` or `actions.ts` at all. Modules never import from `src/routes/`.
 
 Test files mirror the source tree exactly — `tests/modules/day/components/day-timeline.test.ts` for `src/modules/day/components/DayTimeline.svelte`, `tests/lib/viz/format.test.ts` for `src/lib/viz/format.ts`. There is no `tests/components/` directory.
 
@@ -874,7 +881,7 @@ There is no `orientation` prop: the timeline is vertical at every width, and des
 <div class="break-marker" role="separator" aria-label="pauza 45 min, 12:30 – 13:15">…</div>
 ```
 
-The rail is a container of three sibling buttons — two 12 px edges and the middle — so the edge targets exist without nesting. The segment column is an `<ol>` so its order is exposed, each `<li>` holding exactly one button. `BreakMarker` is a `role="separator"` with a label, not a control: there is nothing to activate on a break.
+The rail is a container of three sibling buttons — two 12 px edges and the middle — so the edge targets exist without nesting. Those edges take the same activation-area exception as a `Segment_Block`, for the same reason: three targets on an 8 px rail cannot each be 44 px. **Below a block height of 60 px the edges are not rendered at all** and the rail is one target — three stacked targets inside 36 px is a lottery, and the `Session_Dialog` is one activation away on the block itself. The segment column is an `<ol>` so its order is exposed, each `<li>` holding exactly one button. `BreakMarker` is a `role="separator"` with a label, not a control: there is nothing to activate on a break.
 
 The component renders `WorkBlock` and `BreakMarker` in DOM order and owns nothing else. `WorkBlock` renders the head, the `Session_Rail` (with drag handles when `editable` and density is `desktop`) and its `SegmentBlock` children. `SegmentBlock` carries `data-entry-id` so the `Split_Marker` hover state can link the parts of one entry.
 
@@ -1069,7 +1076,7 @@ A combobox over non-archived projects with substring search, keyboard navigation
 | `RhythmPanel` | plain figures | days worked, average, longest day, `longestBlockSeconds`, total blocks, `eveningSeconds` — the time after the `Evening_Hour` |
 
 ```ts
-/** What `query.ts` hands the page, mapped straight from GET /api/days?include=intervals. */
+/** What the stats load function hands the page, from the store's day summaries with intervals. */
 type StatsRange = {
   days: DaySummary[];               // date, trackedSeconds, coveredSeconds, uncoveredSeconds,
                                     //   sessionCount, longestBlockSeconds, overtimeSeconds,
@@ -1105,13 +1112,22 @@ All five components follow the mark specs: 2 px surface gaps between adjacent se
 
 **Everything that decides the first paint is a cookie, never `localStorage`.** The server cannot read `localStorage`, so a preference kept there means the server renders one thing and the client corrects it — the flash Requirement 17.7 forbids, and worse for the gauge, whose arc colours are SVG attributes a pre-paint script would not repaint. Three values are therefore cookies, all readable by both sides, `SameSite=Lax`, one year, not `HttpOnly`:
 
-| Cookie | Value | Read by |
-|---|---|---|
-| `theme` | `system` \| `light` \| `dark` | `+layout.server.ts` → `%theme%` |
-| `locale` | `cs` \| `en` | `+layout.server.ts` → `%lang%` |
-| `viewport` | `<width>x<height>` in CSS pixels | `+layout.server.ts` → density and `availablePx` |
+| Cookie | Value | Written by | Read by |
+|---|---|---|---|
+| `worklog_theme` | `system` \| `light` \| `dark` — the **preference** | the `Theme_Switcher`, and nothing else, ever | `001`'s hook → `%theme%` |
+| `worklog_theme_resolved` | `light` \| `dark` — the last **resolved** theme | the client, from `prefers-color-scheme`, whenever it changes | `001`'s hook → `%theme%`, only when the preference is `system` |
+| `worklog_locale` | `cs` \| `en` | the `Locale_Switcher` | `001`'s hook → `locals.locale` and `%lang%` |
+| `worklog_viewport` | `<width>x<height>` in CSS pixels | the client, only when the measurement differs | `+layout.server.ts` → density and `availablePx` |
+
+**Two theme cookies, not one.** A single cookie cannot hold both: the moment the client wrote its resolved `light` into it, the preference `system` would be gone — the switcher would show *Světlý* and the browser's dusk switch would stop being followed. So the preference cookie is written **only** by a user touching the switcher, and the resolved cookie is the client's own scratch value. The server prefers the preference and consults the resolved one only when the preference says `system`.
+
+**The one flash the interface permits.** On a first visit neither cookie exists, so the server renders `DEFAULT_RENDER_THEME` (`dark`) and the client corrects it once during hydration if the browser asks for light. There is no way around it: a server cannot know a system preference the browser has never reported to it. Every subsequent visit is correct in the first byte, because that hydration also wrote `worklog_theme_resolved`.
+
+**Language is resolved entirely by `001`.** Its hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech, and puts the answer on `locals.locale` — which is also what fills `%lang%`. `002` reads `locals.locale` and renders it. It does **not** run its own `Accept-Language` negotiation: two negotiations would disagree the moment they differed, and the one that wins the `lang` attribute is not the one in `002`.
 
 `src/app.html` carries `<html lang="%lang%" data-theme="%theme%">`. `002` owns that file and writes the placeholders; **`001` substitutes them** in its `transformPageChunk`, from the values its hook resolved — the same hook that already fills `%sveltekit.nonce%`. Neither half can do it alone: the file is `002`'s and the hook is `001`'s.
+
+There is no `reroute` and no URL locale prefix. The language lives in a cookie; a prefix would be a second source of truth for the same fact.
 
 ```ts
 /** What the user chose. */
@@ -1128,7 +1144,7 @@ export const theme: { readonly preference: ThemePreference; readonly current: Th
 
 The distinction matters: the `Theme_Switcher` is three-way (`Systém` / `Světlý` / `Tmavý`) and its default is `system`, so what is persisted is the **preference**, not the resolved theme. While the preference is `system` the store listens to `matchMedia('(prefers-color-scheme: dark)')` and re-resolves when the browser flips at dusk — a stored `dark` would not do that.
 
-`system` is the one case the server cannot resolve, because `prefers-color-scheme` never reaches it. The server renders `dark` for it, and the client corrects to `light` on hydration if the browser asks for light. That single case is why `setThemePreference` also writes the **resolved** theme into the `theme` cookie whenever the preference is `system` — after the first paint of the first visit, even `system` is server-known.
+`setThemePreference` writes `worklog_theme` and nothing else. A separate effect, alive whenever the preference is `system`, writes `worklog_theme_resolved` from `matchMedia` and rewrites it on every change — so after one paint even `system` is server-known, without the preference ever being overwritten.
 
 Both themes live in `theme.css` as `[data-theme='dark']` and `[data-theme='light']` blocks over a `:root` default, so switching is one attribute write with no reload and no flash.
 
@@ -1329,8 +1345,12 @@ Every user-facing string, in both languages. This is the contract Requirement 13
 | `auth_title` | Worklog | Worklog |
 | `auth_passphrase_label` | Heslo | Passphrase |
 | `auth_submit` | Odemknout | Unlock |
-| `auth_failed` | Nesprávné heslo | Incorrect passphrase |
 | `auth_session_expired` | Přihlášení vypršelo, přihlas se znovu | Your session expired, please log in again |
+
+The failure message is **`errors_login_failed`**, not an `auth_*` key: it is the
+`messageKey` `001`'s login action returns, so it belongs with the other keys the
+server emits and is listed under `errors_*` below. It is the one key there that is
+not an `ErrorCode`.
 
 ### timer_*
 
@@ -1562,6 +1582,7 @@ One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_O
 | `errors_rate_limited_login` | Moc pokusů o přihlášení. Zkus to za {retryAfterSeconds} s. | Too many login attempts. Try again in {retryAfterSeconds} s. |
 | `errors_service_unavailable` | Server teď nemůže odpovědět. Zkus to za {retryAfterSeconds} s. | The server cannot answer right now. Try again in {retryAfterSeconds} s. |
 | `errors_internal_error` | Něco se pokazilo. Když to nahlásíš, přilož kód {requestId}. | Something went wrong. If you report it, quote {requestId}. |
+| `errors_login_failed` | Nesprávné heslo. | Incorrect passphrase. |
 
 ### aria_*
 

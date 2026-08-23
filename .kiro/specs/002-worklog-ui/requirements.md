@@ -110,7 +110,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 
 1. WHEN no `Open_Session` exists, THE Timer_Control SHALL present a single start action
 2. WHEN an `Open_Session` exists, THE Timer_Control SHALL present a single stop action
-3. WHILE an `Open_Session` exists, THE Timer_Control SHALL display the elapsed time of that session above the `Day_Gauge`, updating at least once per second
+3. WHILE an `Open_Session` exists, THE Timer_Control SHALL display the elapsed time of that session above the `Day_Gauge` as a running clock, updating at least once per second, under a caption naming when it started
 4. THE timer page SHALL display the total `Tracked_Time` of the current `Logical_Day`
 5. THE timer page SHALL display the total `Covered_Time` of the current `Logical_Day`
 6. THE timer page SHALL display the total `Uncovered_Time` of the current `Logical_Day` in the accent colour
@@ -126,6 +126,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 16. WHEN the server reports the running session as a `Stale_Session`, THE Worklog_UI SHALL show a notice above the elapsed readout saying the timer has run since its start and stopped counting, offering a time field prefilled with the moment counting stopped and one action that stops the session at that time
 17. IF starting the timer fails because a session already exists or overlaps one, THEN THE Worklog_UI SHALL explain which session is in the way rather than failing silently
 18. WHEN the current `Logical_Day` rolls over while a page is open, THE Worklog_UI SHALL re-resolve the current day and reload the page data, so a session started before `DAY_START_HOUR` stops being counted into the day that has just ended
+19. WHILE no `Open_Session` exists, THE timer page SHALL show the day's total `Tracked_Time` in the hero position and in the same face, under a caption naming when the last session stopped, or stating that the timer is not running when the day holds none
+20. WHILE no `Open_Session` exists, THE Day_Gauge SHALL draw the day's arcs unchanged and THE Timer_Control SHALL show the start icon, so the resting page differs from the running one only in the hero figure, the caption and that icon
 
 ### Requirement 4: Day Timeline
 
@@ -317,6 +319,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 17. THE Day_Rhythm_Strip SHALL draw the uncovered intervals the server returns with a hatched fill, so a day whose work was logged but never described is distinguishable from one that was described
 18. THE statistics page SHALL close its rhythm panel with exactly one observation line, being the first of the three defined templates whose condition holds, and SHALL omit the line entirely — not substitute other text and not leave blank space — when none of them holds
 19. WHEN the suggested window is shown, THE Worklog_UI SHALL present it as a value to set in the server's configuration and restart with, not as a control the interface can apply, because the `Gauge_Window` has no write endpoint
+20. WHEN the selected range is a single `Logical_Day`, THE statistics page SHALL omit both the `Day_Rhythm_Strip` and the rhythm panel and SHALL lay the remaining panels out in one column, because a one-row strip shows nothing a day page does not and the observation line has nothing to compare
 
 ### Requirement 13: Internationalization
 
@@ -326,18 +329,18 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 
 1. THE Worklog_UI SHALL provide every user-facing string in Czech and English through Paraglide message keys
 2. THE Worklog_UI SHALL contain no user-facing literal text outside the message files
-3. THE Worklog_UI SHALL default to Czech when the browser expresses no usable preference
-4. WHEN the `Locale_Switcher` changes the language, THE Worklog_UI SHALL apply it without reloading the page, without a visible flash, and without losing scroll position, and SHALL persist it in a cookie the server reads
+3. THE Worklog_UI SHALL render the language the server resolved and reported, and SHALL NOT resolve a language itself — the server reads the `worklog_locale` cookie, falls back to `Accept-Language` and falls back again to Czech
+4. WHEN the `Locale_Switcher` changes the language, THE Worklog_UI SHALL apply it without reloading the page, without a visible flash, and without losing scroll position, and SHALL write it to the `worklog_locale` cookie
 5. THE Worklog_UI SHALL persist the chosen language and SHALL apply it on the next visit
 6. THE Worklog_UI SHALL keep the `lang` attribute of the document in step with the active language
 7. THE Worklog_UI SHALL format dates, times and durations according to the active language, offering four duration forms — the running clock, the full duration, the unit-less short form and the compact signed form — and using each only where this specification names it
 8. WHEN the server returns an error carrying a message key, THE Worklog_UI SHALL render the translation of that key
-9. IF the browser expresses no preference the interface supports, THEN THE Worklog_UI SHALL use Czech, the same fallback criterion 3 states, so the two cannot diverge
+9. THE Worklog_UI SHALL carry no language prefix in any URL, because the language lives in the `worklog_locale` cookie and a second source of truth would let the two disagree
 10. THE Locale_Switcher SHALL indicate the active language
 11. THE Worklog_UI SHALL render the `messageKey` field of a server error and SHALL never display the raw `error` code to the user
 12. THE Worklog_UI SHALL render every message carrying a count through a plural rule for the active language, so Czech selects between its one, few and other forms — `2 záznamy`, `5 záznamů`, `část 2 ze 3`, `6 ze 7 dnů`
 13. THE Worklog_UI SHALL place no verb after a number in any message, because Czech verb agreement would then depend on the count as well as the noun
-14. WHEN a page is server-rendered, THE Worklog_UI SHALL resolve the active language before rendering it, from the cookie criterion 4 persists, and SHALL emit the document `lang` attribute already correct, so hydration never switches the language visibly
+14. WHEN a page is server-rendered, THE Worklog_UI SHALL emit the document `lang` attribute from the language the server resolved, so hydration never switches the language visibly
 
 ### Requirement 14: Responsiveness, Interaction and Accessibility
 
@@ -347,7 +350,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 
 1. THE Worklog_UI SHALL render without horizontal page scrolling at viewport widths from 320 pixels upwards
 2. THE Worklog_UI SHALL give every interactive control an activation area of at least 44 by 44 pixels, counted including its padding or a transparent pseudo-element, while its drawn shape may be smaller — the `Design_Contract` draws chips at 30, close buttons and icon buttons at 32, day controls and segmented items at 34 and dialog buttons at 42. The `Segment_Block` elements of the `Day_Timeline` follow criterion 3 instead
-3. THE Segment_Block SHALL be at least `MIN_BLOCK_PX` tall and SHALL span the full width of its column, because a twenty-minute task has to stay readable and clickable while a fourteen-hour day still fits on one screen — at 44 pixels a long day stretches past any viewport
+3. THE Segment_Block SHALL be at least `MIN_BLOCK_PX` tall and SHALL span the full width of its column, because a twenty-minute task has to stay readable and clickable while a fourteen-hour day still fits on one screen — at 44 pixels a long day stretches past any viewport. The edge regions of a `Session_Rail` take the same exception for the same reason, and are omitted entirely below a block height of 60 pixels, where the `Session_Dialog` is still reachable from the block itself
 4. THE Worklog_UI SHALL show a pointer cursor and a distinct hover, active and disabled state on every interactive element, derived from its resting tokens by one rule that holds across the whole interface rather than chosen per control
 5. THE Worklog_UI SHALL make every action reachable and operable by keyboard alone, with a visible focus indicator that separates the accent ring from the element beneath it by a ring of the surrounding background, so the indicator stays visible on an accent-filled control and on a `Palette_Slot` tint in both themes
 6. THE Worklog_UI SHALL use only SVG icons
@@ -382,6 +385,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 9. THE Worklog_UI SHALL map every error code defined by `001-worklog-domain-api` to a behaviour, including `NOT_FOUND`, `NOTHING_TO_LOG`, `RANGE_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `STALE_PREVIEW`, `PROJECT_ARCHIVED`, `FUTURE_TIMESTAMP`, `INTERVAL_TOO_SHORT`, `SERVICE_UNAVAILABLE` and `INTERNAL_ERROR`
 10. THE projects page SHALL show an empty state when no `Project` exists
 11. WHEN an uncaught client-side error occurs, THE Worklog_UI SHALL report it through the same error surface as a failed request rather than leaving a blank page
+12. WHEN a write is rejected for a named field, THE Worklog_UI SHALL render the message key the server supplied for that field beside the field, and SHALL NOT display the validator's own English text
 
 ### Requirement 16: Day Gauge
 
@@ -420,12 +424,14 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 3. THE Worklog_UI SHALL use higher opacities for dim and faint text in the `light` `Theme` than in the `dark` one, because the dark theme's values fall below the contrast required by criterion 14.10 against the light background
 4. THE Theme_Switcher SHALL offer three values of `Theme_Preference` — `system`, `light` and `dark` — and THE Worklog_UI SHALL default to `system`
 5. WHILE the `Theme_Preference` is `system`, THE Worklog_UI SHALL resolve the `Theme` from `prefers-color-scheme`, resolving to `dark` when the browser expresses none, and SHALL follow a change of that setting without a reload
-6. THE Theme_Switcher SHALL change the active `Theme` without reloading the page, and THE Worklog_UI SHALL persist the `Theme_Preference` in a cookie the server reads and apply it on the next visit
-7. WHEN a page is server-rendered, THE Worklog_UI SHALL resolve the `Theme_Preference` from its cookie on the server and emit the resulting `Theme` on the document element, so the first bytes carry the right theme and no flash is possible
-8. THE Worklog_UI SHALL store nothing that affects the first paint in `localStorage`, because the server cannot read it — the `Theme_Preference`, the active language and the viewport width are all cookies
-9. THE Worklog_UI SHALL style destructive controls from the destructive token and SHALL NOT style them from any `Palette_Slot`, and SHALL NOT style any `Palette_Slot` swatch from the destructive token, because the pink slot and the destructive colour are close enough to be confused
-10. THE Worklog_UI SHALL use the accent colour for both primary actions and `Uncovered_Time`, and SHALL distinguish the two by shape — a filled control against a dashed outline — never by colour alone
-11. THE Worklog_UI SHALL set no CSS through an inline `style` attribute, so that the `Content-Security-Policy` served by `001-worklog-domain-api` needs no `unsafe-inline`
-12. THE Worklog_UI SHALL apply a `Palette_Slot` through one precompiled class per slot, and SHALL apply a computed block height through a precompiled class from a fixed ladder of heights
-13. THE Worklog_UI SHALL render every text style — family, weight, size, letter spacing and case — as the `Design_Contract` states, and SHALL render every numeric readout with tabular figures
-14. THE Worklog_UI SHALL match the layout, proportions and palette of the artboards in `.design/artboards/` when rendered at the artboard's frame size, comparing arrangement and relative proportion rather than exact pixel heights, and excepting copy and example data — the block heights drawn in an artboard illustrate the layout algorithm rather than fixing its output
+6. THE Theme_Switcher SHALL change the active `Theme` without reloading the page and SHALL write the chosen `Theme_Preference` to the `worklog_theme` cookie, which is the only write to that cookie the interface ever makes
+7. WHILE the `Theme_Preference` is `system`, THE Worklog_UI SHALL write the `Theme` it resolved from `prefers-color-scheme` to the `worklog_theme_resolved` cookie, and SHALL rewrite it whenever that media query changes
+8. WHEN a page is server-rendered, THE Worklog_UI SHALL emit the `Theme` named by `worklog_theme`, or, when that names `system`, the one in `worklog_theme_resolved`, so the first bytes carry the right theme
+9. IF neither cookie can answer, THEN THE Worklog_UI SHALL render `DEFAULT_RENDER_THEME` and correct it once on hydration, this being the only flash the interface permits, because a server cannot know a system preference the browser has never reported
+10. THE Worklog_UI SHALL store nothing that affects the first paint in `localStorage`, because the server cannot read it — the `Theme_Preference`, the resolved `Theme`, the active language and the viewport width are all cookies named `worklog_theme`, `worklog_theme_resolved`, `worklog_locale` and `worklog_viewport`
+11. THE Worklog_UI SHALL style destructive controls from the destructive token and SHALL NOT style them from any `Palette_Slot`, and SHALL NOT style any `Palette_Slot` swatch from the destructive token, because the pink slot and the destructive colour are close enough to be confused
+12. THE Worklog_UI SHALL use the accent colour for both primary actions and `Uncovered_Time`, and SHALL distinguish the two by shape — a filled control against a dashed outline — never by colour alone
+13. THE Worklog_UI SHALL set no CSS through an inline `style` attribute, so that the `Content-Security-Policy` served by `001-worklog-domain-api` needs no `unsafe-inline`
+14. THE Worklog_UI SHALL apply a `Palette_Slot` through one precompiled class per slot, and SHALL apply a computed block height through a precompiled class from a fixed ladder of heights
+15. THE Worklog_UI SHALL render every text style — family, weight, size, letter spacing and case — as the `Design_Contract` states, and SHALL render every numeric readout with tabular figures
+16. THE Worklog_UI SHALL match the layout, proportions and palette of the artboards in `.design/artboards/` when rendered at the artboard's frame size, comparing arrangement and relative proportion rather than exact pixel heights, and excepting copy and example data — the block heights drawn in an artboard illustrate the layout algorithm rather than fixing its output

@@ -195,7 +195,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Open, close, current, get, list overlapping, create closed, update, delete, insert many
     - `trackedIntervals` returns normalized intervals, treating an `Open_Session` as running until `now` **but never longer than `MAX_OPEN_SESSION_HOURS`**, so an abandoned timer cannot inflate totals
     - Every function returning a `WorkSession` sets its `stale` flag from `now` and `MAX_OPEN_SESSION_HOURS`, and never closes the session itself
-    - `sessionsConflictingWith` reports overlaps **including the `Open_Session`**, read as `[startedAt, min(now, startedAt + MAX_OPEN_SESSION_HOURS))`. The `EXCLUDE` constraint is declared `WHERE (ended_at IS NOT NULL)`, so the database does not stop a closed session being written straight across a running timer; this query, called inside the writing transaction under the advisory lock, is what does
+    - `sessionsConflictingWith` reports overlaps **including the `Open_Session`**, read as `[startedAt, now)` — **uncapped**, unlike `trackedIntervals`. The `EXCLUDE` constraint is declared `WHERE (ended_at IS NOT NULL)`, so the database does not stop a closed session being written straight across a running timer; this query, called inside the writing transaction under the advisory lock, is what does. The cap belongs to totalling: capping it here leaves a `Stale_Session`'s tail invisible to the guard *and* outside `Tracked_Time`, so `extend` fills it and the next stop can never succeed (Requirements 1.15, 6.18)
     - _Requirements: 1.1, 1.5, 1.8, 1.10, 1.11, 1.12, 1.15, 1.16, 2.1, 2.2, 2.5, 2.8_
 
   - [ ] 4.6 Implement `src/lib/server/store/projects.ts`
@@ -220,6 +220,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Overlapping `Activity_Segment` rows rejected; a delete-then-reinsert reshuffle in one transaction succeeds
     - Deleting a referenced `Project` rejected; names differing only in case or whitespace collide
     - A closed session written across the running `Open_Session` is **accepted by the database** — proving the exclusion constraint does not cover it — and rejected by `sessionsConflictingWith`, which is what actually guards it
+    - **The stale tail is guarded even though it is untracked**: with an `Open_Session` older than `MAX_OPEN_SESSION_HOURS`, its tail contributes nothing to `trackedIntervals`, yet a closed session written into that tail is still refused by `sessionsConflictingWith` and the subsequent stop succeeds. Capping the guard instead of only the totals is what made the timer unstoppable (Requirements 1.15, 6.18)
     - An `activity_entries` row with a null requested interval is rejected in every mode, duration included
     - Deleting an `Activity_Entry` leaves its `idempotency_keys` row with a null `entry_id` rather than deleting it
     - `updated_at` advances on UPDATE and not on unrelated writes
@@ -384,7 +385,23 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `tests/lib/server/store/day-boundary.test.ts`: an absent row is written from the configuration; a matching row starts cleanly; a differing row refuses to start; the same differing row with `ALLOW_DAY_BOUNDARY_CHANGE` set is overwritten
     - _Requirements: 10.10, 10.11, 10.12, 11.2, 11.3, 11.4, 11.6, 11.7, 11.8, 11.9, 11.11, 11.12, 11.13, 11.14, 11.15, 11.18, 12.7, 12.8, 12.9, 13.21_
 
-- [ ] 8. REST routes
+- [ ] 8. Write services and REST routes
+
+  Every write in tasks 8.1, 8.3 and 8.5 is implemented **once**, in `src/lib/server/services/`,
+  and the `+server.ts` route is the thin half: parse with the Zod schema, call the service,
+  serialize what comes back. Where a bullet below describes a transaction, a re-clip, an
+  `Idempotency-Key`, a `Preview_Token` or a mapping to an error code, that behaviour belongs
+  to the service and not to the route. `002`'s form actions call the same functions, which is
+  the only reason the interface can write without reimplementing reconciliation.
+
+  - [ ] 8.0 Implement the write services in `src/lib/server/services/`
+    - `activities.ts` — `createActivity`, `patchActivity`, `deleteActivity`; `sessions.ts` — `startSession`, `stopSession`, `createSession`, `patchSession`, `deleteSession`; `projects.ts` — `createProject`, `patchProject`, `deleteProject`
+    - Each takes plain arguments already parsed by a schema, plus `now`, opens its own `withTx`, and returns a shape from `src/lib/contracts/responses.ts`
+    - **Never touch a `RequestEvent` and never name an HTTP status.** A service throws `ApiError`; `core/errors.ts` maps it to a status and the envelope. This is what lets a form action call it without inventing a fake request
+    - The service owns the whole write: mode selection, `resolveAnchor`, the fixed `withTx` → `clip` → `reclipAffected` order of Requirement 2.12, the `Idempotency-Key` lookup and record, the `Preview_Token` check, and `dryRun` returning the same shape from a rolled-back transaction
+    - Follow the Module Boundaries: `services` may import `domain`, `store`, `core` and `contracts`, and nothing under `routes`
+    - _Requirements: 2.12, 12.8, 12.16, 12.17, 14.1, 14.3, 14.4, 14.5, 14.7, 14.8, 14.9_
+
   - [ ] 8.1 Implement the session routes
     - `src/routes/api/sessions/{start,stop,current}/+server.ts`, `sessions/+server.ts` (GET list and **POST create closed**), `sessions/[id]/+server.ts`
     - Validate with `startSessionSchema`, `stopSessionSchema`, `createSessionSchema`, `patchSessionSchema` and `deleteSessionQuery` — **all five carry the dry-run fields**, DELETE taking them as the `dry_run` and `preview_token` **query** parameters because a DELETE body is not reliably transmitted, because start and stop create and modify a `Work_Session` and Requirement 14.2 covers them too
@@ -513,9 +530,9 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - [ ] 10. Guards
   - [ ] 10.1 Write the module boundary test
     - `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/`
-    - Enforce the layer order `domain` → `core` → `store` → `routes`, each importing only to its left: fail when `domain` imports anything under `store` or `core`, Drizzle, `$env`, `$app` or SvelteKit; when `core` imports `domain`, `store` or `routes`; when `store` imports from `routes`
+    - Enforce the layer order `domain` → `core` → `store` → `services` → `routes`, each importing only to its left: fail when `domain` imports anything under `store`, `services` or `core`, Drizzle, `$env`, `$app` or SvelteKit; when `core` imports `domain`, `store`, `services` or `routes`; when `store` imports from `services` or `routes`; when `services` imports from `routes` or names a `RequestEvent`
     - Walk `src/lib/contracts/` too and fail when anything there imports from `src/lib/server/`, `$env`, `$app`, Drizzle or SvelteKit — it is shipped to the browser, so a server import there is a build failure at best and a leak at worst. `lib/server/domain` importing **from** contracts is expected and must pass
-    - Fail when anything under `src/lib/ui/`, `src/modules/` or a non-`api` route imports from `src/lib/server/` outside a `+page.server.ts` or `+server.ts`, so that `002` cannot reach the server modules by accident
+    - Fail when anything under `src/lib/ui/`, `src/modules/` or a non-`api` route imports from `src/lib/server/` outside a `+page.server.ts`, a `+server.ts` or a `modules/*/actions.ts`; and in those three, fail on any `src/lib/server/` import that is not `services` or `store` — `002` reaches the core through the service functions, never through `domain` or `core`
     - The design is consistent with this: the session rows live in `store/auth-sessions.ts` and the idempotency rows in `store/idempotency.ts`, so no `core` module reaches for the database
     - _Requirements: 6.1, 6.2_
 
@@ -601,7 +618,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     { "id": 2, "tasks": ["1.6", "2.2", "2.3", "2.5", "2.6", "4.3", "6.1"] },
     { "id": 3, "tasks": ["4.4", "6.2", "6.3", "6.4", "6.5"] },
     { "id": 4, "tasks": ["4.5", "4.6", "4.7", "6.6", "7.1", "7.2", "7.3"] },
-    { "id": 5, "tasks": ["4.8", "4.9", "6.7", "6.8", "7.4", "7.5"] },
+    { "id": 5, "tasks": ["4.8", "4.9", "6.7", "6.8", "7.4", "7.5", "8.0"] },
     { "id": 6, "tasks": ["7.6", "8.1", "8.3", "8.5", "8.7"] },
     { "id": 7, "tasks": ["8.2", "8.4", "8.6", "8.8", "10.1"] },
     { "id": 8, "tasks": ["10.2", "10.3", "10.4", "10.5"] },

@@ -114,7 +114,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.25, 14.16, 14.17_
 
   - [ ] 1.11 Build the login and logout pages
-    - `src/routes/login/+page.svelte` — the page half only; `001` owns `login/+page.server.ts`. One password input **named `passphrase`**, a hidden **`next`** field seeded from the `next` query parameter, and `auth_failed` as the one generic message on failure
+    - `src/routes/login/+page.svelte` — the page half only; `001` owns `login/+page.server.ts`. One password input **named `passphrase`**, a hidden **`next`** field seeded from the `next` query parameter — both declared by `001`'s `loginSchema`, which is `.strict()` and would reject any other field — and `errors_login_failed` as the one generic message on failure, for a wrong and for an empty passphrase alike
     - After success the page navigates to the carried path, or to the timer page when there was none
     - `src/routes/logout/+page.svelte` — the page half only; `001` owns `logout/+page.server.ts`. Posts the logout action reached from the `Settings_Menu` and lands on login with no authenticated view state left
     - Render `auth_session_expired` only when the login URL carries `reason=session_expired`; a redirect issued by the `Auth_Hook` carries the path alone and shows no message
@@ -257,6 +257,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
   - [ ] 5.5 Implement activity create, edit and delete actions
     - Form actions in `src/modules/day/actions.ts`, delegated to from `src/routes/day/[date]/+page.server.ts`, using `superValidate` with the shared Zod schemas and returning message keys rather than prose
+    - Each action validates, then calls the matching `src/lib/server/services/` function `001` declares — `createActivity`, `patchActivity`, `deleteActivity`, `createSession`, `patchSession`, `deleteSession` — and maps a thrown `ApiError` to its message key. **Write no orchestration here:** the transaction, the clipping, the re-clipping, the `Idempotency-Key` and the `Preview_Token` check all live in the service, which is the same function `routes/api/**` calls
     - The day page offers the action that opens the dialog for a new entry — the desktop button and the mobile `Fab`
     - A metadata-only edit saves without a preview; a change to the interval or duration goes through `Change_Preview` first; an entry opened for editing is prefilled with its current values
     - Deletion sits behind a confirmation naming what will be removed
