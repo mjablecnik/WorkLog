@@ -67,10 +67,10 @@ sequenceDiagram
     alt conflicts, or policy=reject with leftovers
         R->>DB: ROLLBACK
         R-->>C: 409 + details
-    else dry_run = true
+    else dryRun = true
         R->>DB: INSERT entry + segments
         R->>DB: ROLLBACK
-        R-->>C: 200 + outcome, dry_run: true
+        R-->>C: 201 + outcome, dryRun: true
     else committed write
         R->>DB: INSERT entry + segments (+ sessions when policy=extend)
         R->>DB: COMMIT
@@ -352,9 +352,14 @@ export type ReclipPorts = {
 
 export type ReclipOutcome = {
   entryId: string;
+  /** Carried so a preview can name the entry even when it belongs to another day. */
+  projectName: string;
+  description: string;
   before: Interval[];
   after: Interval[];
   removedMs: number;
+  /** True when `after` is empty — the entry becomes an Orphaned_Entry. */
+  orphaned: boolean;
 };
 
 /**
@@ -427,6 +432,16 @@ export function coveredIntervals(tx: Tx, window: Interval, excludeEntryId?: stri
 /** Ordered by requestedStartedAt then createdAt — the deterministic re-clipping order. */
 export function entriesOverlapping(tx: Tx, window: Interval): Promise<ActivityEntry[]>;
 
+/**
+ * Entries left with no segment, selected by their REQUESTED interval — the only
+ * handle an Orphaned_Entry still has. Without this an emptied entry is invisible
+ * in every listing yet keeps its project alive through ON DELETE RESTRICT.
+ */
+export function orphanedEntriesOverlapping(tx: Tx, window: Interval): Promise<ActivityEntry[]>;
+
+/** Entry ids referencing a project, for the PROJECT_IN_USE details (Requirement 3.7). */
+export function entryIdsForProject(tx: Tx, projectId: string): Promise<string[]>;
+
 // projects.ts
 /** Assigns the lowest colour index not held by a non-archived project, wrapping at 8. */
 export function createProject(tx: Tx, name: string): Promise<Project>;
@@ -480,69 +495,158 @@ export type ErrorCode =
   | 'UNAUTHORIZED' | 'NOT_FOUND'
   | 'SESSION_ALREADY_RUNNING' | 'NO_SESSION_RUNNING' | 'SESSION_OVERLAP'
   | 'ACTIVITY_OVERLAP' | 'OUTSIDE_TRACKED_TIME' | 'NO_PLACEMENT_ANCHOR' | 'NOTHING_TO_LOG'
-  | 'PROJECT_EXISTS' | 'PROJECT_IN_USE'
+  | 'PROJECT_EXISTS' | 'PROJECT_IN_USE' | 'PROJECT_ARCHIVED'
+  | 'FUTURE_TIMESTAMP' | 'INTERVAL_TOO_SHORT' | 'STALE_PREVIEW'
   | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED' | 'INTERNAL_ERROR';
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: ErrorCode,
+    /** English prose, for a human reading a shell script's output. */
     message: string,
     readonly details?: Record<string, unknown>
   );
 }
 
-/** Serializes to { error, message, details } and logs unknown errors as INTERNAL_ERROR. */
+/** Serializes to { error, message, messageKey, details }; unknown errors become INTERNAL_ERROR. */
 export function errorResponse(err: unknown, requestId: string): Response;
+
+/** `ACTIVITY_OVERLAP` → `errors_activity_overlap`. The one place the mapping lives. */
+export function messageKeyFor(code: ErrorCode): string;
 ```
 
-The `message` field carries a Paraglide **message key**, not prose, so the interface can localize it. External REST callers receive the key too, which is stable and machine-readable.
+The envelope carries **both** a `message` and a `messageKey`. `message` is an English sentence, which is what the backend standard requires and what a shell script's output should show; `messageKey` is the Paraglide key the interface renders instead. Neither side has to derive anything: `002` reads `messageKey` and never parses `error` or `message`.
+
+### Security Headers (`src/lib/server/core/security-headers.ts`)
+
+A `handleSecurityHeaders` hook sets, on every response:
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'nonce-<per-request>'; style-src 'self' 'nonce-<per-request>'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains` — production only |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+
+The nonce is generated per request, placed on `event.locals`, and injected into `%sveltekit.nonce%` in `src/app.html` through `transformPageChunk`. Tailwind 4 compiles to a static stylesheet, so no inline style is needed; Svelte's own inline hydration script takes the nonce. Development relaxes the policy through configuration, never through a weakened production code path.
 
 ### 9. REST Route Contracts (`src/routes/api/`)
 
 | Method | Path | Requirements |
 |---|---|---|
-| POST | `/api/sessions/start` | 1.1–1.3, 1.8 |
-| POST | `/api/sessions/stop` | 1.4–1.6 |
-| GET | `/api/sessions/current` | 1.7 |
-| GET | `/api/sessions` | 2.1, 2.2 |
-| PATCH · DELETE | `/api/sessions/[id]` | 2.3–2.8, 14.2 |
-| GET · POST | `/api/projects` | 3.1–3.5 |
-| PATCH · DELETE | `/api/projects/[id]` | 3.6–3.8 |
-| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.3, 14.1 |
-| GET · PATCH · DELETE | `/api/activities/[id]` | 7.4–7.8, 14.1 |
-| GET | `/api/days` · `/api/days/[date]` | 8.1–8.7 |
-| GET | `/api/coverage` | 9.1–9.6 |
-| GET | `/api/health` | 13.1–13.3 |
+| POST | `/api/sessions/start` | 1.1–1.4, 1.9 |
+| POST | `/api/sessions/stop` | 1.5–1.7 |
+| GET | `/api/sessions/current` | 1.8, 1.10 |
+| GET · **POST** | `/api/sessions` | 2.1–2.4 |
+| PATCH · DELETE | `/api/sessions/[id]` | 2.5–2.10, 14.2 |
+| GET · POST | `/api/projects` | 3.1–3.5, 3.9 |
+| PATCH · DELETE | `/api/projects/[id]` | 3.6–3.8, 3.10, 3.11 |
+| GET · POST | `/api/activities` | 4.x, 5.x, 6.x, 7.1–7.6, 14.1, 15.x |
+| GET · PATCH · DELETE | `/api/activities/[id]` | 7.7–7.11, 14.1 |
+| GET | `/api/days` · `/api/days/[date]` | 8.1–8.10 |
+| GET | `/api/coverage` | 9.1–9.7 |
+| GET | `/api/health` | 13.1–13.4 |
+
+`POST /api/sessions` is the "I forgot to start the timer" route: it creates a **closed** session from an explicit start and end, and re-clips like any other frame change. Without it the interface's add-session action (`002` Requirement 8.1) has nothing to call — and Requirements 2.6 and 2.7 already legislate for a POST.
+
+### Field Naming
+
+JSON request and response bodies use `camelCase`; query parameters use `snake_case`. This is Requirement 12.1 and it is the single rule that resolves the two spellings that appear across the API surface — `startedAt` in a body, `include_archived` in a query string.
+
+Every route validates with a Zod schema declared here, so the interface's form actions and the REST routes share one definition and cannot drift (`002` forbids writing a second schema).
 
 ```ts
-// POST /api/activities
+const isoOffset = z.iso.datetime({ offset: true });
+const dryRunFields = { dryRun: z.boolean().default(false), previewToken: z.string().optional() };
+
+// POST /api/activities — one schema covers all three modes; the handler picks the mode
 export const createActivitySchema = z.object({
   projectId: z.uuid(),
   description: z.string().max(2000).default(''),
-  startedAt: z.iso.datetime({ offset: true }).optional(),
-  endedAt: z.iso.datetime({ offset: true }).optional(),
+  /** Target_Day for Duration_Mode and Open_Mode. Defaults to the current Logical_Day. */
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  startedAt: isoOffset.optional(),
+  endedAt: isoOffset.optional(),
   durationMinutes: z.number().int().positive().optional(),
   uncoveredPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
-  dryRun: z.boolean().default(false)
-}).strict();   // .strict() satisfies Requirement 12.3 — unknown fields are rejected
+  ...dryRunFields
+}).strict();   // .strict() satisfies Requirement 12.4 — unknown fields are rejected
+
+export const patchActivitySchema = z.object({
+  projectId: z.uuid().optional(),
+  description: z.string().max(2000).optional(),
+  startedAt: isoOffset.optional(),
+  endedAt: isoOffset.optional(),
+  durationMinutes: z.number().int().positive().optional(),
+  uncoveredPolicy: z.enum(['clip', 'extend', 'reject']).default('clip'),
+  ...dryRunFields
+}).strict();
+
+export const createSessionSchema = z.object({
+  startedAt: isoOffset,
+  endedAt: isoOffset,
+  ...dryRunFields
+}).strict();
+
+export const startSessionSchema = z.object({ startedAt: isoOffset.optional() }).strict();
+export const stopSessionSchema  = z.object({ endedAt: isoOffset.optional() }).strict();
+
+export const patchSessionSchema = z.object({
+  startedAt: isoOffset.optional(),
+  endedAt: isoOffset.nullable().optional(),
+  ...dryRunFields
+}).strict();
+
+export const deleteSessionSchema = z.object({ ...dryRunFields }).strict();
+
+export const createProjectSchema = z.object({
+  name: z.string().trim().min(1).max(200)
+}).strict();
+
+export const patchProjectSchema = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  archived: z.boolean().optional(),
+  colorIndex: z.number().int().min(0).max(7).optional()
+}).strict();
 
 export type ActivityResponse = {
-  entry: ActivityEntry;                 // includes its segments
-  discarded: Interval[];                // policy=clip
+  entry: ActivityEntry;                 // includes its segments and `orphaned`
+  discarded: Interval[];                // policy=clip, plus segments below MIN_INTERVAL_SECONDS
   extendedSessions: WorkSession[];      // policy=extend
   unplacedMinutes: number;              // duration mode
+  removedSeconds: number;               // time taken from other entries — always present
   dryRun: boolean;
+  previewToken: string;                 // frame fingerprint, see Requirement 14.7
 };
 
-// PATCH or DELETE /api/sessions/[id] with dryRun
+// POST, PATCH or DELETE on a session, with dryRun
 export type SessionChangePreview = {
   session: WorkSession | null;          // null for a delete
   reclipped: ReclipOutcome[];           // before/after segments per affected entry
   removedSeconds: number;               // total time that would disappear
   dryRun: true;
+  previewToken: string;
+};
+
+export type CurrentSessionResponse = {
+  session: WorkSession | null;
+  elapsedSeconds: number;               // 0 when no session is open
+  /** True for a Stale_Session — running past MAX_OPEN_SESSION_HOURS. */
+  stale: boolean;
+};
+
+export type DaySummary = {
+  date: string;                         // YYYY-MM-DD
+  trackedSeconds: number;
+  coveredSeconds: number;
+  uncoveredSeconds: number;
+  sessionCount: number;                 // sessions that began in this day — Requirement 8.9
+  byProject: ProjectTotal[];
 };
 ```
+
+A rejection is never a field: it is a non-2xx response carrying the standard error envelope. `002` maps that envelope into its own `rejection` shape — the server has no such concept.
 
 Mode selection:
 
@@ -590,15 +694,18 @@ export type Config = {
   port: number;                 // PORT, default 3000
   databaseUrl: string;          // DATABASE_URL, required
   apiToken: string;             // WORKLOG_API_TOKEN, required, min 32 chars
-  passphrase: string;           // WORKLOG_PASSPHRASE, required, min 12 chars
+  passphraseHash: string;       // WORKLOG_PASSPHRASE_HASH, required, argon2id
   timezone: string;             // TIMEZONE, default Europe/Prague
   dayStartHour: number;         // DAY_START_HOUR, default 3
+  allowDayBoundaryChange: boolean; // ALLOW_DAY_BOUNDARY_CHANGE, default false
   corsOrigins: string[];        // CORS_ORIGINS
   appEnv: 'development' | 'production';
   dbQueryTimeoutMs: number;     // DB_QUERY_TIMEOUT_SECONDS, default 5
   rateLimitPerMinute: number;   // RATE_LIMIT_PER_MINUTE, default 120
   sessionDurationHours: number; // SESSION_DURATION_HOURS, default 720
-  version: string;              // build-time, default 'dev'
+  maxOpenSessionHours: number;  // MAX_OPEN_SESSION_HOURS, default 12
+  minIntervalSeconds: number;   // MIN_INTERVAL_SECONDS, default 60
+  version: string;              // read from package.json — the single source of truth
 };
 
 /** Validates at module load and throws listing every problem, not just the first. */
@@ -606,6 +713,64 @@ export function loadConfig(): Config;
 ```
 
 ## Data Models
+
+### Domain Types (`src/lib/server/domain/models.ts`)
+
+```ts
+export type WorkSession = {
+  id: string;
+  startedAt: Date;
+  endedAt: Date | null;         // null while the timer runs
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  colorIndex: number;           // 0..7, see 002-worklog-ui
+  archivedAt: Date | null;
+  createdAt: Date;
+};
+
+export type ActivityMode = 'explicit' | 'duration' | 'open';
+
+export type ActivityEntry = {
+  id: string;
+  projectId: string;
+  projectName: string;          // joined, read-only
+  description: string;
+  mode: ActivityMode;
+
+  // The original request, stored verbatim and never rewritten by Clipping.
+  requestedStartedAt: Date | null;
+  requestedEndedAt: Date | null;
+  requestedDurationMinutes: number | null;
+
+  /** True when segments is empty — an Orphaned_Entry (Requirements 2.10, 7.3). */
+  orphaned: boolean;
+
+  createdAt: Date;
+  updatedAt: Date;
+  segments: ActivitySegment[];
+};
+
+export type ActivitySegment = {
+  id: string;
+  entryId: string;
+  startedAt: Date;
+  endedAt: Date;
+};
+
+export type ProjectTotal = {
+  projectId: string;
+  projectName: string;
+  archived: boolean;
+  coveredSeconds: number;
+};
+```
+
+Timestamps are `Date` inside the server and RFC 3339 UTC strings on the wire (Requirement 10.3). The interface revives them on receipt; `002` states where.
 
 ### Schema (`migrations/001_init.sql`)
 
@@ -644,7 +809,10 @@ CREATE TABLE work_sessions (
 CREATE UNIQUE INDEX work_sessions_one_open
     ON work_sessions ((true)) WHERE ended_at IS NULL;
 
-CREATE INDEX work_sessions_started_at ON work_sessions (started_at);
+-- The real query is "sessions overlapping [from, to)", which a plain btree on
+-- started_at only half covers. A gist range index matches it, as on segments.
+CREATE INDEX work_sessions_range
+    ON work_sessions USING gist (tstzrange(started_at, ended_at));
 
 CREATE TABLE activity_entries (
     id                         uuid PRIMARY KEY,
@@ -691,19 +859,55 @@ CREATE INDEX activity_segments_entry_id ON activity_segments (entry_id);
 CREATE INDEX activity_segments_range
     ON activity_segments USING gist (tstzrange(started_at, ended_at));
 
--- Browser sessions (Requirement 11.8, 11.12, 11.13).
+-- Browser sessions (Requirements 11.7, 11.10, 11.14, 11.15).
+-- The cookie carries the raw token; only its hash is stored, so a leaked dump
+-- cannot be replayed.
 CREATE TABLE auth_sessions (
-    token      text PRIMARY KEY,
+    token_hash text PRIMARY KEY,
     created_at timestamptz NOT NULL DEFAULT now(),
     expires_at timestamptz NOT NULL
 );
 
 CREATE INDEX auth_sessions_expires_at ON auth_sessions (expires_at);
 
+-- Idempotency for retried writes from scripts and phone shortcuts
+-- (Requirements 12.8, 12.9).
+CREATE TABLE idempotency_keys (
+    key        text PRIMARY KEY,
+    entry_id   uuid REFERENCES activity_entries (id) ON DELETE CASCADE,
+    response   jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idempotency_keys_created_at ON idempotency_keys (created_at);
+
+-- The day-boundary configuration the data was created under (Requirement 10.10).
+-- A single row; the server refuses to start when it disagrees with the environment.
+CREATE TABLE day_boundary_config (
+    id             boolean PRIMARY KEY DEFAULT true CHECK (id),
+    timezone       text NOT NULL,
+    day_start_hour smallint NOT NULL CHECK (day_start_hour BETWEEN 0 AND 23),
+    created_at     timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE schema_migrations (
     filename   text PRIMARY KEY,
     applied_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Requirement 13.7: updated_at must reflect the last modification, not the insert.
+CREATE FUNCTION set_updated_at() RETURNS trigger AS $$
+BEGIN
+    NEW.updated_at := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER work_sessions_set_updated_at BEFORE UPDATE ON work_sessions
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER activity_entries_set_updated_at BEFORE UPDATE ON activity_entries
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 ```
 
 The constraint behavior above was verified against `postgres:16-alpine` before being written down: two open sessions are rejected by the partial unique index, overlapping closed sessions and overlapping segments are rejected by the exclusion constraints, touching intervals are accepted because `tstzrange` is half-open, and a delete-then-reinsert reshuffle inside one transaction succeeds thanks to the deferred constraint.
@@ -811,6 +1015,30 @@ stateDiagram-v2
 
 **Validates: Requirements 14.5**
 
+### Property 15: Day totals partition the timeline
+
+*For any* set of records and any consecutive run of `Logical_Day` values covering them, the sum of `trackedSeconds` over those days SHALL equal the total duration of `Tracked_Time` in the whole range — no interval crossing a boundary is counted twice or dropped.
+
+**Validates: Requirements 8.3, 10.7**
+
+### Property 16: Every entry stays reachable
+
+*For any* sequence of accepted operations, every `Activity_Entry` in the database SHALL be returned by `/api/activities` for some range — an entry emptied by reconciliation is still selected by its requested interval.
+
+**Validates: Requirements 2.10, 7.2**
+
+### Property 17: No stored interval is shorter than the floor
+
+*For any* accepted write, every `Work_Session` and every `Activity_Segment` in the database SHALL last at least `MIN_INTERVAL_SECONDS`.
+
+**Validates: Requirements 1.14, 6.5**
+
+### Property 18: Idempotent writes create one record
+
+*For any* `POST /api/activities` repeated with the same `Idempotency-Key`, the database SHALL hold exactly one resulting `Activity_Entry` and both responses SHALL be identical.
+
+**Validates: Requirements 12.8, 12.9**
+
 ## Error Handling
 
 All error responses use the shape from Requirement 12.1: `{ error, message, details }`, where `message` is a Paraglide message key.
@@ -829,7 +1057,11 @@ All error responses use the shape from Requirement 12.1: `{ error, message, deta
 | `ACTIVITY_OVERLAP` | 409 | an `Explicit_Mode` request overlaps another entry's segments | `conflicts[]` of `{ entryId, interval }` |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` and part of the request is untracked | `outside[]` of intervals |
 | `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date` |
-| `NOTHING_TO_LOG` | 409 | `Open_Mode` where the resolved start is not before now | `anchor` |
+| `NOTHING_TO_LOG` | 409 | `Open_Mode` where the resolved start is not before the resolved end | `anchor` |
+| `PROJECT_ARCHIVED` | 400 | a new entry targets an archived `Project` | `projectId` |
+| `FUTURE_TIMESTAMP` | 400 | any supplied instant lies more than five minutes ahead | `field`, `value` |
+| `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds` |
+| `STALE_PREVIEW` | 409 | a write carries a `previewToken` the frame no longer matches | `expected` |
 | `PROJECT_EXISTS` | 409 | duplicate project name | `projectId` |
 | `PROJECT_IN_USE` | 409 | deleting a project referenced by an entry | `entryCount` |
 | `PAYLOAD_TOO_LARGE` | 413 | request body over 1 MiB | `maxBytes` |

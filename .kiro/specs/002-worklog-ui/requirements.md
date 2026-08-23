@@ -44,6 +44,11 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 5. WHILE an `Open_Session` exists, THE Worklog_UI SHALL display a running indicator in the shell on every page
 6. WHEN the application is opened at the root path, THE Worklog_UI SHALL show the timer page
 7. THE Worklog_UI SHALL render an error page for an unknown route offering a link back to the timer page
+8. WHEN the user moves between pages of the application, THE Worklog_UI SHALL navigate on the client without a full document reload
+9. THE Worklog_UI SHALL render and parse every wall-clock time in the time zone the server reports, never in the time zone of the device
+10. WHEN the device time zone differs from the server's, THE Worklog_UI SHALL state which zone the displayed times are in
+11. IF the server reports it is degraded or unreachable, THEN THE Worklog_UI SHALL show a dedicated connection error page rather than a broken layout
+12. THE Worklog_UI SHALL escape all user-supplied text on output and SHALL NOT use `{@html}` for any value originating from a `Project` name or an `Activity_Entry` description
 
 ### Requirement 2: Authentication
 
@@ -76,6 +81,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 10. THE timer page SHALL show a compact `Day_Timeline` of the current `Logical_Day`
 11. THE timer page SHALL offer the `Quick_Log` action
 12. THE Timer_Control SHALL be operable from the keyboard, with the start and stop action reachable by tab and activated by both Enter and Space
+13. WHEN the server reports the running session as stale, THE Timer_Control SHALL say so and offer to stop it at a time the user picks
+14. IF starting the timer fails because a session already exists or overlaps one, THEN THE Worklog_UI SHALL explain which session is in the way rather than failing silently
 
 ### Requirement 4: Day Timeline
 
@@ -97,6 +104,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 12. WHEN the viewport is narrower than 768 pixels, THE Day_Timeline SHALL lay the time axis out vertically
 13. THE Day_Timeline SHALL be navigable by keyboard, moving focus between bars in chronological order
 14. WHEN the `Logical_Day` holds no records, THE Day_Timeline SHALL show an empty state inviting the user to start the timer
+15. WHEN an `Activity_Segment` is too short to render as a usable target, THE Day_Timeline SHALL merge consecutive short segments into one marker rather than drawing an unclickable sliver
+16. THE Day_Timeline SHALL draw a `Work_Session` continuing past the displayed day as reaching the edge of the axis, marked as continuing
 
 ### Requirement 5: Day Navigation
 
@@ -144,6 +153,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 6. WHEN the interval or the duration is changed, THE Worklog_UI SHALL show a `Change_Preview` before saving
 7. THE Worklog_UI SHALL offer deletion of an `Activity_Entry` behind a confirmation that names what will be removed
 8. WHEN an `Activity_Entry` is deleted, THE Worklog_UI SHALL update the `Day_Timeline` without a full page reload
+9. THE day page SHALL list every `Activity_Entry` that reconciliation emptied, explaining that nothing of it remains inside the timer frame
+10. THE Worklog_UI SHALL offer deleting an emptied `Activity_Entry` or re-entering its times, so it can never become a record the user cannot reach
 
 ### Requirement 8: Timer Frame Editing
 
@@ -160,6 +171,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 7. WHEN the viewport is at least 768 pixels wide, THE Frame_Lane SHALL allow a `Work_Session` edge to be dragged, snapping to five-minute steps
 8. WHEN a drag is released, THE Worklog_UI SHALL show a `Change_Preview` before committing the change
 9. WHEN a `Work_Session` is changed or removed, THE Worklog_UI SHALL update both lanes of the `Day_Timeline` without a full page reload
+10. WHEN a `Work_Session` is deleted, THE Worklog_UI SHALL show a `Change_Preview` naming every `Activity_Entry` that would lose time and every one that would be emptied
 
 ### Requirement 9: Change Preview
 
@@ -177,6 +189,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 8. WHERE a request falls outside `Tracked_Time`, THE Change_Preview SHALL offer the choice between the `clip` and `extend` values of `Uncovered_Policy`, defaulting to `clip`
 9. THE Worklog_UI SHALL NOT write anything until the user confirms the `Change_Preview`
 10. WHILE the `Dry_Run` is in flight, THE Change_Preview SHALL show a loading state and SHALL keep the confirm action disabled
+11. THE Worklog_UI SHALL treat a non-2xx response to a `Dry_Run` as a rejection to display, not as a transport failure
+12. WHEN a write is refused because the timer frame changed since the preview, THE Worklog_UI SHALL recompute the preview and ask the user to confirm again
+13. THE Worklog_UI SHALL wait for a pause in typing before requesting a new `Dry_Run`, so that editing a field does not exhaust the request budget
 
 ### Requirement 10: Uncovered Time Guidance
 
@@ -208,6 +223,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 9. THE Worklog_UI SHALL show each `Project` in the stable colour the server assigned it, used consistently on the `Activity_Lane`, in the `Project_Picker` and in the statistics
 10. THE projects page SHALL let the user change a `Project` colour by choosing from the eight palette slots
 11. THE Worklog_UI SHALL show a `Project` colour beside its name, never as the only way to tell two projects apart
+12. WHEN an `Activity_Entry` being edited references an archived `Project`, THE Project_Picker SHALL offer that project as the current value, marked as archived
+13. WHEN no `Project` exists, THE projects page and THE Project_Picker SHALL both offer creating the first one rather than showing an empty control
 
 ### Requirement 12: Statistics
 
@@ -224,6 +241,8 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 7. WHEN a day in a multi-day chart is activated, THE Worklog_UI SHALL navigate to that day page
 8. WHEN the selected range holds no records, THE statistics page SHALL show an empty state rather than an empty chart
 9. THE statistics page SHALL present every chart's underlying numbers as text as well, so the information does not depend on colour alone
+10. THE statistics page SHALL show, for the selected range, a timeline of where in each day the work fell, not only how much of it there was
+11. THE statistics page SHALL include archived projects that hold time in the selected range, so the per-project figures reconcile with the total
 
 ### Requirement 13: Internationalization
 
@@ -239,6 +258,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 6. THE Worklog_UI SHALL keep the `lang` attribute of the document in step with the active language
 7. THE Worklog_UI SHALL format dates, times and durations according to the active language
 8. WHEN the server returns an error carrying a message key, THE Worklog_UI SHALL render the translation of that key
+9. IF the browser expresses no preference the interface supports, THEN THE Worklog_UI SHALL fall back to English
+10. THE Locale_Switcher SHALL indicate the active language
+11. THE Worklog_UI SHALL render the `messageKey` field of a server error and SHALL never display the raw `error` code to the user
 
 ### Requirement 14: Responsiveness, Interaction and Accessibility
 
@@ -256,6 +278,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 8. WHEN the user has asked for reduced motion, THE Worklog_UI SHALL disable non-essential animation
 9. THE Worklog_UI SHALL meet a contrast ratio of at least 4.5 to 1 for body text in both themes
 10. THE Worklog_UI SHALL convey no information by colour alone
+11. THE Worklog_UI SHALL be built mobile-first, with 768 pixels as the single breakpoint between the phone and desktop layouts
+12. THE Worklog_UI SHALL mark every required form field as required
+13. WHEN the user navigates away from a form holding unsaved input, THE Worklog_UI SHALL ask for confirmation first
 
 ### Requirement 15: Feedback, Loading and Error States
 
@@ -271,3 +296,6 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 6. WHEN a write succeeds but part of it was discarded or left unplaced, THE Worklog_UI SHALL report that explicitly rather than presenting an unqualified success
 7. IF the server is unreachable, THEN THE Worklog_UI SHALL say so and offer to retry without losing the user's input
 8. THE Worklog_UI SHALL show a confirmation before any destructive action, naming what will be lost
+9. THE Worklog_UI SHALL map every error code defined by `001-worklog-domain-api` to a behaviour, including `NOT_FOUND`, `NOTHING_TO_LOG`, `RANGE_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `STALE_PREVIEW`, `PROJECT_ARCHIVED`, `FUTURE_TIMESTAMP`, `INTERVAL_TOO_SHORT` and `INTERNAL_ERROR`
+10. THE projects page SHALL show an empty state when no `Project` exists
+

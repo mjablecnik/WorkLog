@@ -291,7 +291,11 @@ export function previewActivity(input: CreateActivityInput, signal: AbortSignal)
 export function previewSessionChange(input: SessionChangeInput, signal: AbortSignal): Promise<SessionPreview>;
 ```
 
-The component renders, in this order: what will be stored, what will be lost, and what is unresolved. A rejection replaces the whole body with the reason and disables the confirm action. In-flight requests are aborted when the user edits a field again, so a stale preview can never be confirmed.
+The component renders, in this order: what will be stored, what will be lost, and what is unresolved. A rejection replaces the whole body with the reason and disables the confirm action. In-flight requests are aborted when the user edits a field again, and a new `Dry_Run` is requested only after a 400 ms pause in typing, so editing a time field cannot exhaust the rate limit.
+
+`rejection` is the client's mapping of a non-2xx response: the server has no such field. A `Dry_Run` that returns 409 is a rejection to render, never a transport failure to swallow.
+
+Every preview carries the `previewToken` the server computed it against, and the confirming write sends it back. If another device changed the frame in between, the write returns `STALE_PREVIEW`, the component recomputes and asks again — so what the user confirmed is always what happens.
 
 When a preview reports `discarded` intervals, the component offers the `Uncovered_Policy` choice inline — `clip` selected, `extend` available — and re-runs the `Dry_Run` when the choice changes, so the user sees the consequence of each option before picking one.
 
@@ -356,18 +360,32 @@ Switching is client-side with no reload, through `overwriteGetLocale` / `overwri
 
 Key naming follows the workspace's domain prefix convention: `common_*`, `errors_*`, `timer_*`, `day_*`, `activity_*`, `session_*`, `projects_*`, `stats_*`.
 
-Server error codes map to keys by lowercasing: `ACTIVITY_OVERLAP` → `errors_activity_overlap`. Every code in the `001` error table has a message in both files, checked by a test.
+The server sends the key: every error envelope carries `messageKey` beside the English `message`, so the interface renders `m[messageKey]()` and never derives, parses or displays the raw `error` code. `001` owns the code-to-key mapping in one function; a test asserts every key it can emit exists in both message files.
 
 ### 9. Formatting (`src/lib/viz/format.ts`)
 
 ```ts
-/** "2 h 14 min" / "2h 14m" — never a bare decimal of hours. */
+/** "2 h 14 min" — never a bare decimal of hours. Below a minute renders as "< 1 min". */
 export function formatDuration(seconds: number, locale: string): string;
-export function formatTimeOfDay(t: Date, locale: string): string;
-export function formatDayLabel(date: string, locale: string, today: string): string;  // "dnes" / "today" when it matches
+
+/**
+ * Every wall-clock rendering and every parse goes through these, in the SERVER's
+ * zone — never the device's. `/api/health` reports it; the root layout loads it once.
+ */
+export function formatTimeOfDay(t: Date, locale: string, timeZone: string): string;
+export function formatDayLabel(date: string, locale: string, today: string): string;
+export function parseTimeOfDay(text: string, date: string, timeZone: string): Date;
 ```
 
-Durations are always rendered by this function so the whole interface agrees on a single form.
+Passing the zone explicitly is what closes a whole class of bugs: a laptop set to the
+wrong zone would otherwise render the axis in local time while the day boundaries came
+from Prague, and a hand-typed "14:00" would be sent with the device offset and clipped
+away as outside `Tracked_Time`. When the two zones differ the shell says which one the
+times are in.
+
+Timestamps arrive as RFC 3339 strings and are revived into `Date` at the boundary — the
+load function for server-rendered data, `dry-run.ts` for `fetch` responses. Nothing
+downstream handles a string where the types say `Date`.
 
 ## Data Models
 
@@ -397,9 +415,18 @@ Server error codes from `001` map to interface behavior:
 | `SESSION_ALREADY_RUNNING` · `NO_SESSION_RUNNING` | `Timer_Control` | resyncs from the server and shows what the real state is |
 | `PROJECT_EXISTS` | beside the name field | inline message |
 | `PROJECT_IN_USE` | projects page | explains and offers archiving instead |
+| `PROJECT_ARCHIVED` | `Project_Picker` | explains the project is archived and offers unarchiving it |
+| `FUTURE_TIMESTAMP` | beside the offending time field | inline message; the field caps at now |
+| `INTERVAL_TOO_SHORT` | beside the time fields | states the minimum |
+| `STALE_PREVIEW` | `Change_Preview` | recomputes the preview and asks for confirmation again |
+| `NOTHING_TO_LOG` | `Quick_Log` | explains there is nothing new since the last entry |
+| `RANGE_TOO_LARGE` | statistics range control | falls back to the last valid range |
+| `NOT_FOUND` | any list or dialog | says the record is gone, refreshes the day |
+| `PAYLOAD_TOO_LARGE` | `Activity_Dialog` | points at the description length |
 | `RATE_LIMITED` | toast | shows the retry delay |
+| `INTERNAL_ERROR` | toast with a retry action | keeps the input, offers to report the `requestId` |
 | `UNAUTHORIZED` | any page | redirect to login with a session-ended message |
-| network failure | toast with a retry action | the dialog stays open with its input intact |
+| network failure | connection error page or toast with retry | the dialog stays open with its input intact |
 
 A write that succeeds but reports `discarded` intervals or `unplacedMinutes` is **not** shown as a plain success. The confirmation names what did not fit and offers to open the affected day range, satisfying Requirement 15.6.
 

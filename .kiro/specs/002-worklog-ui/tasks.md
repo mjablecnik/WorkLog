@@ -19,13 +19,15 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `src/app.css` imports Tailwind and the theme, and declares an `@theme` block mapping the theme's CSS variables to Tailwind tokens
     - Port `src/lib/theme/` from the template; define the spacing scale 4, 8, 12, 16, 24, 32, 48, 64 and the transition durations 200 ms for hover and 300 ms for panels
     - Include a `prefers-reduced-motion` block disabling non-essential animation, and a styled `::selection`
+    - Author mobile-first with 768 pixels as the single breakpoint
     - Declare the light and dark chart surfaces used by the palette validation
-    - _Requirements: 14.6, 14.7, 14.8, 14.9_
+    - _Requirements: 14.6, 14.7, 14.8, 14.9, 14.11_
 
   - [ ] 1.3 Set up Paraglide and the message files
     - `project.inlang/settings.json` with `baseLocale: "en"`, `locales: ["en","cs"]`, `pathPattern: "./messages/{locale}.json"`, the message-format and m-function-matcher plugins
     - Wire `paraglideVitePlugin` into `vite.config.ts` after `tailwindcss()` and `sveltekit()`, compiling into `src/lib/paraglide/`
-    - `src/lib/core/i18n/state.svelte.ts` overriding `getLocale`/`setLocale` over a `$state` rune; `index.ts` with `initLocale()` resolving `localStorage` → `navigator.language` → Czech, and `switchLocale()` stripping the hash with `history.replaceState` and updating `document.documentElement.lang`
+    - `src/lib/core/i18n/state.svelte.ts` overriding `getLocale`/`setLocale` over a `$state` rune; `index.ts` with `initLocale()` resolving `localStorage` → `navigator.language` → **English** when the detected language is neither Czech nor English, and `switchLocale()` stripping the hash with `history.replaceState` and updating `document.documentElement.lang`
+    - The switcher indicates the active language
     - `src/hooks.ts` exporting `reroute` via `deLocalizeUrl`
     - Create `messages/cs.json` and `messages/en.json` with flat snake_case keys prefixed by domain
     - _Requirements: 13.1, 13.3, 13.4, 13.5, 13.6_
@@ -34,8 +36,10 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `src/routes/+layout.svelte` renders `Shell` with the navigation, the `Locale_Switcher` and the logout control, and calls `initLocale()` in `onMount`
     - `src/routes/+layout.server.ts` loads the current session state so the running indicator can appear on every page
     - Navigation collapses to a bottom bar under 768 pixels; the active target carries `aria-current`
-    - `src/routes/+error.svelte` offers a link back to the timer page
-    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.7_
+    - `src/routes/+error.svelte` offers a link back to the timer page, and a dedicated connection error page covers a degraded or unreachable server
+    - Load the server's `TIMEZONE` and `DAY_START_HOUR` from `/api/health` once in the root layout and put them in context; every wall-clock rendering and parse uses that zone, and the shell says which zone it is when it differs from the device
+    - Navigation between pages stays on the client — no full document reload
+    - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 1.9, 1.10, 1.11_
 
   - [ ] 1.5 Build the login and logout pages
     - `src/routes/login/+page.svelte` with a single passphrase field submitted as a form action; a wrong passphrase returns one generic message key
@@ -46,14 +50,15 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
   - [ ] 1.6 Implement the palette and formatting helpers
     - `src/lib/viz/palette.ts` with the eight validated slots from the design, `PALETTE_SIZE`, `projectColorVar` wrapping the index at eight, and `labelInkOn` returning the per-slot label ink from the design's contrast table
-    - `src/lib/viz/format.ts` with `formatDuration`, `formatTimeOfDay` and `formatDayLabel`, locale aware, never rendering a bare decimal of hours
+    - `src/lib/viz/format.ts` with `formatDuration`, `formatTimeOfDay`, `formatDayLabel` and `parseTimeOfDay`, locale aware, taking the server time zone explicitly, never rendering a bare decimal of hours, rendering anything under a minute as "< 1 min"
     - _Requirements: 11.9, 11.11, 13.7_
 
   - [ ] 1.7 Write tests for the palette, formatting and i18n
     - `tests/lib/viz/palette.test.ts`: eight slots; an index of 8 wraps to 0; the hex values match the design table exactly; `labelInkOn` returns dark for orange, aqua, yellow, magenta and red and white for blue, green and violet, and every returned pairing measures at least 4:1
     - `tests/lib/viz/format.test.ts`: durations in both locales, zero, under a minute, over a day; `formatDayLabel` says today for the current `Logical_Day`
-    - `tests/lib/i18n.test.ts`: `cs.json` and `en.json` hold identical key sets; every error code from the `001` error table has a message in both; no `.svelte` file under `src/` carries a user-facing string literal outside a message call
-    - _Requirements: 11.9, 13.1, 13.2, 13.7, 13.8_
+    - `tests/lib/i18n.test.ts`: `cs.json` and `en.json` hold identical key sets; every key `messageKeyFor` can emit exists in both; no `.svelte` file under `src/` carries a user-facing string literal outside a message call; no `.svelte` file uses `{@html}` on a project name or description
+    - `tests/lib/viz/format.test.ts` additionally pins that a time renders in the server zone, not the device zone
+    - _Requirements: 1.9, 1.12, 11.9, 13.1, 13.2, 13.7, 13.8, 13.9, 13.10, 13.11_
 
 - [ ] 2. Checkpoint — shell runs
   - Run `bun run check && bun run test tests/lib` and confirm the application starts, login works, the shell renders and the language switches without a reload
@@ -76,7 +81,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - An `Open_Session` on the displayed day is drawn continuing to `now` and marked as running
     - Every bar is a `<button>` in chronological DOM order carrying an `aria-label` with its times, project and description; bars wide enough show the project name directly
     - `orientation` prop switches the axis between horizontal and vertical; the caller picks it from a media query
-    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.12, 4.13, 11.9, 14.10_
+    - Consecutive segments too short to render as a usable target merge into one marker rather than becoming unclickable slivers; a session continuing past the displayed day reaches the axis edge marked as continuing
+    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.12, 4.13, 4.15, 4.16, 11.9, 14.10_
 
   - [ ] 3.4 Wire the timeline activation handlers
     - Activating an `Activity_Segment` bar opens the `Activity_Dialog` for its entry; activating a `Work_Session` bar opens the `Session_Dialog`; activating an uncovered stretch opens the `Activity_Dialog` in `Explicit_Mode` prefilled with exactly that stretch
@@ -97,7 +103,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `ActivityList` shows every `Activity_Entry` with project, description, times and total duration; a split entry shows each segment's times and states that it was split around a break; the originally requested interval or duration appears whenever it differs from what was stored
     - `UncoveredList` states the day's total `Uncovered_Time`, lists each stretch with times and duration, omits stretches under five minutes while still counting them in the total, and states when the day is fully described
     - Activating a listed stretch opens the `Activity_Dialog` prefilled with it
-    - _Requirements: 7.1, 7.2, 7.3, 10.1, 10.2, 10.3, 10.4, 10.5_
+    - A separate group lists every entry reconciliation emptied, explains that nothing of it remains inside the timer frame, and offers deleting it or re-entering its times — without this such a record is unreachable and blocks its project from ever being deleted
+    - _Requirements: 7.1, 7.2, 7.3, 7.9, 7.10, 10.1, 10.2, 10.3, 10.4, 10.5_
 
 - [ ] 4. Checkpoint — the day is visible
   - Seed a day with a break and an activity spanning it, then confirm the timeline draws two activity bars with the gap between them, the entry list explains the split, and the uncovered list matches
@@ -107,7 +114,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `previewActivity` and `previewSessionChange` post the pending change with `dryRun: true` and map the response into `ActivityPreview` and `SessionPreview`
     - Abort an in-flight request when the input changes again, so a stale preview can never be confirmed
     - Compute nothing locally — the browser holds no clipping logic
-    - _Requirements: 9.1_
+    - Debounce by 400 ms so editing a field does not exhaust the rate limit; treat a non-2xx response as a rejection to render, not a transport failure; carry `previewToken` into the confirming write and recompute on `STALE_PREVIEW`
+    - _Requirements: 9.1, 9.11, 9.12, 9.13_
 
   - [ ] 5.2 Build `ChangePreview`
     - Render in order: what will be stored, what will be lost, what is unresolved — resulting segments and their count, discarded stretches with durations, unplaced minutes, and for a session change each affected entry with the duration it loses plus the total removed
@@ -139,7 +147,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Editable start and end, a delete action, and an add-session action for a stretch that was never tracked
     - A change altering existing segments shows a `Change_Preview` first; an overlap shows which sessions conflict and does not save; an inverted interval shows the error beside the field
     - Both lanes update without a full page reload after a change
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9_
+    - Deleting a session shows a `Change_Preview` naming every entry that would lose time and every one that would be emptied
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9, 8.10_
 
   - [ ] 5.7 Implement session edge dragging
     - At viewports 768 pixels and wider, a pointer-event handle on each `Work_Session` edge drags with five-minute snapping
@@ -168,7 +177,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Reachable by tab, activated by both Enter and Space
     - The page lives at the root path `/`, so opening the application lands on the timer
     - The page shows a compact `Day_Timeline` of the current `Logical_Day` and offers `Quick_Log`
-    - _Requirements: 1.6, 3.1, 3.2, 3.4, 3.5, 3.9, 3.10, 3.11, 3.12, 10.6_
+    - A stale session is called out with an offer to stop it at a time the user picks; a start refused for an existing or overlapping session explains which session is in the way
+    - _Requirements: 1.6, 3.1, 3.2, 3.4, 3.5, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14, 10.6_
 
   - [ ] 6.3 Implement the tab title
     - While an `Open_Session` exists, write the running elapsed time into `document.title` from the same store that feeds the on-screen readout, so the two cannot disagree
@@ -186,13 +196,16 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - A duplicate name differing only in case or surrounding whitespace shows the error beside the field
     - Delete an unreferenced project; a referenced one explains that it is in use and offers archiving instead
     - A colour control on each row opens the eight `Palette_Slot` swatches and saves the chosen one, so the automatic assignment can be overridden
-    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11_
+    - An empty state covers the case of no projects at all, offering to create the first one
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11, 11.13, 15.10_
 
   - [ ] 7.2 Build `ProjectPicker`
     - A combobox over non-archived projects with substring search and keyboard navigation
     - A "create <typed name>" row when nothing matches, posting to `/api/projects` and inserting the result without closing the surrounding dialog
     - Each option shows its swatch next to the name, never the swatch alone
-    - _Requirements: 6.7, 11.6, 11.9, 14.10_
+    - When the entry being edited references an archived project, that project is offered as the current value marked as archived, so fixing a typo never forces re-assigning the record
+    - With no projects at all the picker offers creating the first one instead of an empty list
+    - _Requirements: 6.7, 11.6, 11.9, 11.12, 11.13, 14.10_
 
   - [ ] 7.3 Write component tests for `ProjectPicker`
     - `tests/components/project-picker.test.ts`: filtering by substring; archived projects absent; inline creation inserts and selects without closing the dialog; full keyboard navigation; every option names the project as text
@@ -202,7 +215,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 8.1 Build the statistics queries and range control
     - `src/modules/stats/query.ts` aggregates from `/api/days` for the selected day, week or month range
     - Fold everything past the top seven projects by `Covered_Time` into an "Other" slot so no chart cycles the palette
-    - _Requirements: 12.1, 12.2, 12.4_
+    - Include archived projects holding time in the range, so the per-project figures reconcile with the total
+    - _Requirements: 12.1, 12.2, 12.4, 12.11_
 
   - [ ] 8.2 Build `CoverageMeter`, `ProjectBreakdown` and `DayStack`
     - `CoverageMeter` shows the described share of `Tracked_Time` as a hero figure with a meter
@@ -212,7 +226,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Show the average `Tracked_Time` per day that holds at least one `Work_Session` for multi-day ranges
     - Present every chart's numbers as a table beside it, which is also what satisfies the light-mode relief rule
     - An empty range shows an empty state rather than an empty chart
-    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 14.10_
+    - A `DayRhythm` strip shows where in each day the work actually fell — one narrow timeline row per day of the range, coloured by project — because knowing the shape of a day is the thing totals cannot tell you
+    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 14.10_
 
   - [ ] 8.3 Write component tests for the statistics charts
     - `tests/components/stats.test.ts`: the breakdown sorts descending and folds an eighth project into Other; the stack renders one bar per day and navigates on activation; the empty range shows the empty state; every chart's numbers appear as text
@@ -222,7 +237,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - [ ] 9.1 Implement loading and progress states
     - Skeletons shaped like the content for first loads, never a bare spinner
     - A submitted action disables its control and shows progress on it
-    - _Requirements: 15.1, 15.2_
+    - Required fields are marked as required; navigating away from a form holding unsaved input asks for confirmation first
+    - _Requirements: 14.12, 14.13, 15.1, 15.2_
 
   - [ ] 9.2 Implement result and error feedback
     - A success confirms briefly without demanding dismissal; a failure shows the reason and keeps the input intact
@@ -230,8 +246,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - A write reporting discarded or unplaced time is never presented as an unqualified success — the confirmation names what did not fit
     - An unreachable server says so and offers retry without losing input
     - Every destructive action is preceded by a confirmation naming what will be lost
-    - Map every code from the `001` error table to the behavior in the design's Error Handling section
-    - _Requirements: 13.8, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8_
+    - Map every code from the `001` error table to the behaviour in the design's Error Handling section — including `NOT_FOUND`, `NOTHING_TO_LOG`, `RANGE_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `STALE_PREVIEW`, `PROJECT_ARCHIVED`, `FUTURE_TIMESTAMP`, `INTERVAL_TOO_SHORT` and `INTERNAL_ERROR`
+    - _Requirements: 13.11, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.9_
 
 - [ ] 10. Checkpoint — the interface is complete
   - Run `bun run check && bun run test` and walk the whole application by hand on a desktop and at a 375 pixel width
@@ -293,4 +309,5 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - `Interval` is half-open `[start, end)` in the interface exactly as on the server. A session ending at 12:00 and the next starting at 12:00 do not overlap, and the timeline must not draw a gap between them.
 - **Docker in this sandbox**: `docker compose` is blocked. Start PostgreSQL for E2E with plain `docker run` on the sandbox's own network and reach it by container name. The `sandbox-docker-net` skill has the details.
 - Playwright browsers are already installed at `/opt/playwright-browsers`. Never run `playwright install` in this sandbox.
+- Test directories mirror the source tree: `tests/routes/api/…` for routes, `tests/modules/<feature>/components/…` for feature components, `tests/lib/…` for shared code.
 - Commits follow Conventional Commits with the author `Martin Jablečník <martin.jablecnik@email.cz>` and carry no tool attribution trailers.

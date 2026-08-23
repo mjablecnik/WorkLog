@@ -5,19 +5,24 @@
 .env.*
 !.env.example
 
-# Go build output
-*.exe
-*.test
-*.out
-/worklog-server/worklog-server
-/worklog-server/bin/
-
-# Node / SvelteKit
-node_modules/
+# SvelteKit / Vite
 .svelte-kit/
 build/
+node_modules/
 .vercel/
 .output/
+
+# Paraglide compiles into the source tree
+src/lib/paraglide/
+
+# Test and tooling output
+coverage/
+playwright-report/
+test-results/
+tests/tmp/
+
+# Backups produced by scripts/backup.sh
+backups/
 
 # Editors and OS
 .DS_Store
