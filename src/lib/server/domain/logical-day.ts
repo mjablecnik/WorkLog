@@ -116,8 +116,15 @@ function findNearbyTransition(naiveUtcMs: number, timeZone: string): NearbyTrans
  * offset — the first of its two real occurrences; a non-existent time (gap) moves
  * FORWARD to the first instant that exists.
  */
-function wallClockToInstant(y: number, m: number, d: number, hour: number, timeZone: string): Date {
-	const naiveUtcMs = Date.UTC(y, m, d, hour, 0, 0);
+function wallClockToInstant(
+	y: number,
+	m: number,
+	d: number,
+	hour: number,
+	timeZone: string,
+	minute = 0
+): Date {
+	const naiveUtcMs = Date.UTC(y, m, d, hour, minute, 0);
 	const transition = findNearbyTransition(naiveUtcMs, timeZone);
 	if (transition === null) {
 		const offset = offsetMinutesAt(naiveUtcMs, timeZone);
@@ -250,4 +257,34 @@ export function createDayResolver(timezone: string, startHour: number): DayResol
 	}
 
 	return { bounds, dateOf, range };
+}
+
+/**
+ * The instant `HH:MM` denotes on `date` in `timezone`, applying the same fold policy
+ * as `DayResolver` (Requirement 10.14). Used to materialise the Gauge_Window and the
+ * Evening_Hour on a specific Logical_Day's calendar date — the same wall-clock-to-
+ * instant machinery `bounds()` uses for the day boundary itself, so the two can never
+ * disagree about what a given clock reading means on a given date.
+ */
+export function materializeWallClock(
+	date: string,
+	hour: number,
+	minute: number,
+	timezone: string
+): Date {
+	const { y, m, d } = parseDate(date);
+	return wallClockToInstant(y, m, d, hour, timezone, minute);
+}
+
+/** The wall-clock minute of the day (0..1439) `t` falls on in `timezone`. */
+export function minuteOfDay(t: Date, timezone: string): number {
+	const dtf = new Intl.DateTimeFormat('en-US', {
+		timeZone: timezone,
+		hourCycle: 'h23',
+		hour: '2-digit',
+		minute: '2-digit'
+	});
+	const parts = dtf.formatToParts(t);
+	const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? '0');
+	return (get('hour') % 24) * 60 + get('minute');
 }
