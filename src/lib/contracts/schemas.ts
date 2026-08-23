@@ -25,9 +25,7 @@ const dryRunFields = {
 	previewToken: z.string().optional()
 };
 
-const dateString = z
-	.string()
-	.regex(/^\d{4}-\d{2}-\d{2}$/);
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const untrackedPolicy = z.enum(['clip', 'extend', 'reject']).default('clip');
 
