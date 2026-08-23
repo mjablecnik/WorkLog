@@ -12,11 +12,17 @@ The interface is Czech-first with English as a fallback, works on a phone as wel
 
 ## Glossary
 
-Terms carried over from `001-worklog-domain-api` keep their meaning there: **Work_Session**, **Activity_Entry**, **Activity_Segment**, **Tracked_Time**, **Untracked_Time**, **Covered_Time**, **Uncovered_Time**, **Logical_Day**, **Explicit_Mode**, **Duration_Mode**, **Open_Mode**, **Placement_Anchor**, **Uncovered_Policy**, **Dry_Run**, **Open_Session**, **Project**.
+Terms carried over from `001-worklog-domain-api` keep their meaning there: **Work_Session**, **Activity_Entry**, **Activity_Segment**, **Orphaned_Entry**, **Tracked_Time**, **Untracked_Time**, **Covered_Time**, **Uncovered_Time**, **Logical_Day**, **Explicit_Mode**, **Duration_Mode**, **Open_Mode**, **Placement_Anchor**, **Uncovered_Policy**, **Dry_Run**, **Open_Session**, **Stale_Session**, **Gauge_Window**, **Overtime**, **Project**.
 
 - **Worklog_UI**: The browser interface of the application — `src/routes/` excluding `src/routes/api/`, plus `src/modules/` and `src/lib/ui/`
 - **Timer_Control**: The start and stop control together with the elapsed readouts, shown on the timer page
-- **Day_Timeline**: The shared-axis visualization of one `Logical_Day`, made of the `Frame_Lane` and the `Activity_Lane`
+- **Day_Gauge**: The circular reading of one `Logical_Day` shown on the timer page — an outer arc for `Work_Session` records and an inner arc for `Activity_Segment` records
+- **Gauge_Track**: The part of the `Day_Gauge` covering the `Gauge_Window`, drawn with a visible groove and a graduated dial
+- **Gauge_Gap**: The remainder of the circle, outside the `Gauge_Window`, drawn completely bare
+- **Overtime_Arc**: The part of the `Day_Gauge` falling in the `Gauge_Gap` — work outside the expected window
+- **Day_Timeline**: The vertical reading of one `Logical_Day` shown on the day page, made of the `Frame_Lane` and the `Activity_Lane`
+- **Work_Block**: One `Work_Session` shown on the `Day_Timeline` as a group with its own local time axis
+- **Break_Marker**: The single collapsed row the `Day_Timeline` draws between two `Work_Block` groups instead of leaving the break proportionally empty
 - **Frame_Lane**: The `Day_Timeline` lane drawing `Work_Session` records, where the gaps between bars are the breaks
 - **Activity_Lane**: The `Day_Timeline` lane drawing `Activity_Segment` records, coloured by `Project`
 - **Uncovered_Marker**: The visual treatment of `Uncovered_Time` on the `Day_Timeline` — time inside `Tracked_Time` that no `Activity_Segment` describes
@@ -91,21 +97,25 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 #### Acceptance Criteria
 
 1. THE Day_Timeline SHALL draw the `Frame_Lane` and the `Activity_Lane` against one shared time axis
-2. THE Day_Timeline SHALL span at least the range from the earliest to the latest record of the `Logical_Day`, and SHALL label the axis at regular whole-hour intervals
-3. THE Frame_Lane SHALL draw one bar per `Work_Session`, leaving `Untracked_Time` visibly empty
-4. THE Activity_Lane SHALL draw one bar per `Activity_Segment`, coloured by its `Project`
-5. WHEN one `Activity_Entry` produced several `Activity_Segment` records, THE Activity_Lane SHALL make their shared identity visible
-6. THE Day_Timeline SHALL apply the `Uncovered_Marker` to every stretch of `Uncovered_Time`
-7. WHILE an `Open_Session` exists on the displayed day, THE Frame_Lane SHALL draw it as continuing to the current time and SHALL mark it as still running
-8. WHEN a bar is hovered or focused, THE Day_Timeline SHALL show its times, its `Project` and its description
-9. WHEN an `Activity_Segment` bar is activated, THE Worklog_UI SHALL open the `Activity_Dialog` for its `Activity_Entry`
-10. WHEN a `Work_Session` bar is activated, THE Worklog_UI SHALL open the `Session_Dialog` for it
-11. WHEN a stretch carrying the `Uncovered_Marker` is activated, THE Worklog_UI SHALL open the `Activity_Dialog` in `Explicit_Mode` prefilled with exactly that stretch
-12. WHEN the viewport is narrower than 768 pixels, THE Day_Timeline SHALL lay the time axis out vertically
-13. THE Day_Timeline SHALL be navigable by keyboard, moving focus between bars in chronological order
-14. WHEN the `Logical_Day` holds no records, THE Day_Timeline SHALL show an empty state inviting the user to start the timer
-15. WHEN an `Activity_Segment` is too short to render as a usable target, THE Day_Timeline SHALL merge consecutive short segments into one marker rather than drawing an unclickable sliver
-16. THE Day_Timeline SHALL draw a `Work_Session` continuing past the displayed day as reaching the edge of the axis, marked as continuing
+2. THE Day_Timeline SHALL lay the day out as one `Work_Block` per `Work_Session`, each with its own local time axis, rather than as a single axis spanning the whole day
+3. THE Day_Timeline SHALL size an `Activity_Segment` in proportion to its duration **within** its `Work_Block`, so proportions hold inside a block even though they do not hold across a break
+4. THE Frame_Lane SHALL draw one bar per `Work_Session`, leaving `Untracked_Time` visibly empty
+5. THE Activity_Lane SHALL draw one bar per `Activity_Segment`, coloured by its `Project`
+6. WHEN one `Activity_Entry` produced several `Activity_Segment` records, THE Activity_Lane SHALL make their shared identity visible
+7. THE Day_Timeline SHALL apply the `Uncovered_Marker` to every stretch of `Uncovered_Time`
+8. WHILE an `Open_Session` exists on the displayed day, THE Frame_Lane SHALL draw it as continuing to the current time and SHALL mark it as still running
+9. WHEN a bar is hovered or focused, THE Day_Timeline SHALL show its times, its `Project` and its description
+10. WHEN an `Activity_Segment` bar is activated, THE Worklog_UI SHALL open the `Activity_Dialog` for its `Activity_Entry`
+11. WHEN a `Work_Session` bar is activated, THE Worklog_UI SHALL open the `Session_Dialog` for it
+12. WHEN a stretch carrying the `Uncovered_Marker` is activated, THE Worklog_UI SHALL open the `Activity_Dialog` in `Explicit_Mode` prefilled with exactly that stretch
+13. WHEN the viewport is narrower than 768 pixels, THE Day_Timeline SHALL lay the time axis out vertically
+14. THE Day_Timeline SHALL be navigable by keyboard, moving focus between bars in chronological order
+15. WHEN the `Logical_Day` holds no records, THE Day_Timeline SHALL show an empty state inviting the user to start the timer
+16. WHEN an `Activity_Segment` is too short to render as a usable target, THE Day_Timeline SHALL merge consecutive short segments into one marker rather than drawing an unclickable sliver
+17. THE Day_Timeline SHALL draw a `Work_Session` continuing past the displayed day as reaching the edge of the axis, marked as continuing
+18. THE Day_Timeline SHALL replace every break between two `Work_Block` groups with a single `Break_Marker` of fixed height, naming the break's duration and its start and end
+19. THE Day_Timeline SHALL give every `Activity_Segment` a rendered height large enough to carry its project name and remain a usable target, regardless of how short the segment is
+20. THE Day_Timeline SHALL label each `Work_Block` with its start, its end and its total duration
 
 ### Requirement 5: Day Navigation
 
@@ -243,6 +253,10 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 9. THE statistics page SHALL present every chart's underlying numbers as text as well, so the information does not depend on colour alone
 10. THE statistics page SHALL show, for the selected range, a timeline of where in each day the work fell, not only how much of it there was
 11. THE statistics page SHALL include archived projects that hold time in the selected range, so the per-project figures reconcile with the total
+12. THE statistics page SHALL show the amount of `Overtime` in the selected range
+13. THE statistics page SHALL show the longest uninterrupted `Work_Session` of the selected range
+14. THE statistics page SHALL show how much of the range's `Tracked_Time` fell after a configurable evening hour, defaulting to 21:00
+15. WHEN the server reports a suggested window that differs from the configured `Gauge_Window` by more than 30 minutes at either end, THE Worklog_UI SHALL show it as a suggestion, so the window can be fitted to real habits rather than guessed
 
 ### Requirement 13: Internationalization
 
@@ -299,3 +313,25 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 9. THE Worklog_UI SHALL map every error code defined by `001-worklog-domain-api` to a behaviour, including `NOT_FOUND`, `NOTHING_TO_LOG`, `RANGE_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `STALE_PREVIEW`, `PROJECT_ARCHIVED`, `FUTURE_TIMESTAMP`, `INTERVAL_TOO_SHORT` and `INTERNAL_ERROR`
 10. THE projects page SHALL show an empty state when no `Project` exists
 
+
+### Requirement 16: Day Gauge
+
+**User Story:** As a user with the timer page open all day, I want the shape of my day readable at a glance, so that I can see when I worked and whether I ran past my usual hours without reading a single number.
+
+#### Acceptance Criteria
+
+1. THE Day_Gauge SHALL map the whole `Logical_Day` onto a full circle, so that one hour occupies a fixed angle and a given time of day always sits at the same angle
+2. THE Day_Gauge SHALL draw the `Gauge_Track` over the `Gauge_Window` only, leaving the `Gauge_Gap` bare
+3. THE Day_Gauge SHALL place the `Gauge_Gap` at the bottom of the circle, so the reading runs from a visible start on one side to a visible end on the other
+4. THE Day_Gauge SHALL draw an outer arc for `Work_Session` records and an inner arc for `Activity_Segment` records, coloured by `Project`
+5. THE Day_Gauge SHALL draw `Uncovered_Time` on the inner arc with the treatment used by the `Uncovered_Marker`
+6. THE Day_Gauge SHALL graduate the `Gauge_Track` with a mark at every hour, a longer mark every three hours, and a numeral every three hours
+7. THE Day_Gauge SHALL NOT graduate or number the `Gauge_Gap`, so that work falling there reads as leaving the expected window rather than continuing along a scale
+8. WHEN `Tracked_Time` falls outside the `Gauge_Window`, THE Day_Gauge SHALL draw it as an `Overtime_Arc` in the `Gauge_Gap` without clipping or rescaling anything
+9. WHEN an `Overtime_Arc` is present, THE Day_Gauge SHALL mark the end of the `Gauge_Track` and label the far end of the arc with the time it reached, because the `Gauge_Gap` carries no scale to read from
+10. WHEN `Tracked_Time` covers the whole `Logical_Day`, THE Day_Gauge SHALL close into a complete circle
+11. THE Day_Gauge SHALL place the start and stop control at the exact centre of the circle
+12. THE Day_Gauge SHALL show the elapsed time of the `Open_Session` above the circle, not inside it
+13. THE Day_Gauge SHALL render its numerals well below the contrast required of body text, so the dial reads as background orientation rather than as data
+14. THE Day_Gauge SHALL take the `Gauge_Window` from the server rather than assuming it
+15. THE Worklog_UI SHALL use the same angular mapping on every `Day_Gauge`, so two days can be compared by shape alone

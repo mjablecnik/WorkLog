@@ -642,7 +642,19 @@ export type DaySummary = {
   coveredSeconds: number;
   uncoveredSeconds: number;
   sessionCount: number;                 // sessions that began in this day — Requirement 8.9
+  longestBlockSeconds: number;          // longest uninterrupted session — Requirement 8.11
+  overtimeSeconds: number;              // Overtime — tracked time outside the Gauge_Window (Req 8.12)
   byProject: ProjectTotal[];
+};
+
+export type DaysRangeResponse = {
+  days: DaySummary[];
+  /**
+   * The window holding the middle 90 % of tracked time across the range, as
+   * wall-clock times in the server zone. The interface offers it as a better
+   * Gauge_Window once real habits are known (Requirement 8.13).
+   */
+  suggestedWindow: { start: string; end: string };   // "07:20", "01:40"
 };
 ```
 
@@ -697,6 +709,8 @@ export type Config = {
   passphraseHash: string;       // WORKLOG_PASSPHRASE_HASH, required, argon2id
   timezone: string;             // TIMEZONE, default Europe/Prague
   dayStartHour: number;         // DAY_START_HOUR, default 3
+  gaugeStart: string;           // GAUGE_START, default '06:00'
+  gaugeEnd: string;             // GAUGE_END, default '00:00'
   allowDayBoundaryChange: boolean; // ALLOW_DAY_BOUNDARY_CHANGE, default false
   corsOrigins: string[];        // CORS_ORIGINS
   appEnv: 'development' | 'production';

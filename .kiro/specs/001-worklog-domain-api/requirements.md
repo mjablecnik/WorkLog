@@ -36,6 +36,8 @@ The application is single-user and has no accounts. The browser authenticates wi
 - **Uncovered_Policy**: The caller-selected rule for what happens to the part of a request that falls outside `Tracked_Time` — one of `clip`, `extend`, `reject`
 - **Project**: A named entity an `Activity_Entry` is attributed to
 - **Logical_Day**: The day window used for grouping, running from `DAY_START_HOUR` on one calendar date to `DAY_START_HOUR` on the next, evaluated in `TIMEZONE`
+- **Gauge_Window**: The stretch of the day the interface draws as its expected working hours, given by `GAUGE_START` and `GAUGE_END`
+- **Overtime**: `Tracked_Time` falling outside the `Gauge_Window`
 - **Dry_Run**: A request that is validated and evaluated in full but writes nothing, returning the outcome the same write would have produced
 - **Auth_Hook**: The SvelteKit `handle` hook in `src/hooks.server.ts` that authenticates every request before it reaches a route
 - **Browser_Session**: The authenticated state of the browser, carried by an HttpOnly session cookie
@@ -188,6 +190,10 @@ The application is single-user and has no accounts. The browser authenticates wi
 8. WHEN a GET request is received at `/api/days/{date}` for a day holding no records, THE Worklog_Server SHALL return HTTP 200 with empty collections and zero totals rather than HTTP 404
 9. WHEN a GET request is received at `/api/days` with `from` and `to` query parameters, THE Worklog_Server SHALL return HTTP 200 with one summary object per `Logical_Day` in the range, each carrying its date, the totals defined in criteria 4 and 5, and the number of `Work_Session` records that began in it
 10. IF the range requested at `/api/days` spans more than 366 `Logical_Day` values, THEN THE Worklog_Server SHALL return HTTP 400 with error code `RANGE_TOO_LARGE`
+11. THE Worklog_Server SHALL include in every day summary the duration of the longest uninterrupted `Work_Session` of that day
+12. THE Worklog_Server SHALL include in every day summary the amount of `Tracked_Time` that falls outside the `Gauge_Window`, so the interface can report overtime
+13. THE Worklog_Server SHALL include in a multi-day response the earliest and latest instant, expressed as a time of day, between which 90 percent of the range's `Tracked_Time` falls, so the interface can suggest a `Gauge_Window` fitted to real habits
+14. THE Worklog_Server SHALL expose the configured `GAUGE_START` and `GAUGE_END` to clients
 
 ### Requirement 9: Coverage and Gaps
 
@@ -281,6 +287,8 @@ The application is single-user and has no accounts. The browser authenticates wi
 8. THE Worklog_Server SHALL read its configuration from environment variables and from a `.env` file when present, and SHALL exit with a non-zero status when a required variable is missing
 9. THE Worklog_Server SHALL take its version from the `package.json` manifest, which is the single source of truth for it
 10. THE Worklog_Server SHALL listen on the port given by the `PORT` environment variable, defaulting to `3000`
+11. THE Worklog_Server SHALL read the `Gauge_Window` from `GAUGE_START` and `GAUGE_END`, defaulting to `06:00` and `00:00`
+12. IF `GAUGE_START` and `GAUGE_END` do not describe a window between 1 and 24 hours long, THEN THE Worklog_Server SHALL log an error and refuse to start
 
 ### Requirement 14: Dry Run
 

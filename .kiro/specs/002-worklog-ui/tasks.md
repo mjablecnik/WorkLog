@@ -64,15 +64,16 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - Run `bun run check && bun run test tests/lib` and confirm the application starts, login works, the shell renders and the language switches without a reload
 
 - [ ] 3. Day timeline
-  - [ ] 3.1 Implement the timeline geometry in `src/modules/day/components/timeline-geometry.ts`
-    - `visibleRange` collects every record plus `now` when the day is today, rounds outward to whole hours, pads one hour each side clamped to the `Logical_Day` bounds, and falls back to 08:00–18:00 for an empty day
-    - `toPercent` maps an instant into the range; `hourTicks` returns the whole hours inside it
-    - Plain TypeScript with no DOM access, so it can be tested as functions
-    - _Requirements: 4.2_
+  - [ ] 3.1 Implement the day layout in `src/modules/day/components/timeline-geometry.ts`
+    - `layOutDay` returns one `Work_Block` per `Work_Session` with its segments, plus the breaks between blocks
+    - Segment heights are proportional **inside** a block, with a floor so a short task stays readable and keeps a 44 px target
+    - Mark a segment with its part index when its `Activity_Entry` was split, so a block can show "část 2 ze 3"
+    - Plain TypeScript with no DOM access
+    - _Requirements: 4.2, 4.3, 4.17, 4.18, 4.19_
 
-  - [ ] 3.2 Write unit tests for the timeline geometry
-    - `tests/modules/day/timeline-geometry.test.ts`: empty day falls back to 08:00–18:00; a single session pads to whole hours; a running session extends the range to `now`; ticks land on whole hours inside the range; an instant at the range start maps to 0 and at the end to 100
-    - _Requirements: 4.2_
+  - [ ] 3.2 Write unit tests for the day layout
+    - `tests/modules/day/timeline-geometry.test.ts`: one block per session; breaks between blocks become markers; heights proportional within a block; a twenty-minute segment gets the minimum height; a day of 08:00–03:00 with a four-hour break fits the available height without any block overflowing
+    - _Requirements: 4.2, 4.3, 4.17, 4.18_
 
   - [ ] 3.3 Build `DayTimeline`, `TimelineLane` and `TimelineAxis`
     - Two lanes over one shared range: the `Frame_Lane` drawing one bar per `Work_Session` with `Untracked_Time` left empty, and the `Activity_Lane` drawing one bar per `Activity_Segment` coloured by `color_index`
@@ -81,13 +82,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - An `Open_Session` on the displayed day is drawn continuing to `now` and marked as running
     - Every bar is a `<button>` in chronological DOM order carrying an `aria-label` with its times, project and description; bars wide enough show the project name directly
     - `orientation` prop switches the axis between horizontal and vertical; the caller picks it from a media query
+    - Build `WorkBlock` and `BreakMarker`: each block carries its start, end and duration; a break between blocks is one fixed-height row naming its duration and bounds
     - Consecutive segments too short to render as a usable target merge into one marker rather than becoming unclickable slivers; a session continuing past the displayed day reaches the axis edge marked as continuing
-    - _Requirements: 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.12, 4.13, 4.15, 4.16, 11.9, 14.10_
+    - _Requirements: 4.1, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.13, 4.14, 4.16, 4.17, 4.19, 4.20, 11.9, 14.10_
 
   - [ ] 3.4 Wire the timeline activation handlers
     - Activating an `Activity_Segment` bar opens the `Activity_Dialog` for its entry; activating a `Work_Session` bar opens the `Session_Dialog`; activating an uncovered stretch opens the `Activity_Dialog` in `Explicit_Mode` prefilled with exactly that stretch
     - An empty `Logical_Day` renders an empty state inviting the user to start the timer
-    - _Requirements: 4.9, 4.10, 4.11, 4.14_
+    - _Requirements: 4.10, 4.11, 4.12, 4.15_
 
   - [ ] 3.5 Write component tests for `DayTimeline`
     - `tests/components/day-timeline.test.ts`: one bar per session and per segment; uncovered stretches marked; bars in chronological DOM order; every bar has an accessible name containing its times; an entry split into two segments shows the shared-identity marker; a running session is marked; the empty day shows the empty state; a bar's label uses the ink `labelInkOn` returns for its slot
@@ -171,14 +173,39 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Never treat the local count as truth: sync on load, on `visibilitychange` back to visible, and after every start and stop
     - _Requirements: 3.3, 3.6, 3.8_
 
+  - [ ] 6.1b Implement the gauge geometry in `src/modules/timer/components/gauge-geometry.ts`
+    - `createGaugeGeometry(bounds, window, cx, cy)` maps the whole `Logical_Day` onto 360°, so one hour is a fixed angle and a clock time always lands at the same place
+    - `arc(from, to, r)` returns an SVG path; `graduations()` returns hour marks **inside the window only**
+    - An instant beyond the window returns an angle past `trackEnd` — never clamped, never rescaled
+    - Take the window from the server's `/api/health`, never assume it
+    - Plain TypeScript with no DOM access
+    - _Requirements: 16.1, 16.2, 16.6, 16.7, 16.8, 16.14, 16.15_
+
+  - [ ] 6.1c Write unit tests for the gauge geometry
+    - `tests/modules/timer/gauge-geometry.test.ts`: one hour is exactly 15°; the same clock time gives the same angle on any day; the default `06:00 → 00:00` window yields a 270° track and a 90° gap; graduations stop at the window edge; an instant past the window returns an angle beyond `trackEnd`; a 24-hour day closes the circle
+    - _Requirements: 16.1, 16.2, 16.6, 16.7, 16.8, 16.10, 16.15_
+
+  - [ ] 6.1d Build `DayGauge`
+    - Outer arc for `Work_Session` records, inner arc coloured by `Project`, `Uncovered_Time` dashed
+    - Track drawn over the window only; the gap left completely bare, with no marks and no numerals
+    - Graduation at every hour, longer at three and six, numeral every three hours, all inside the window
+    - Numerals rendered at about 1.5:1 contrast — deliberately below body text, because the dial is orientation and not data
+    - Work outside the window renders as an `Overtime_Arc` floating in the gap; mark the track end and label the arc's far end with the time it reached, since the gap carries no scale
+    - Place the start/stop control at the exact centre; the elapsed readout goes above the circle
+    - _Requirements: 16.2, 16.3, 16.4, 16.5, 16.6, 16.7, 16.8, 16.9, 16.10, 16.11, 16.12, 16.13_
+
+  - [ ]* 6.1e Write a component test for `DayGauge`
+    - `tests/components/day-gauge.test.ts`: a day inside the window draws no arc past `trackEnd`; a day ending at 03:00 draws one and labels it; a 24-hour day closes the circle; the gap contains no `<line>` or numeral; the control sits at the centre coordinates
+    - _Requirements: 16.7, 16.8, 16.9, 16.10, 16.11_
+
   - [ ] 6.2 Build `TimerControl` and the timer page
     - A single start action when no `Open_Session` exists and a single stop action when one does, both form actions with `use:enhance` applying the change optimistically and rolling back with the reason on failure
     - Display the running session elapsed time, the day's total `Tracked_Time`, and the day's total `Uncovered_Time`
     - Reachable by tab, activated by both Enter and Space
     - The page lives at the root path `/`, so opening the application lands on the timer
-    - The page shows a compact `Day_Timeline` of the current `Logical_Day` and offers `Quick_Log`
+    - The page shows the `Day_Gauge` of the current `Logical_Day` and offers `Quick_Log`
     - A stale session is called out with an offer to stop it at a time the user picks; a start refused for an existing or overlapping session explains which session is in the way
-    - _Requirements: 1.6, 3.1, 3.2, 3.4, 3.5, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14, 10.6_
+    - _Requirements: 1.6, 3.1, 3.2, 3.4, 3.5, 3.9, 3.10, 3.11, 3.12, 3.13, 3.14, 10.6, 16.11, 16.12_
 
   - [ ] 6.3 Implement the tab title
     - While an `Open_Session` exists, write the running elapsed time into `document.title` from the same store that feeds the on-screen readout, so the two cannot disagree
@@ -226,12 +253,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Show the average `Tracked_Time` per day that holds at least one `Work_Session` for multi-day ranges
     - Present every chart's numbers as a table beside it, which is also what satisfies the light-mode relief rule
     - An empty range shows an empty state rather than an empty chart
-    - A `DayRhythm` strip shows where in each day the work actually fell — one narrow timeline row per day of the range, coloured by project — because knowing the shape of a day is the thing totals cannot tell you
-    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 14.10_
+    - A `DayRhythm` strip shows where in each day the work actually fell — one narrow row per day on a shared `03:00 → 03:00` axis, coloured by project, with `Uncovered_Time` hatched
+    - `NightStats` shows the range's `Overtime`, its longest uninterrupted `Work_Session`, and how much fell after the configurable evening hour (default 21:00)
+    - When the server's `suggestedWindow` differs from the configured `Gauge_Window` by more than 30 minutes at either end, offer it as a suggestion — after a few weeks the window is fitted to real habits instead of guessed
+    - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10, 12.12, 12.13, 12.14, 12.15, 14.10_
 
   - [ ] 8.3 Write component tests for the statistics charts
-    - `tests/components/stats.test.ts`: the breakdown sorts descending and folds an eighth project into Other; the stack renders one bar per day and navigates on activation; the empty range shows the empty state; every chart's numbers appear as text
-    - _Requirements: 12.4, 12.5, 12.7, 12.8, 12.9_
+    - `tests/components/stats.test.ts`: the breakdown sorts descending and folds an eighth project into Other; the stack renders one bar per day and navigates on activation; the empty range shows the empty state; every chart's numbers appear as text; `DayRhythm` places a 21:00–03:00 session in the right part of the strip; the window suggestion appears only when it differs by more than 30 minutes
+    - _Requirements: 12.4, 12.5, 12.7, 12.8, 12.9, 12.10, 12.12, 12.13, 12.14, 12.15_
 
 - [ ] 9. Feedback, loading and error states
   - [ ] 9.1 Implement loading and progress states
@@ -308,6 +337,9 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - Error `message` values from the server are Paraglide keys, not prose. Render the translation; never show a raw code to the user.
 - `Interval` is half-open `[start, end)` in the interface exactly as on the server. A session ending at 12:00 and the next starting at 12:00 do not overlap, and the timeline must not draw a gap between them.
 - **Docker in this sandbox**: `docker compose` is blocked. Start PostgreSQL for E2E with plain `docker run` on the sandbox's own network and reach it by container name. The `sandbox-docker-net` skill has the details.
+- **The gauge and the timeline answer different questions and give up different things.** The gauge keeps time proportional everywhere so the shape of a day is comparable; the timeline collapses breaks so entries stay readable. Do not "fix" either by making it behave like the other.
+- **The gauge's gap is bare on purpose.** Graduating the whole circle would make work past the window read as further along the scale instead of outside the day. That is also why an `Overtime_Arc` needs its own end label — nothing else in the gap can be read against.
+- The proportional day axis was tried and rejected: with a real 08:00–03:00 day and a four-hour evening break it spent 21 % of the height showing nothing and rendered a twenty-minute task 13 px tall.
 - Playwright browsers are already installed at `/opt/playwright-browsers`. Never run `playwright install` in this sandbox.
 - Test directories mirror the source tree: `tests/routes/api/…` for routes, `tests/modules/<feature>/components/…` for feature components, `tests/lib/…` for shared code.
 - Commits follow Conventional Commits with the author `Martin Jablečník <martin.jablecnik@email.cz>` and carry no tool attribution trailers.

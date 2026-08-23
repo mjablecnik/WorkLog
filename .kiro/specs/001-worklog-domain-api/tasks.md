@@ -21,11 +21,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 1.2 Implement configuration in `src/lib/server/core/config.ts`
     - Define `Config` and `loadConfig()` per design component 11, reading `version` from `package.json`
-    - Defaults: `PORT=3000`, `TIMEZONE=Europe/Prague`, `DAY_START_HOUR=3`, `APP_ENV=production`, `DB_QUERY_TIMEOUT_SECONDS=5`, `RATE_LIMIT_PER_MINUTE=120`, `SESSION_DURATION_HOURS=720`, `MAX_OPEN_SESSION_HOURS=12`, `MIN_INTERVAL_SECONDS=60`, `ALLOW_DAY_BOUNDARY_CHANGE=false`
+    - Defaults: `PORT=3000`, `TIMEZONE=Europe/Prague`, `DAY_START_HOUR=3`, `GAUGE_START=06:00`, `GAUGE_END=00:00`, `APP_ENV=production`, `DB_QUERY_TIMEOUT_SECONDS=5`, `RATE_LIMIT_PER_MINUTE=120`, `SESSION_DURATION_HOURS=720`, `MAX_OPEN_SESSION_HOURS=12`, `MIN_INTERVAL_SECONDS=60`, `ALLOW_DAY_BOUNDARY_CHANGE=false`
+    - Reject a `Gauge_Window` shorter than 1 hour or longer than 24
     - Validate: `DATABASE_URL` non-empty; `WORKLOG_API_TOKEN` at least 32 characters; `WORKLOG_PASSPHRASE_HASH` present and parseable as argon2id; `DAY_START_HOUR` in 0..23; `TIMEZONE` loadable
     - Reject `CORS_ORIGINS=*` unless `APP_ENV` is `development`
     - Throw once listing every problem, not just the first
-    - _Requirements: 10.4, 10.5, 10.9, 11.16, 11.17, 13.6, 13.8, 13.9, 13.10_
+    - _Requirements: 10.4, 10.5, 10.9, 11.16, 11.17, 13.6, 13.8, 13.9, 13.10, 13.11, 13.12_
 
   - [ ] 1.3 Implement logging and request identity
     - `src/lib/server/core/logger.ts`: JSON lines to stdout carrying `timestamp`, `level`, `message`, `requestId`; a redaction helper used wherever a secret could reach a log call
@@ -327,16 +328,18 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 8.7 Implement the day, coverage and health routes
     - `days/[date]/+server.ts` returns bounds, sessions and entries with their true bounds, coverage, and totals **clamped to the day**, including orphans and archived projects; an empty day returns 200 with zeroes
-    - `days/+server.ts` returns one `DaySummary` per `Logical_Day` carrying its date, totals, per-project breakdown and session count; spans over 366 days rejected
+    - `days/+server.ts` returns one `DaySummary` per `Logical_Day` carrying its date, totals, per-project breakdown, session count, longest uninterrupted block and overtime outside the `Gauge_Window`; the range response additionally carries `suggestedWindow`, the span holding the middle 90 % of tracked time; spans over 366 days rejected
     - `coverage/+server.ts` returns `tracked`, `covered`, `uncovered` and `untracked`; `min_gap_seconds` filters the returned list only and never the totals; range limits as elsewhere
-    - `health/+server.ts` is the `Health_Endpoint`: 200 with status `ok`, the version, the effective `TIMEZONE` and `DAY_START_HOUR`, without a credential; 503 `degraded` when the database is unreachable or migrations are unapplied
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 10.8, 13.1, 13.2, 13.3, 13.4_
+    - `health/+server.ts` is the `Health_Endpoint`: 200 with status `ok`, the version, the effective `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START` and `GAUGE_END`, without a credential; 503 `degraded` when the database is unreachable or migrations are unapplied
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 10.8, 13.1, 13.2, 13.3, 13.4_
 
   - [ ] 8.8 Write tests for the day, coverage and health routes
     - `tests/api/days.test.ts`: a populated day returns correct totals and per-project seconds; an empty day returns zeroes; a malformed date 400; a 400-day range `RANGE_TOO_LARGE`; **a session spanning the 03:00 boundary appears in both days with its true bounds but contributes its own part to each day's total, and the two parts sum to its full length**
+    - `longestBlockSeconds` picks the longest single session, not the day total; `overtimeSeconds` counts only tracked time outside `GAUGE_START`–`GAUGE_END`; a day ending at 03:00 against the default window reports 3 hours of overtime
+    - `suggestedWindow` over a seeded week brackets the middle 90 % of tracked time and ignores a single outlying night
     - `tests/api/coverage.test.ts`: `covered` and `uncovered` reconstruct `tracked`; `untracked` holds the breaks; `min_gap_seconds` filters the list while the totals stay unchanged; `from` after `to` 400
     - `tests/api/health.test.ts`: 200 with a reachable migrated database carrying timezone and day start; 503 when the database is closed; 503 when a migration is pending; no credential required
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9, 8.10, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 10.7, 10.8, 13.1, 13.2, 13.3, 13.4_
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 9.1, 9.3, 9.4, 9.5, 9.6, 9.7, 10.7, 10.8, 13.1, 13.2, 13.3, 13.4_
 
 - [ ] 9. Checkpoint — API complete
   - Run `bun run check && bun run test` with PostgreSQL running
@@ -377,7 +380,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
   - [ ] 11.2 Write `fly.toml`
     - `app = "worklog"`, `primary_region = "fra"`, `internal_port = 3000`, `force_https`, health check against `/api/health`
-    - `[env]` carries only non-secret configuration — `PORT`, `TIMEZONE`, `DAY_START_HOUR`, `APP_ENV`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`
+    - `[env]` carries only non-secret configuration — `PORT`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `APP_ENV`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`
     - Never place `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH` or `DATABASE_URL` in this file
     - _Requirements: 11.16, 13.1_
 

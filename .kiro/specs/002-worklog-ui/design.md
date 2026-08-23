@@ -4,7 +4,11 @@
 
 The `Worklog_UI` is the browser half of the Worklog SvelteKit application. It reads through load functions, writes through form actions, and reaches the REST routes from `001-worklog-domain-api` only where an interactive round trip is genuinely needed: the `Dry_Run` behind every `Change_Preview`, and the timer state refresh.
 
-The interface is organized around one idea: **the day is a picture, not a list**. The `Day_Timeline` draws the timer frame and the logged activities against a single time axis, so a break inside a three-hour entry is visible rather than something the user has to infer from two rows in a table. Everything else in the day page hangs off that picture — clicking a bar edits it, clicking a gap fills it.
+The interface is organized around one idea: **the day is a picture, not a list**. It is drawn twice, for two different jobs.
+
+The `Day_Gauge` on the timer page answers *what shape did today have* — a circle where a given clock time always sits at the same angle, so a glance tells you whether the day was one long block or six scattered ones, and whether it ran past your usual hours. The `Day_Timeline` on the day page answers *what did I do and where do I still owe a description* — vertical, one block per session, breaks collapsed to a labelled row so a four-hour evening gap costs one line instead of a fifth of the screen.
+
+They are deliberately different. The gauge keeps time proportional everywhere and sacrifices legibility of short entries; the timeline keeps entries legible and sacrifices proportionality across breaks. Each is right for its own question, and having both is what lets each stay honest about what it gives up.
 
 The second idea is that **nothing is written blind**. Because the server reconciles every write against the timer frame, a change can remove time the user did not intend to touch. Every such write goes through a `Dry_Run` first, and the result is shown as a `Change_Preview` the user has to confirm. The browser never recomputes the reconciliation itself — it would be a second implementation of the hardest logic in the project, and it would drift.
 
@@ -75,31 +79,40 @@ stateDiagram-v2
 
 The `Editing → Saving` shortcut exists because a change to only a description or a `Project` cannot move any segment, so a preview would be noise. Anything touching times or duration goes through `Previewing`.
 
-### Day Timeline Geometry
+### Two Readings of One Day
 
-The `Day_Timeline` maps time to a percentage along one axis. The visible range is not the whole `Logical_Day` — an empty 03:00–03:00 span would squeeze a working day into a third of the width. Instead:
-
-1. Collect every record of the day plus `now` when the day is today.
-2. Take the earliest start and the latest end, and round outward to whole hours.
-3. Pad by one hour on each side, clamped to the `Logical_Day` bounds.
-4. When the day holds no records at all, fall back to 08:00–18:00.
+**The gauge** maps the whole `Logical_Day` onto 360°, so an hour is 15° and a clock time always lands at the same angle. The `Gauge_Track` covers only the `Gauge_Window`; the rest of the circle is bare. With the default `06:00 → 00:00` that is 270° of track and a 90° opening at the bottom.
 
 ```
-pct(t) = (t − visibleStart) / (visibleEnd − visibleStart) × 100
+              12        15
+         09  ╌╌┼╌╌╌╌╌╌╌╌┼╌╌  18
+       ╱                        ╲
+     06                          21        track: graduated, numbered
+       ╲                        ╱          gap:   nothing at all
+         ╌╌╌╌╌╌      ╌╌╌╌╌╌╌╌╌╌            
+        00 ┘  bare gap  └ (work here
+                          reads as overtime)
 ```
 
-Bars are absolutely positioned by `left`/`width` when horizontal and `top`/`height` when vertical. The two lanes share one range object, so they always line up.
+Work outside the window is drawn in the gap with no track under it, so it visibly leaves the dial rather than continuing along it — and because there is no scale there, the arc carries its own end label.
+
+**The timeline** stacks one `Work_Block` per session, each with its own local axis, and collapses the break between two blocks into a single `Break_Marker`:
 
 ```
-        08:00      10:00      12:00      14:00      16:00      18:00
-        │          │          │          │          │          │
-frame   ████████████████████████████████████│  │███████████████████
-                                        14:48  15:12
-activity ▓▓▓▓ API ▓▓▓▓│░ meeting ░│▒▒▒▒▒▒▒▒▒│  │▓▓▓ API ▓▓▓│//////
-                                                              ↑ uncovered
+08:00 – 12:30  ·  4 h 30 min
+ ┃ ┌──────────────────────────┐
+ ┃ │ Trindade CRM             │   proportional inside the block
+ ┃ ├──────────────────────────┤
+ ┃ │ Worklog                  │
+ ┃ └──────────────────────────┘
+ ╌╌╌╌╌  pauza 4 h 00 min  ╌╌╌╌╌   one row, not a fifth of the screen
+21:00 – 03:00  ·  6 h 00 min
+ ┃ ┌──────────────────────────┐
 ```
 
-Bars are rendered in chronological DOM order so keyboard tabbing follows the day. Each is a `<button>` carrying an `aria-label` with its times, project and description, so the picture is not the only way to read it.
+Every segment gets a floor on its rendered height, so a twenty-minute task stays readable and clickable instead of collapsing to a sliver.
+
+Both readings render bars in chronological DOM order, each a `<button>` with an `aria-label` carrying its times, project and description — the picture is never the only way to read the day.
 
 ## Project Structure
 
@@ -133,8 +146,10 @@ worklog/
 │   │       ├── palette.ts               # the eight validated categorical slots
 │   │       └── format.ts                # duration, time and date formatting
 │   ├── modules/
-│   │   ├── timer/                       # TimerControl, elapsed store, tab title
+│   │   ├── timer/                       # TimerControl, Day_Gauge, elapsed store
 │   │   │   ├── schema.ts  actions.ts  elapsed.svelte.ts
+│   │   │   ├── components/DayGauge.svelte
+│   │   │   ├── components/gauge-geometry.ts   # PURE: angleOf, arc, graduations
 │   │   │   ├── pages/TimerPage.svelte
 │   │   │   └── components/TimerControl.svelte
 │   │   ├── day/                         # the centrepiece
@@ -157,7 +172,8 @@ worklog/
 │   │   └── stats/
 │   │       ├── query.ts
 │   │       ├── pages/StatsPage.svelte
-│   │       └── components/ProjectBreakdown.svelte, DayStack.svelte, CoverageMeter.svelte
+│   │       └── components/ProjectBreakdown.svelte, DayStack.svelte,
+│   │                       DayRhythm.svelte, NightStats.svelte, CoverageMeter.svelte
 │   └── routes/
 │       ├── +layout.svelte  +layout.server.ts  +error.svelte
 │       ├── +page.svelte  +page.server.ts               # timer
@@ -235,6 +251,8 @@ Beyond eight projects the index wraps, so two projects can share a hue. This is 
 
 ### 2. Day Timeline (`src/modules/day/components/DayTimeline.svelte`)
 
+The day page lays the day out **vertically, one `Work_Block` per `Work_Session`**, with breaks collapsed into a `Break_Marker`. A single proportional axis was tried and rejected: on a real day of 08:00–03:00 with a four-hour evening break, that break consumed 21 % of the height while showing nothing, and a twenty-minute task rendered 13 px tall — unreadable and below the 44 px touch target. Collapsing the break costs the property that distance equals time *across* blocks; proportions still hold *inside* a block, which is where the reading actually happens. The shape of the whole day is read from the `Day_Gauge` instead.
+
 ```ts
 type Interval = { start: Date; end: Date };
 
@@ -254,16 +272,71 @@ type DayTimelineProps = {
 };
 
 /** Pure geometry, unit tested without a DOM. */
-export function visibleRange(bounds: Interval, sessions: WorkSession[], entries: ActivityEntry[], now: Date): Interval;
-export function toPercent(t: Date, range: Interval): number;
-export function hourTicks(range: Interval): Date[];
+/** One layout group per Work_Session, with the breaks between them collapsed. */
+export type DayLayout = {
+  blocks: { session: WorkSession; segments: LaidOutSegment[]; heightPx: number }[];
+  breaks: { after: number; interval: Interval }[];   // index of the block it follows
+};
+
+export type LaidOutSegment = {
+  segment: ActivitySegment | null;   // null for an Uncovered_Time stretch
+  entry: ActivityEntry | null;
+  heightPx: number;                  // proportional inside the block, never below MIN_BLOCK_PX
+  partIndex: number | null;          // "part 2 of 3" when the entry was split
+  partCount: number | null;
+};
+
+export function layOutDay(
+  sessions: WorkSession[], entries: ActivityEntry[], uncovered: Interval[],
+  availablePx: number, now: Date
+): DayLayout;
 ```
 
-`visibleRange`, `toPercent` and `hourTicks` live in a plain `.ts` module beside the component so they can be tested as functions rather than through the DOM.
+`layOutDay` lives in a plain `.ts` module beside the component so it can be tested as a function rather than through the DOM. It enforces a minimum rendered height per segment, which is what keeps a twenty-minute task readable and clickable.
 
 Orientation is chosen by the caller from a media query, not by the component, so the timer page can force `compact` horizontal on any width.
 
 Dragging a session edge is a pointer-event interaction on a handle element, snapping to five-minute steps. On release the component does **not** commit — it calls `onSessionResize`, which opens the `SessionDialog` already carrying the dragged values, so the change still passes through a `Change_Preview`.
+
+
+### 2a. Day Gauge (`src/modules/timer/components/DayGauge.svelte`, `gauge-geometry.ts`)
+
+The timer page's centrepiece. The whole `Logical_Day` maps onto a full circle, so **one hour is a fixed 15°** and a given time of day always sits at the same angle. The `Gauge_Track` is drawn only over the `Gauge_Window`; everything outside it is bare.
+
+```ts
+export type GaugeGeometry = {
+  /** Angle in degrees for an instant. Absolute: the same clock time always returns the same angle. */
+  angleOf(t: Date): number;
+  /** SVG path for an arc between two instants at a given radius. */
+  arc(from: Date, to: Date, radius: number): string;
+  /** Hour marks inside the window only — the gap carries none. */
+  graduations(): { angle: number; hour: number; major: boolean; labelled: boolean }[];
+  trackStart: number;   // degrees
+  trackEnd: number;     // degrees
+};
+
+export function createGaugeGeometry(
+  bounds: Interval,          // the Logical_Day
+  window: { start: string; end: string },   // GAUGE_START / GAUGE_END from the server
+  cx: number, cy: number
+): GaugeGeometry;
+```
+
+With the default window `06:00 → 00:00` the arithmetic falls out cleanly: 24 h on 360° gives 15°/hour, the 18-hour window is **270°** of track and the 6-hour remainder a **90°** gap at the bottom. That is the classic gauge proportion, and it is a consequence of the window rather than a drawing choice — a different window simply yields a different opening.
+
+**Why the gap is bare.** Graduating the whole circle would make work past the window read as "further along the scale". Leaving the gap empty makes it read as *leaving the expected day*. The cost is that an `Overtime_Arc` has nothing to measure against, so it carries its own end label in the accent colour — that label is the only reason the overrun's extent stays readable.
+
+| Element | Treatment |
+|---|---|
+| Track, outer | `Work_Session` arcs, 10 px |
+| Track, inner | `Activity_Segment` arcs by project, 6 px; `Uncovered_Time` dashed |
+| Graduations | every hour; longer at 3 h and 6 h; numeral every 3 h, window only |
+| Numerals | 17 % ink — about 1.5:1, deliberately below body-text contrast |
+| `Gauge_Gap` | nothing at all |
+| `Overtime` | same stroke widths, floating in the `Gauge_Gap`, end-labelled in the accent |
+| Centre | the start/stop control; elapsed time sits **above** the circle |
+
+`angleOf` is pure and lives in `gauge-geometry.ts` beside the component, so the mapping is unit tested without a DOM — the same treatment `timeline-geometry.ts` gets.
 
 ### 3. Change Preview (`src/modules/day/components/ChangePreview.svelte`, `src/modules/day/dry-run.ts`)
 
@@ -347,6 +420,8 @@ A combobox over non-archived projects with substring search, keyboard navigation
 | `CoverageMeter` | horizontal meter with a hero number | one ratio — described share of `Tracked_Time` — reads better as a figure than a chart |
 | `ProjectBreakdown` | horizontal bar chart, one bar per project, sorted descending | comparing magnitudes across a nominal category; a donut makes small shares unreadable |
 | `DayStack` | stacked vertical bars, one per `Logical_Day`, segments by project | change over time with composition; the day total stays readable as bar height |
+| `DayRhythm` | one narrow horizontal strip per `Logical_Day`, on a shared `03:00 → 03:00` axis | shows **where in the day** the work fell — the thing totals cannot tell you, and the reason a night pattern is visible at a glance |
+| `NightStats` | plain figures | overtime, longest uninterrupted block, work after the evening hour — the numbers that matter when the day routinely runs past midnight |
 
 All three follow the mark specs: 2px surface gaps between stacked segments and adjacent bars, 4px rounded data-ends anchored to the baseline, recessive gridlines, hover tooltips, and a legend whenever two or more projects appear. Every chart is accompanied by its numbers in a table, which is also what satisfies the light-mode relief rule.
 
@@ -432,7 +507,9 @@ A write that succeeds but reports `discarded` intervals or `unplacedMinutes` is 
 
 ## Testing Strategy
 
-**Unit tests** (Vitest, node) — `tests/modules/day/timeline-geometry.test.ts` covers `visibleRange`, `toPercent` and `hourTicks`: an empty day falls back to 08:00–18:00; a day with one session pads to whole hours; a running session extends the range to `now`; ticks land on whole hours inside the range. `tests/lib/viz/format.test.ts` covers duration, time and day-label formatting in both locales, including "today". `tests/lib/viz/palette.test.ts` asserts the palette has eight slots and that `color_index` values outside 0..7 wrap rather than throw.
+**Unit tests** (Vitest, node) — `tests/modules/timer/gauge-geometry.test.ts` pins the mapping: one hour is exactly 15°; the same clock time yields the same angle on any day; the default window produces a 270° track and a 90° gap; graduations exist only inside the window; an instant past the window returns an angle beyond `trackEnd` rather than being clamped; a full day closes the circle.
+
+`tests/modules/day/timeline-geometry.test.ts` covers `layOutDay`: one block per session; breaks between blocks become markers; segment heights are proportional **within** a block; a twenty-minute segment still receives the minimum height; a day of 08:00–03:00 with a four-hour break lays out without any block exceeding the available height. `tests/lib/viz/format.test.ts` covers duration, time and day-label formatting in both locales, including "today". `tests/lib/viz/palette.test.ts` asserts the palette has eight slots and that `color_index` values outside 0..7 wrap rather than throw.
 
 **Component tests** (Vitest, jsdom, `@testing-library/svelte`) — one file per significant component in `tests/components/`. `DayTimeline` renders one bar per session and per segment, marks uncovered stretches, orders bars chronologically in the DOM, and gives every bar an accessible name containing its times. `ChangePreview` renders each preview shape and keeps confirm disabled while loading and on rejection. `ActivityDialog` switches modes, prefills from a gap, and closes on Escape returning focus to its opener. `ProjectPicker` filters, creates inline, and is keyboard navigable.
 
