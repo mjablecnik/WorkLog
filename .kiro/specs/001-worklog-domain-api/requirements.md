@@ -212,6 +212,8 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 22. WHILE re-applying `Clipping` for a PATCH, THE Worklog_Server SHALL ignore the entry's own `Activity_Segment` records when resolving the `Placement_Anchor` as well as when testing for overlap, so that an entry cannot block or displace itself
 23. WHEN a GET request at `/api/activities` carries `order=desc`, THE Worklog_Server SHALL reverse the order of criterion 1, so that the most recent entries can be fetched without reading the whole range
 24. WHEN a GET request at `/api/activities` carries `limit`, THE Worklog_Server SHALL return at most that many entries, capped at `ACTIVITY_PAGE_SIZE`
+25. IF a PATCH at `/api/activities/{id}` supplies both `endedAt` and `durationMinutes`, THEN THE Worklog_Server SHALL return HTTP 400 with error code `AMBIGUOUS_MODE`, exactly as a create does, because the two name different modes and an entry can only be in one — without this, criteria 17 and 9 prescribe opposite things for the same request
+26. WHEN a PATCH at `/api/activities/{id}` supplies `durationMinutes` with the `date` criterion 21 requires, THE Worklog_Server SHALL set the entry's mode to `Duration_Mode`, SHALL resolve the `Placement_Anchor` within that `Target_Day` by the rules of criteria 5.5 to 5.7 and 22, SHALL walk the duration forward as a create in `Duration_Mode` does, and SHALL replace the entry's requested interval with the one the walk resolved to and its requested duration with the value supplied
 
 ### Requirement 8: Day Overview
 
@@ -346,7 +348,7 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 16. THE Worklog_Server SHALL retain the HTTP status of the original response alongside its body for an `Idempotency-Key`, and SHALL replay both
 17. THE Worklog_Server SHALL retain an `Idempotency-Key` for its full lifetime even when the `Activity_Entry` it created is deleted, so that a retry after a deletion does not create a second entry
 18. WHEN THE Worklog_Server rejects a request, THE Worklog_Server SHALL include in `details` every value a caller needs to name the obstacle — the conflicting records with their project names and descriptions, the offending field and its value, or the limit that was exceeded — so that no client has to fetch another resource to explain the failure to the user
-19. WHEN a write is rejected with `NOTHING_TO_LOG`, THE Worklog_Server SHALL report which cause applied: the resolved interval was empty, it lay wholly outside `Tracked_Time`, or it was already `Covered_Time`
+19. WHEN a write is rejected with `NOTHING_TO_LOG`, THE Worklog_Server SHALL report which cause applied: the resolved interval was empty, it lay wholly outside `Tracked_Time`, it was already `Covered_Time`, or every interval it produced was shorter than `MIN_INTERVAL_SECONDS`
 20. WHEN a write is rejected with `STALE_PREVIEW`, THE Worklog_Server SHALL report both the submitted and the current `Preview_Token`, so the caller can re-run the `Dry_Run` and show the new outcome instead of guessing what changed
 21. WHEN THE Worklog_Server returns HTTP 429 or HTTP 503, THE Worklog_Server SHALL set `Retry-After` to the seconds remaining in the current rate-limit window and to `SERVICE_RETRY_AFTER_SECONDS` respectively
 22. IF a request carries an `Idempotency-Key` a previous request used with a different body, THEN THE Worklog_Server SHALL return HTTP 409 with error code `IDEMPOTENCY_KEY_REUSED` and SHALL create nothing, because replaying the first response for a different request would silently discard the second
@@ -413,7 +415,7 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 
 1. WHEN a request to create or modify an `Activity_Entry` carries `dryRun` set to true, THE Worklog_Server SHALL evaluate it in full and return the outcome without writing anything
 2. WHEN a request to create, modify or delete a `Work_Session` carries `dryRun` set to true, THE Worklog_Server SHALL return every `Activity_Entry` that would be re-clipped, each with its project name, its project colour index, its description, and its `Activity_Segment` records as they are now and as they would become
-3. THE Worklog_Server SHALL return a `Dry_Run` response in the same shape and with the same HTTP status code as the corresponding write, with an added field marking it as a `Dry_Run`
+3. THE Worklog_Server SHALL return a `Dry_Run` response in the same shape and with the same HTTP status code as the corresponding write, except as criterion 11 provides for a write answering HTTP 204, with an added field marking it as a `Dry_Run`
 4. THE Worklog_Server SHALL apply the same validation to a `Dry_Run` as to the corresponding write, and SHALL return the same error codes for the same reasons
 5. THE Worklog_Server SHALL leave `Work_Session`, `Activity_Entry` and `Activity_Segment` records byte-identical after a `Dry_Run`
 6. THE Worklog_Server SHALL report in every `Dry_Run` response the total duration in seconds that would be removed from existing `Activity_Segment` records

@@ -1070,7 +1070,7 @@ Every code's `details` below is chosen so the interface can compose a complete s
 | `SERVICE_UNAVAILABLE` | `errors_service_unavailable` |
 | `INTERNAL_ERROR` | `errors_internal_error` |
 
-One further key is not an `ErrorCode` and is listed because `002` needs it too: `errors_login_failed`, returned by the login action for a wrong **or** an empty passphrase — Requirement 11.12 requires the two to be indistinguishable. `NOTHING_TO_LOG` carries a `reason` in its details and `002` may render three sentences under that one key; the key set itself does not branch.
+One further key is not an `ErrorCode` and is listed because `002` needs it too: `errors_login_failed`, returned by the login action for a wrong **or** an empty passphrase — Requirement 11.12 requires the two to be indistinguishable. `NOTHING_TO_LOG` carries a `reason` in its details and `002` may render four sentences under that one key; the key set itself does not branch.
 
 **The complete `fields_*` catalogue.** Every key `fieldMessageKeyFor` can return, and no
 others. `002` renders these beside the offending input:
@@ -1240,7 +1240,13 @@ export const patchActivitySchema = z.object({
   // Requirement 7.21: a duration must say which Target_Day to walk. The entry's old
   // interval cannot supply it — the whole point of the PATCH may be to move the entry.
   .refine(v => v.durationMinutes === undefined || v.date !== undefined,
-          { message: 'date is required when durationMinutes is supplied' });
+          { message: 'date is required when durationMinutes is supplied' })
+  // Requirement 7.25: a PATCH names exactly one mode, as a create does. Carrying both
+  // fields passes the two refinements above and then leaves Requirement 7.17 (become
+  // Explicit_Mode, clear the duration) and Requirement 7.9 (re-clip by the duration)
+  // prescribing opposite things for one request.
+  .refine(v => !(v.durationMinutes !== undefined && v.endedAt !== undefined),
+          { message: 'endedAt and durationMinutes must not be supplied together' });
 
 export const createSessionSchema = z.object({
   startedAt: isoOffset,
@@ -1326,7 +1332,14 @@ export const coverageQuery = z.object({
 
 export type ActivityResponse = {
   entry: ActivityEntry;                 // includes its segments and `orphaned`
-  discarded: Interval[];                // policy=clip, plus segments below MIN_INTERVAL_SECONDS
+  /**
+   * Parts of the request dropped for lying in Untracked_Time under policy `clip`
+   * (Requirement 6.6) — and NOTHING else. A segment refused by the
+   * MIN_INTERVAL_SECONDS floor is reported in `slivers` below, never here: policy
+   * `reject` must fail on a non-empty `discarded` and must not fail on a sliver,
+   * so the two cannot share a list (Requirement 6.5, and ClipResult in component 3).
+   */
+  discarded: Interval[];
   extendedSessions: WorkSession[];      // policy=extend
   unplacedMinutes: number;              // duration mode
   removedSeconds: number;               // time taken from other entries — always present
@@ -2051,7 +2064,7 @@ The wording matters: the entry does not store "what the user typed" in the infer
 
 ### Property 13: A dry run predicts the write exactly
 
-*For any* request, performing it as a `Dry_Run` and then performing it for real SHALL produce a database state matching what the `Dry_Run` reported, and the `Dry_Run` SHALL return the same status code as the real write.
+*For any* request, performing it as a `Dry_Run` and then performing it for real SHALL produce a database state matching what the `Dry_Run` reported, and the `Dry_Run` SHALL return the same status code as the real write — with exactly one exception: where the real write answers 204, the `Dry_Run` answers 200 carrying the preview body (Requirement 14.11), because a 204 has no body in which to preview anything. Every other status, 200 and 201 and every 4xx alike, SHALL be identical between the two.
 
 **Equality is over interval bounds and totals only** — the sorted `(startedAt, endedAt)` pairs of every `Activity_Segment`, the sorted `(startedAt, endedAt)` of every `Work_Session`, and the reported totals. Identifiers and timestamps are excluded by construction: the rolled-back dry run allocates UUIDs and `createdAt` values that the real write never reproduces, so comparing them would fail every time for a reason that means nothing.
 
@@ -2161,7 +2174,7 @@ All error responses use the shape from Requirement 12.2: `{ error, message, mess
 | `ACTIVITY_OVERLAP` | 409 | a request overlaps another entry's segments | `conflicts[]` of `{ entryId, projectName, colorIndex, description, interval }`, at most `ERROR_DETAIL_SAMPLE_SIZE` of them, plus `conflictCount` — Requirement 4.5 wants the entry named, not only identified |
 | `OUTSIDE_TRACKED_TIME` | 409 | policy `reject` **in `Explicit_Mode` or `Open_Mode`**, and part of the request is untracked. Never raised in `Duration_Mode`, which states no interval to fall outside anything (Requirement 6.9) | `outside[]` of intervals, `outsideSeconds` |
 | `NO_PLACEMENT_ANCHOR` | 409 | `Duration_Mode` or `Open_Mode` without `startedAt` in an empty day | `date`, `dayBounds` — the message names the day and can offer to start the timer |
-| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'`, plus `anchor` and `requested`. Three different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described" — and the client must not have to guess which (Requirement 12.20) |
+| `NOTHING_TO_LOG` | 409 | the resolved interval is empty, or `Clipping` produced no segment at all, in any mode (Requirement 6.12) | `reason`: `'empty-interval'` \| `'no-tracked-time'` \| `'already-covered'` \| `'all-slivers'`, plus `anchor`, `requested`, and for `'all-slivers'` the `slivers` themselves. Four different sentences — "nothing has passed since your last entry", "the timer was not running then", "that time is already described", "what is left is shorter than a minute" — and the client must not have to guess which (Requirement 12.20). `'all-slivers'` is reachable and none of the other three describes it: the request did overlap `Tracked_Time`, that time was not covered, and the interval was not empty; every produced segment simply fell under `MIN_INTERVAL_SECONDS` |
 | `PROJECT_ARCHIVED` | 400 | a new entry, or a PATCH, targets an archived `Project` | `projectId`, `projectName` |
 | `FUTURE_TIMESTAMP` | 400 | a supplied instant lies further ahead than `FUTURE_TOLERANCE_SECONDS` | `field`, `value`, `maxAllowed` |
 | `INTERVAL_TOO_SHORT` | 400 | a session shorter than `MIN_INTERVAL_SECONDS` | `minSeconds`, `actualSeconds` |
