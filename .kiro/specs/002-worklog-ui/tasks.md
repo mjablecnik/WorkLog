@@ -27,7 +27,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Rewrite every token reference as you port: surface → `--panel`, elevated → `--dialog`, border → `--divider`, muted → `--text-dim`, subtle → `--text-faint`, primary → `--accent`, on-primary → `--ink-on-accent`, danger → `--destructive`, input → `--field`. No aliasing shim and no second vocabulary
     - `BottomNav`, `Fab`, `TimeInput` and `SettingsMenu` do not exist in the template — write them from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour, and the modality of Requirements 14.20–14.24 is asserted here rather than assumed from it
     - `TimeInput`: a text field accepting `HH:MM` with keyboard stepping, 44 px tall (48 on mobile), parsing through `parseTimeOfDay` in the server's zone
-    - `Fab`: a 54 pixel round accent button fixed above the bottom bar, with a halo on the design's proportional rule
+    - `Fab`: a 54 pixel round accent button fixed above the bottom bar, with its own drawn halo `0 0 0 10px rgba(accent,0.09)` — the FAB is not on the timer control's ratio
     - Take into the `Design_System` from `template-crm/src/lib/ui/` only what this project uses: `elements/` (Button, Badge, Icon, Input, Select, Checkbox, Spinner, Tooltip, flags), `forms/` (FormField, DatePicker, SearchInput), `layout/` (Shell, Topbar, PageHeader, Section), `overlays/` (Modal, ConfirmDialog, Toast, ToastContainer, LoadingSkeleton, toast-store), `components/` (StatCard, EmptyState, DataTable). `layout/` holds six files of which `Sidebar` and `Breadcrumbs` are dropped; it holds **no** `BottomNav` and **no** `Fab`, and `forms/` holds no `TimeInput` — those three are written, not ported, per the bullet above
     - Do **not** port a generic `Chart` component — every statistics visual in this project is bespoke
     - Keep the Svelte 5 runes API — `$props()`, `$bindable()` — and the 44 pixel minimum touch target for everything except the `Day_Timeline` blocks
@@ -41,7 +41,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Each theme carries its own measured dim and faint opacities — dark **0.62 / 0.50**, light **0.78 / 0.66** — and neither pair is copied onto the other; the dark values were raised after faint measured 3.38:1, under the 4.5:1 the spec demands
     - Declare the surface tokens too — `--chip`, `--menu-border`, `--menu-shadow`, `--dialog-shadow`, `--grabber`, `--group`, `--segment-active`, `--footer`, `--row`, `--track`, `--meter-track`, `--hairline` — in both themes from the design's Surface Tokens table; no component may write a bare `rgba(255,255,255,…)`
     - Implement the interaction states as one rule, not per control: hover raises the surface alpha by 0.03 and the text one level, active by 0.06, disabled is `opacity: 0.4` with no hover and `aria-disabled`, focus is the ring. On accent-filled controls hover is `--accent-hover` and active drops the halo to 0.06
-    - Give every typographic role its `line-height` from the design's table — the layout budget counts it, and a 29 px block head is 29 px because of it
+    - Give every typographic role its `line-height` from the design's table — the layout budget counts it. The 29 px block head is `round(13 × 1.4) + BLOCK_HEAD_PAD_PX` (11 desktop, 7 mobile), **not** the artboard's 8 px padding; export `BLOCK_HEAD_PAD_PX` beside `BLOCK_HEAD_PX` so the two cannot drift
     - Take the light dialog tokens from the design's table exactly — `--dialog` `#FBF7F1`, `--scrim` `rgba(43,36,32,0.38)`, `--field` `rgba(0,0,0,0.05)`, `--field-active` `rgba(165,82,46,0.10)` with an inset `1px rgba(165,82,46,0.45)`, `--divider` `rgba(0,0,0,0.07)` — all of them drawn in `AddTaskLight`, none computed
     - `--destructive` is `#E06A5E` dark and `#A8321F` light, its own token, never derived from a `Palette_Slot`; add `--hairline`, `--meter-track` and `--segment-active` (`rgba(209,138,106,0.16)` dark, `rgba(165,82,46,0.14)` light — the light accent is darker and needs less of itself)
     - `src/app.css` imports Tailwind and the theme and declares an `@theme` block mapping the tokens to Tailwind tokens
@@ -240,7 +240,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - A rejection replaces the body with the translated reason and disables confirm; a loading state also keeps confirm disabled
     - When the preview reports discarded time, offer the `Untracked_Policy` choice inline with `clip` selected and `extend` available, re-running the `Dry_Run` when the choice changes
     - Write nothing until the user confirms; state in the footer that the server computed the preview
-    - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.16_
+    - The body is `aria-live="polite"` and carries `aria-busy` while the `Dry_Run` is in flight, so the debounced intermediate renders are not announced and the settled outcome is announced once (Requirement 15.14)
+    - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.16, 15.14_
 
   - [ ] 5.3 Write component tests for `ChangePreview`
     - `tests/modules/day/components/change-preview.test.ts`: a two-segment split states the part count; discarded time is shown with its duration; unplaced minutes are shown; a session change lists each affected entry with before and after; the headline total is the sum of `removedSeconds` and `lostUncoveredSeconds` with both parts shown, while the record count counts only entries; an emptied entry is described in prose; a lost uncovered stretch appears as its own row marked as uncovered; a rejection disables confirm and shows the reason; the loading state disables confirm; changing the policy triggers a new preview
@@ -259,7 +260,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Render the `Change_Preview` live beneath the form, updating as the input changes — not as a separate confirmation step
     - Escape dismisses the dialog and focus returns to the control that opened it; the footer states that nothing is saved until the user confirms
     - Assert the modality rather than inheriting it from the ported `Modal`: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on its heading, focus moved in on open and Tab confined, `document.body` at `overflow: hidden` and the page root `inert` while open, and a scrim activation that does **nothing** — a write dialog holds unsaved input (Requirements 14.20–14.24). The same clause applies to `SessionDialog` and to every confirmation dialog
-    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.15, 6.16, 6.19, 7.3, 14.15_
+    - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.15, 6.16, 6.19, 7.3, 14.15, 14.20, 14.21, 14.22, 14.23, 14.24_
 
   - [ ] 5.5 Implement activity create, edit and delete actions
     - Form actions **in `src/routes/day/[date]/+page.server.ts` itself**, using `superValidate` with the shared Zod schemas and returning message keys rather than prose. Create no `src/modules/day/actions.ts`: only `+page.server.ts` and `+server.ts` may import `lib/server/**`, and the boundary test enforces exactly that
@@ -276,7 +277,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - An overlap shows which sessions conflict and does not save; an inverted interval shows the error beside the field
     - Deleting a session previews every entry that would lose time, every one that would be emptied, and the uncovered stretch that would fall outside the frame
     - The `Day_Timeline` updates without a full page reload after a change; below 768 pixels the dialog fills the screen on the same terms as the `Activity_Dialog`
-    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9, 8.10, 9.7, 14.15, 17.8_
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9, 8.10, 9.7, 14.15, 14.20, 14.21, 14.22, 14.23, 14.24, 17.8_
 
   - [ ] 5.7 Wire the session rail edges to the dialog
     - **Implement no dragging.** A block's height is proportional only within its block and every segment is clamped at `MIN_BLOCK_PX`, so the axis is non-linear the moment anything is pinned and no pixel-to-minute mapping exists that would not misreport the time being set
@@ -332,6 +333,8 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The `Gauge_Gap` carries no groove, no mark and no numeral at any coverage, including a closed circle — `GaugeNonstop` draws exactly this and is the reference
     - Work outside the window renders as an `Overtime_Arc` floating in the `Gauge_Gap` — **one per stretch, so a day that began before `GAUGE_START` and ran past `GAUGE_END` draws two** — each with a filled `r=4` accent dot at the track end it left and its own 12/500 accent label at **r = 162** on its far end
     - At full coverage emit the outer arc as a `<circle>`: an arc path back to its own start point is degenerate and paints nothing
+    - **Floor every arc at 1.5°** — six minutes — drawn centred on its true midpoint. At 0.25°/minute a two-minute segment is 0.5°, about one unit at r = 118, under a 6-unit round cap that would then be six times the mark it caps. The floor is cosmetic and changes no reported number: `arc()` returns the drawn sweep **and** the true seconds, so no caller can accidentally report the floored value
+    - **Paint order is fixed**, because floored arcs may overlap: inner arcs in chronological order of their interval start, then the `Uncovered_Time` dashes **last of all** — undescribed time is what the page exists to surface and must never end up hidden under a floored segment. On the outer ring the accent `Open_Session` is emitted after the closed arcs, for the same reason
     - Hovering an inner arc shows a label naming the project and the arc's times — a pointer enhancement, not the accessible path
     - The gauge is one `role="img"` whose `aria-label` is `timer_gauge_label` (worked, described, undescribed, and whether the timer is running); the arcs are `aria-hidden`, because an SVG `<path>` is not focusable and thirty announced arcs would be unusable. Project identity is carried in text by the `Project_Legend` beneath
     - The `Timer_Control` sits at the exact centre — 104 pixels with a 42 pixel icon (mobile 98 / 40) and the `0 0 0 12px` accent halo. The rule is a **ratio**: the control stays at or below 0.31 of the gauge box, which leaves about 66 pixels of clear space at the desktop's 340 and about 48 at the mobile's 300, because the gauge scales through its `viewBox` and the control does not

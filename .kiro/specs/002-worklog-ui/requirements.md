@@ -216,7 +216,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 8. WHEN an `Activity_Entry` is deleted, THE Worklog_UI SHALL update the `Day_Timeline` without a full page reload
 9. WHEN the displayed day holds at least one `Orphaned_Entry`, THE day page SHALL show the `Orphan_Panel` listing each of them with its `Project` and its originally requested interval, explaining that nothing of it remains inside the timer frame, because an entry with no `Activity_Segment` cannot appear on the `Day_Timeline` at all
 10. IF the displayed day holds no `Orphaned_Entry`, THEN THE day page SHALL NOT render the `Orphan_Panel` at all, rather than rendering it empty
-11. THE Orphan_Panel SHALL offer, for each listed entry, re-entering its times or deleting it, so it can never become a record the user cannot reach
+11. THE Orphan_Panel SHALL offer re-entering the times of a listed entry or deleting it, so an `Orphaned_Entry` can never become a record the user cannot reach. The two actions act on the selected row and are drawn once at the foot of the panel rather than repeated per row: at the side column's 290 pixels, a pair of pills on every row costs more height than the rows themselves
 
 ### Requirement 8: Timer Frame Editing
 

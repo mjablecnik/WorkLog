@@ -110,7 +110,7 @@ Everything needed to build this is written down. Read it in this order:
 | [`.kiro/specs/001-worklog-domain-api/`](.kiro/specs/001-worklog-domain-api/) | the domain, the data layer and the REST API — requirements, design, tasks |
 | [`.kiro/specs/002-worklog-ui/`](.kiro/specs/002-worklog-ui/) | the timer, the day timeline, projects and statistics |
 | [`.design/DESIGN.md`](.design/DESIGN.md) | the visual contract — tokens, typography, dimensions, gauge geometry |
-| [`.design/artboards/`](.design/artboards/) | 19 approved artboards; [`.design/screens/`](.design/screens/) holds their renders |
+| [`.design/artboards/`](.design/artboards/) | 21 approved artboards; [`.design/screens/`](.design/screens/) holds their renders |
 
 Each spec is three files: `requirements.md` (numbered acceptance criteria), `design.md`
 (architecture, contracts, correctness properties) and `tasks.md` (an ordered plan with a

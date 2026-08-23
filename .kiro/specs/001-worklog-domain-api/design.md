@@ -478,6 +478,16 @@ export type ClipInput = {
   tracked: Interval[];
   /** Normalized Activity_Segment intervals of OTHER entries. */
   covered: Interval[];
+  /**
+   * The Open_Session read UNCAPPED as [startedAt, now), when one exists. Policy
+   * `extend` may not create or lengthen a session inside it (Requirement 6.18) — and
+   * it cannot be inferred from `tracked`, which deliberately omits a Stale_Session's
+   * tail beyond MAX_OPEN_SESSION_HOURS (Requirement 1.12). Without this field the tail
+   * looks to `clip` like ordinary untracked time and `extend` fills it, writing a
+   * closed session inside a row that is still running. It is NOT added to `tracked`:
+   * that would place segments in the tail, which 1.12 forbids.
+   */
+  openSessionSpan?: Interval;
   policy: UntrackedPolicy;
   /**
    * MIN_INTERVAL_SECONDS in milliseconds. Passed in rather than read, because the
@@ -495,18 +505,41 @@ export type ClipInput = {
 export type ClipResult = {
   /** What to persist as Activity_Segment rows. Empty means NOTHING_TO_LOG (Req 6.12). */
   segments: Interval[];
-  /** Parts of the request dropped for lying in Untracked_Time (Requirement 6.6). */
+  /**
+   * Parts of the request left in Untracked_Time and therefore not persisted: the parts
+   * policy `clip` removed (Requirement 6.6), and — under policy `extend` in
+   * Explicit_Mode and Open_Mode — the parts `extend` was not allowed to cover, because
+   * they reach into the future (6.8), past the request's own bound (6.13), across an
+   * existing Work_Session (6.14), below the floor as a session (6.17), or inside an
+   * Open_Session's uncapped span (6.18). Those modes report by interval and their
+   * `unplacedMs` is 0, so this is where that time goes; in Duration_Mode the same
+   * refusals raise `unplacedMs` instead and this list stays empty (6.14, 6.16).
+   *
+   * A segment refused by `minIntervalMs` is NOT here — it is in `slivers`, because
+   * policy `reject` must fail on a non-empty `discarded` and must not fail on a sliver,
+   * and one list cannot say both (Requirement 6.5).
+   */
   discarded: Interval[];
   /**
    * Parts dropped for being shorter than `minIntervalMs` (Requirement 6.5). Kept
    * apart from `discarded`: under policy `reject` the caller must fail on a
    * non-empty `discarded` but must NOT fail on a sliver, and one list cannot say
-   * both. Their duration is added to `unplacedMs`, never lost.
+   * both. In Duration_Mode their duration is added to `unplacedMs` so the conservation
+   * invariant holds; in Explicit_Mode and Open_Mode this list is the whole report and
+   * `unplacedMs` stays 0 (Requirement 6.16).
    */
   slivers: Interval[];
   /** policy=extend: intervals to add to Tracked_Time. Already bounded by `now`. */
   extend: Interval[];
-  /** Explicit mode: overlaps with `covered`. Non-empty means the caller must reject. */
+  /**
+   * Explicit_Mode: the parts of the request that overlap `covered`. `clip` only
+   * REPORTS them — the caller decides. The activity routes reject on a non-empty
+   * value with 409 ACTIVITY_OVERLAP, because the user owns both entries and must
+   * choose. The one caller that does not is the `extend` rescue path of task 8.5:
+   * after `reclipAffected` has revived an Orphaned_Entry into time the new entry
+   * asked for, there is nothing to resolve, so it re-runs `clip` with that time in
+   * `covered` and subtracts rather than failing (Requirement 2.12).
+   */
   conflicts: Interval[];
   /**
    * Duration_Mode only, and **always 0 in Explicit_Mode and Open_Mode** (Requirement
@@ -1156,7 +1189,7 @@ Inter Tight is self-hosted from `static/fonts/`, the whole typographic contract 
 font with no obvious cause. No directive names `fonts.googleapis.com` or `fonts.gstatic.com`
 in any environment — the Google Fonts link in the artboards is a `file://` preview only.
 
-`style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy in exactly one place and by exactly this much: `svelte.config.js` picks its `csp.directives` from `process.env.APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for the Vite dev server and HMR. `handleSecurityHeaders` additionally omits `Strict-Transport-Security` outside production. Nothing else differs, and the production set is never derived from the development one.
+`style-src` stays as strict as `script-src`: no `unsafe-inline`, and no per-element `style` attribute anywhere. Tailwind 4 compiles to a static stylesheet, so nothing needs one — **including the `Project` colours**. `002` renders a project's colour through one of eight static classes selected by `colorIndex`, all eight present in the compiled stylesheet, rather than through an inline custom property; that is the reason the strict policy costs nothing and must not be relaxed "just for the swatches". Svelte's own inline hydration script takes the nonce. Development relaxes the policy in exactly one place and by exactly this much: `svelte.config.js` picks its `csp.directives` from `process.env.APP_ENV` with the strict set as the default — `const isDev = process.env.APP_ENV === 'development'`, compared against that one literal and **never** written as `!== 'production'`, which would ship `unsafe-eval` on a typo or an unset variable. `svelte.config.js` cannot call `loadConfig()`, so the default has to be written here rather than inherited; task 11.1 additionally sets `APP_ENV=production` in the builder stage so a shipped image cannot depend on it. The development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for the Vite dev server and HMR. `handleSecurityHeaders` additionally omits `Strict-Transport-Security` outside production. Nothing else differs, and the production set is never derived from the development one.
 
 ### 10. REST Route Contracts (`src/routes/api/`)
 
@@ -1432,6 +1465,21 @@ export type CurrentSessionResponse = {
   elapsedSeconds: number;               // 0 when no session is open
   /** True for a Stale_Session — running past MAX_OPEN_SESSION_HOURS. */
   stale: boolean;
+};
+
+/**
+ * Every session write — start, stop, create, PATCH — answers this. `session` is the row
+ * as it now stands, EXCEPT for the one case Requirement 1.18 creates: stopping a timer
+ * that ran for less than MIN_INTERVAL_SECONDS deletes the row instead of storing it, and
+ * answers 200 with `session: null` and `discarded: true`. A bare WorkSession could not
+ * express that, and 002 has to render it — the user pressed stop and must be told the
+ * block was too short to keep rather than silently seeing nothing appear.
+ *
+ * `discarded` is false on every other path, including a stop that stored normally.
+ */
+export type SessionWriteResponse = {
+  session: WorkSession | null;
+  discarded: boolean;
 };
 
 export type DaySummary = {
@@ -2234,7 +2282,7 @@ Tests live under `tests/`, mirroring `src/`, run by Vitest with the three-projec
 
 Property 17 is a domain property, not a database one: `clip` receives `minIntervalMs` as an input, so the floor is checked where it is applied. Property 14 is a route property, because a `Dry_Run` is only observable through a request. Property 22 is the one that needs a real database and a randomly generated *sequence* of operations rather than a single call — it is the end-to-end statement of what everything else is for.
 
-**Module boundary test** — `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/` and fails when a module imports something the Module Boundaries table forbids, so the layer order `domain` → `core` → `store` → `routes` cannot rot silently.
+**Module boundary test** — `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/` and fails when a module imports something the Module Boundaries table forbids, so the layer order `domain` → `core` → `store` → `services` → `routes` cannot rot silently.
 
 **Integration tests** — `tests/lib/server/store/*.test.ts` against a real PostgreSQL 16. These verify what pure code cannot: the single-`Open_Session` index, both exclusion constraints, the application-level guard against overlapping the `Open_Session` that no constraint covers, the deferred reshuffle, that `SET CONSTRAINTS ALL IMMEDIATE` makes a dry run fail where the write would, the constraint-to-error mapping in both directions of SQLSTATE 23503, the `Day_Boundary_Config` round trip, and Properties 7, 8, 10, 15, 16, 22 and 23. A helper truncates every table between tests. The database is started with plain `docker run` on the sandbox's own network and reached by container name — never through a published port and never with Docker Compose.
 

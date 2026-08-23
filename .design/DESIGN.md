@@ -164,22 +164,24 @@ the one exception and need a hover/tap label to close the gap.
 with `-webkit-font-smoothing: antialiased`. Every numeric readout uses
 `font-variant-numeric: tabular-nums` so digits do not jitter as the timer ticks.
 
-| Role | Size / weight |
-|---|---|
-| Elapsed time (hero) | 68px / 300 / `-0.035em` — mobile 56 |
-| Stats KPI | 30px / 300 / `-0.03em` |
-| Timer KPI | 26px / 300 / `-0.02em` |
-| Page heading | 20px / 500 |
-| Dialog heading | 17px / 500 |
-| Brand | 15px / 600 |
-| Summary value | 15px / 500 |
-| Nav, form fields | 14px |
-| Project name in a block | 14px / 500 — mobile 13 |
-| Buttons | 13.5px, primary 600 |
-| Description | 12.5px |
-| Times | 12px |
-| Gauge numerals | 12px |
-| Caps label (`.lbl`) | 11px / `letter-spacing: 0.16em` / uppercase — mobile 10 |
+| Role | Size / weight | `line-height` |
+|---|---|---|
+| Elapsed time (hero) | 68px / 300 / `-0.035em` — mobile 56 | `1` |
+| Stats KPI | 30px / 300 / `-0.03em` | `1.1` |
+| Timer KPI | 26px / 300 / `-0.02em` | `1.1` |
+| Page heading | 20px / 500 | `1.3` |
+| Dialog heading | 17px / 500 | `1.3` |
+| Brand | 15px / 600 | `1.3` |
+| Summary value | 15px / 500 | `1.3` |
+| Nav, form fields | 14px | `1.4` |
+| Project name in a block | 14px / 500 — mobile 13 | `1.4` |
+| Buttons | 13.5px, primary 600 | `1.4` |
+| Description | 12.5px | `1.55` |
+| Times | 12px | `1.35` |
+| Gauge numerals | 12px | `1` — SVG text, positioned by baseline |
+| Caps label (`.lbl`) | 11px / `letter-spacing: 0.16em` / uppercase — mobile 10 | `1.35` |
+
+The block head is 14px / 500 at `1.4`, and `layOutDay` reserves `round(size × line-height)` plus its own padding — so a line height changed here changes the timeline budget.
 
 Durations read as `14 h 15 min`. Mobile drops the unit on the hero only: `14 h 15`.
 
@@ -187,7 +189,7 @@ Durations read as `14 h 15 min`. Mobile drops the unit on the hero only: `14 h 1
 
 ## 4. Dimensions
 
-Radii: 5 (bar) · 9 (icon box, segment) · 10 (block) · 11 (field, swatch) · 12 (segment
+Radii: 2 (legend swatch) · 3 (mobile rail) · 4 (rail) · 5 (bar) · 7 (leftover control) · 8 (orphan action) · 9 (icon box, segment) · 10 (block) · 11 (field, swatch) · 12 (segment
 group) · 14 (panel) · 20 (dialog) · 9999 (pills).
 
 Heights: field 44 · dialog button 42 · quick-log pill 50 · header 84 desktop / 56–60 mobile ·
@@ -195,12 +197,17 @@ bottom nav 66–68 · FAB 54 · stats strip 22.
 
 Widths: day-page side column **290** · projects content max **940**.
 
-**Start/stop button: 104px, icon 42** (mobile 98 / 40). The halo is **11 % of the control's
-diameter** at `rgba(accent,0.09)` — `0 0 0 12px` at 104, `0 0 0 11px` at the mobile 98, and
-`0 0 0 10px` at the 54 px FAB. It scales with the control: a fixed 12 reads as a heavier
-ring on a smaller button, which is what the mobile artboards drew and the text did not say.
-It was deliberately reduced from 132; at 132 it overpowered the gauge. There must be **66px
-of clear space** between it and the inner project ring. Do not enlarge it back.
+**Start/stop button: 104px, icon 42** (mobile 98 / 40). Its halo at `rgba(accent,0.09)` is
+**`0 0 0 12px` on desktop and `0 0 0 11px` on mobile** — it scales with the control, because
+a fixed 12 reads as a heavier ring on the smaller button, which is what `TimerMobile` draws
+and the text used to omit. The **FAB is a separate control with its own drawn halo**,
+`0 0 0 10px` at 54px (`DayMobile`); it is not on the timer control's ratio and must not be
+computed from it. It was deliberately reduced from 132; at 132 it overpowered the gauge.
+
+Clear space between the control and the inner project ring is a **ratio, not a distance**:
+the control occupies at most **0.31 of the gauge box**, which is 66px at the desktop's
+364-unit box and less on mobile. Quoting 66 as an absolute makes the mobile gauge look
+broken when it is correct. Do not enlarge the control back.
 
 **Timeline block heights** run 98 / 96 / 74 / 60 / 38 / **36** px on desktop and
 62 / 58 / 48 / 44 / **26** px on mobile. The 36px floor is a deliberate choice — a

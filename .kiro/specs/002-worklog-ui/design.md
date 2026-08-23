@@ -387,7 +387,7 @@ On a filled accent control — `Timer_Control`, FAB, primary pill — hover is `
 
 ### Radii, Heights, Widths
 
-Radii: 2 (legend swatch) · 4 (rail) · 5 (bar) · 9 (icon box, segment control item, mobile block) · 10 (block) · 11 (field, swatch, inner panel) · 12 (segment control group) · 14 (panel) · 20 (dialog) · 9999 (pills, round buttons).
+Radii: 2 (legend swatch) · 3 (mobile rail, preview tick) · 4 (rail) · 5 (bar) · 7 (leftover control) · 8 (`Orphan_Panel` action) · 9 (icon box, segment control item, mobile block, `Orphan_Panel` row) · 10 (block) · 11 (field, swatch, inner panel) · 12 (segment control group) · 14 (panel) · 20 (dialog) · 9999 (pills, round buttons). The list is closed: a radius outside it is a defect, not a choice.
 
 Heights: field 44 · dialog button 42 · segment control item 36 · quick-log pill 50 · header 84 desktop (88 on the day page) / 56–60 mobile · bottom nav 66–68 · FAB 54 · rhythm strip 22 · meter 4 · breakdown bar 8.
 
@@ -487,7 +487,7 @@ Transcribed from `.design/DESIGN.md` § 6 and the artboards named beside each it
 
 **Top bar** (`Main`, `DayCollapsed`, `Stats`) — `grid-template-columns: 1fr auto 1fr`, height **84 on every page**, horizontal page padding 48. Brand `Worklog` 15/600 at the left; navigation centred with `gap: 30`, items 14 in `--text-faint`, the active one 14/500 in `--text`; at the right, `gap: 14`, the `Running_Indicator` (6 px round accent dot + elapsed in 13 tabular `--text-dim`, internal `gap: 8`) and the `Settings_Menu` chip.
 
-**Mobile shell** (`TimerMobile`, `DayMobile`, `SettingsMobile`) — top bar 56–60 with the brand, the `Running_Indicator` (12 px elapsed) and the `Settings_Menu` chip; bottom navigation 66–68 with a 1 px top divider and four tabs, each an icon of 20 above a 10 px label; the active tab is drawn in `--accent`, not in full-strength text. A create action appears as a 54 px round accent FAB, 18 from the right and 12 above the bottom bar, with the same halo as the timer control.
+**Mobile shell** (`TimerMobile`, `DayMobile`, `SettingsMobile`) — top bar 56–60 with the brand, the `Running_Indicator` (12 px elapsed) and the `Settings_Menu` chip; bottom navigation 66–68 with a 1 px top divider and four tabs, each an icon of 20 above a 10 px label; the active tab is drawn in `--accent`, not in full-strength text. A create action appears as a 54 px round accent FAB, 18 from the right and 12 above the bottom bar, with its own halo `0 0 0 10px rgba(accent,0.09)` as `DayMobile` draws it — not the timer control's, which is a different size on a different ratio.
 
 The two "active" treatments are deliberate: on desktop the accent is reserved for the timer and for uncovered time, so the active nav item earns its emphasis from weight and full-strength ink; on the bottom bar there is no room for that and the accent is the only legible signal.
 
@@ -526,7 +526,7 @@ Heading line: the date at 20/500 beside `08:00 – 03:00 · odpracováno 14 h 15
 
 - **`souhrn dne`** — worked / described / missing as label-value rows (13 `--text-dim` against 15/500 tabular, the missing value in `--accent`), a 4 px meter on `--meter-track` filled to 81 %, and `81 % odpracovaného času má popis` at 12 `--text-faint`
 - **`tvar dne`** — work blocks (`sessionCount`), longest unbroken (`longestBlockSeconds`), time after the `Evening_Hour` (`eveningSeconds`)
-- **`mimo výkaz`** — the `Orphan_Panel`, present only when the day holds an `Orphaned_Entry`: one row per emptied entry with its project, its originally requested interval and a sentence saying nothing of it remains inside the timer frame, each offering deletion or re-entry
+- **`mimo výkaz`** — the `Orphan_Panel`, present only when the day holds an `Orphaned_Entry`: one row per emptied entry with its project, its originally requested interval and a sentence saying nothing of it remains inside the timer frame, and **one shared pair of actions at the foot** — re-enter the times, or delete — acting on the selected row, as `DayCollapsed` draws them. Per-row pairs were considered and rejected: at 290 pixels wide they cost more height than the rows they belong to
 
 The `Orphan_Panel` exists because an `Orphaned_Entry` has no `Activity_Segment` and therefore **cannot** appear on the `Day_Timeline` — it has no position to be drawn at. Everything else that used to be listed beside the timeline is now the timeline: there is no `ActivityList` and no `UncoveredList`. A `Segment_Block` already carries the project, the description, the times and the duration, and an `Uncovered_Marker` already carries its stretch; a second rendering of the same records beside the picture was two things to keep in sync and one of them redundant.
 
@@ -869,7 +869,7 @@ Test files mirror the source tree exactly — `tests/modules/day/components/day-
 
 **Tokens.** The template's components speak their own token vocabulary. Every reference is rewritten to this project's tokens as the component is ported — no compatibility layer, no aliasing shim, because a second vocabulary is how a design contract rots. The mapping is mechanical: surface → `--panel`, elevated surface → `--dialog`, border → `--divider`, muted text → `--text-dim`, subtle text → `--text-faint`, primary → `--accent`, on-primary → `--ink-on-accent`, danger → `--destructive`, input → `--field`. Anything with no counterpart here is dropped along with the component that needed it.
 
-**Missing components.** `BottomNav`, `Fab` and `SettingsMenu` do not exist in the template and are written for this project from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour described under Dialogs. Everything else — `Button`, `Badge`, `Icon`, `Input`, `Select`, `Checkbox`, `Spinner`, `Tooltip`, `FormField`, `DatePicker`, `TimeInput`, `SearchInput`, `Shell`, `Topbar`, `PageHeader`, `Section`, `ConfirmDialog`, `Toast`, `ToastContainer`, `LoadingSkeleton`, `StatCard`, `EmptyState`, `DataTable` — ports with a token rewrite and no structural change.
+**Missing components.** `BottomNav`, `Fab`, `TimeInput` and `SettingsMenu` do not exist in the template and are written for this project from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour described under Dialogs. Everything else — `Button`, `Badge`, `Icon`, `Input`, `Select`, `Checkbox`, `Spinner`, `Tooltip`, `FormField`, `DatePicker`, `SearchInput`, `Shell`, `Topbar`, `PageHeader`, `Section`, `ConfirmDialog`, `Toast`, `ToastContainer`, `LoadingSkeleton`, `StatCard`, `EmptyState`, `DataTable` — ports with a token rewrite and no structural change.
 
 ### 1. Colour Palette (`src/lib/viz/palette.ts`)
 
@@ -916,6 +916,7 @@ export const BLOCK_GAP_PX = 4;                 // between two segments of one bl
 export const HEAD_GAP_PX = { desktop: 8, mobile: 6 } as const;      // head to segment column
 export const BLOCK_TO_BREAK_PX = { desktop: 11, mobile: 9 } as const; // block to Break_Marker
 export const BLOCK_HEAD_PX = { desktop: 29, mobile: 24 } as const;
+export const BLOCK_HEAD_PAD_PX = { desktop: 11, mobile: 7 } as const;  // head line box -> segment column
 export const BREAK_MARKER_PX = { short: 38, long: 42 } as const;
 export const LONG_BREAK_SECONDS = 3600;
 export const MIN_UNCOVERED_SECONDS = 300;
@@ -962,6 +963,8 @@ export function layOutDay(
   maxOpenSessionHours: number       // from the Health_Endpoint — the capped-session rule
 ): DayLayout;
 ```
+
+**The block head is a computed box, not a drawn one.** `BLOCK_HEAD_PX = round(headFontSize × headLineHeight) + BLOCK_HEAD_PAD_PX`, with the head at 13/1.4 desktop and 12/1.4 mobile: `round(13 × 1.4) + 11 = 18 + 11 = 29`, and `round(12 × 1.4) + 7 = 17 + 7 = 24`. `DayCollapsed` draws its `.sesshead` with `padding: 0 0 8px` and no line height at all, which is a drawing slip of the same kind as its 88 px top bar; 11 and 7 are the values. `layOutDay` reserves the computed number, so changing the head's size or its line height changes the budget and must change this constant with it.
 
 A single proportional axis over the whole day was tried and rejected: on a real day of 08:00–03:00 with a four-hour evening break, the break consumed 21 % of the height while showing nothing, and a twenty-minute task rendered 13 px tall — unreadable and unclickable. Collapsing the break costs the property that distance equals time *across* blocks; proportions still hold *inside* a block, which is where the reading happens. The shape of the whole day is read from the `Day_Gauge` instead.
 
@@ -1037,7 +1040,7 @@ There is no `orientation` prop: the timeline is vertical at every width, and des
 
 The rail is a container of three sibling buttons — two 12 px edges and the middle — so the edge targets exist without nesting. Those edges take the same activation-area exception as a `Segment_Block`, for the same reason: three targets on an 8 px rail cannot each be 44 px. **Below a block height of 60 px the edges are not rendered at all** and the rail is one target — three stacked targets inside 36 px is a lottery, and the `Session_Dialog` is one activation away on the block itself. The segment column is an `<ol>` so its order is exposed, each `<li>` holding exactly one button. `BreakMarker` is a `role="separator"` with a label, not a control: there is nothing to activate on a break.
 
-The component renders `WorkBlock` and `BreakMarker` in DOM order and owns nothing else. `WorkBlock` renders the head, the `Session_Rail` (with drag handles when `editable` and density is `desktop`) and its `SegmentBlock` children. `SegmentBlock` carries `data-entry-id` so the `Split_Marker` hover state can link the parts of one entry.
+The component renders `WorkBlock` and `BreakMarker` in DOM order and owns nothing else. `WorkBlock` renders the head, the `Session_Rail` (with **activatable** top and bottom edges when `editable`, which open the `Session_Dialog` with that field focused — never a drag) and its `SegmentBlock` children. `SegmentBlock` carries `data-entry-id` so the `Split_Marker` hover state can link the parts of one entry.
 
 **There is no dragging.** An earlier draft let a `Session_Rail` edge be dragged with five-minute snapping, and it cannot work: a block's height is proportional only *within* its block, every segment is clamped at `MIN_BLOCK_PX`, and a break is a fixed row rather than a span of time. The moment any segment is pinned to the floor the axis stops being linear, so there is no pixel-to-minute conversion — a drag would report a time it is not setting, on exactly the surface where being wrong costs recorded work.
 
@@ -1254,7 +1257,7 @@ type StatsRange = {
                                     //   eveningSeconds, byProject[] — and intervals when included
   /** False when the range exceeded MAX_INTERVAL_RANGE_DAYS and the server dropped the intervals. */
   intervalsIncluded: boolean;
-  suggestedWindow: { start: string; end: string };
+  suggestedWindow: { start: string; end: string } | null;   // null when no window satisfies both tests
 };
 
 type DayRhythmProps = {
@@ -1456,6 +1459,9 @@ Server error codes from `001` map to interface behavior:
 | `RATE_LIMITED` | toast | shows the retry delay |
 | `INTERNAL_ERROR` | toast with a retry action | keeps the input, offers to report the `requestId` |
 | `UNAUTHORIZED` | any browser-issued request | navigates to `/login?next=<path>&reason=session_expired` |
+| `SERVICE_UNAVAILABLE` | a page `load` → `/offline?next=<path>`; a browser-issued request → toast with a retry action | renders `errors_service_unavailable` with the `Retry-After` seconds from the envelope; a dialog stays open with its input intact |
+| `METHOD_NOT_ALLOWED` | nowhere | cannot occur through the interface, which issues only the documented methods; treated as an internal error if it does |
+| `IDEMPOTENCY_KEY_REUSED` | the dialog that submitted | the interface sends no `Idempotency-Key`, so this cannot occur through it either; treated as an internal error if it does |
 | network failure | connection error page or toast with retry | the dialog stays open with its input intact |
 | uncaught client error | `hooks.client.ts` → `+error.svelte` | the same surface as a failed request, never a blank page |
 
@@ -1747,6 +1753,7 @@ One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_O
 | `errors_no_placement_anchor` | {date} nemá žádný záznam ani úsek timeru, od kterého by se dalo začít. | {date} has no entry and no timer block to start from. |
 | `errors_nothing_to_log_empty_interval` | Od posledního záznamu neuplynul žádný čas. | No time has passed since your last entry. |
 | `errors_nothing_to_log_no_tracked_time` | V tu dobu timer neběžel. | The timer was not running then. |
+| `errors_nothing_to_log_all_slivers` | Zbývá jen kousek kratší než minuta. | What is left is shorter than a minute. |
 | `errors_nothing_to_log_already_covered` | Ten čas už popsaný je. | That time is already described. |
 | `errors_project_exists` | Projekt {projectName} už existuje. | A project called {projectName} already exists. |
 | `errors_project_in_use` | {projectName} má {entryCount, plural, one {# záznam} few {# záznamy} other {# záznamů}}, takže ho nejde smazat. Archivace ho schová z nabídky. | {projectName} has {entryCount, plural, one {# entry} other {# entries}}, so it cannot be deleted. Archiving hides it from the picker. |
@@ -1764,7 +1771,6 @@ One key per `ErrorCode` in `001`, named by its `messageKeyFor` rule (`ACTIVITY_O
 | `errors_rate_limited` | Moc požadavků. Zkus to za {retryAfterSeconds} s. | Too many requests. Try again in {retryAfterSeconds} s. |
 | `errors_login_failed` | Nesprávné heslo. | Incorrect passphrase. |
 | `errors_internal_error` | Něco se pokazilo. Když to nahlásíš, přilož kód {requestId}. | Something went wrong. If you report it, quote {requestId}. |
-| `errors_login_failed` | Nesprávné heslo. | Incorrect passphrase. |
 
 ### fields_*
 
