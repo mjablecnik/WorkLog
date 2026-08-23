@@ -418,6 +418,67 @@ The production CSP from `001` carries `style-src 'self' 'nonce-…'` with no `un
 
 3. **SVG is unaffected.** `d`, `stroke`, `stroke-width`, `stroke-dasharray`, `fill`, `x`, `y` are SVG presentation attributes, not CSS, and no CSP directive applies to them. The `Day_Gauge` may therefore compute its geometry per render and write it straight onto the elements. The `Day_Rhythm_Strip` may not — its segment offsets are CSS percentages, so it renders as an inline SVG with `<rect>` elements instead of positioned `<div>` elements.
 
+### Motion
+
+Two curves and three durations, and nothing else.
+
+| Token | Value | Used by |
+|---|---|---|
+| `--ease-standard` | `cubic-bezier(0.2, 0, 0, 1)` | everything entering or changing in place |
+| `--ease-exit` | `cubic-bezier(0.4, 0, 1, 1)` | everything leaving |
+| `--dur-hover` | `200ms` | colour, background, border, shadow, tint |
+| `--dur-panel` | `300ms` | anything that changes size or position |
+| `--dur-shimmer` | `1.2s` | the skeleton sweep, `linear`, infinite |
+
+**What animates, exhaustively.** Nothing absent from this table moves.
+
+| Surface | Property | Duration / curve |
+|---|---|---|
+| any hover, active or focus state | `background-color`, `color`, `border-color`, `box-shadow`, `--pj-tint` | `--dur-hover` `--ease-standard` |
+| dialog scrim | `opacity` 0 → 1 | `--dur-panel` `--ease-standard` |
+| desktop dialog | `opacity` 0 → 1 and `translateY(8px)` → 0 | `--dur-panel` `--ease-standard`; exit `--ease-exit` |
+| full-screen mobile dialog | `translateY(100%)` → 0 | `--dur-panel` `--ease-standard` |
+| settings sheet, mobile | `translateY(100%)` → 0 | `--dur-panel` `--ease-standard` |
+| settings menu, desktop | `opacity` and `translateY(4px)` → 0 | `--dur-hover` `--ease-standard` |
+| toast | `opacity` and `translateY(8px)` → 0 | `--dur-hover` in, `--ease-exit` out |
+| FAB and `Timer_Control` press | `scale(0.96)` | `100ms` `--ease-standard` |
+| coverage meter, breakdown bar | `width` | `--dur-panel` `--ease-standard`, on a data change only |
+| gauge arcs | `stroke-dashoffset` sweep, once per page load | `--dur-panel` `--ease-standard` — **never** on the per-second tick |
+| skeleton | shimmer sweep | `--dur-shimmer` `linear` |
+| theme swap | **nothing** | `data-theme` changes instantly |
+
+The theme swap is deliberately unanimated. A 300 ms colour transition across every
+surface at once reads as a fault rather than a transition, and the `Day_Gauge`'s SVG
+presentation attributes would not follow it anyway, so half the page would change
+instantly and the other half would fade — which looks worse than either.
+
+**"Non-essential" means everything above that moves or repeats.** Under
+`prefers-reduced-motion: reduce`: every `transform`- and `opacity`-based entrance and
+exit becomes an instant state change with a duration of `0s` and no transform, the
+skeleton shimmer becomes a flat `--panel` fill, the gauge draws its arcs at full length
+with no sweep, the meter and bar widths jump, and the press scale is dropped. What
+survives is colour — the `--dur-hover` transitions of hover, active and focus — because
+those signal state rather than movement, and removing them makes the interface feel
+broken rather than calm.
+
+### Announcements
+
+One rule: a screen reader hears a **change of state**, never a change of digits.
+
+| Surface | Region | Politeness | Announced when |
+|---|---|---|---|
+| toast container, success | `role="status"` | polite | a toast is inserted; the container is mounted empty in the root layout at first paint |
+| toast container, failure | `role="alert"` | assertive | as above; a failure toast never auto-dismisses, so the message outlives its announcement |
+| `Change_Preview` body | `aria-live="polite"`, `aria-busy` while the `Dry_Run` is in flight | polite | once per settled response — `aria-busy` suppresses the intermediate renders of the 400 ms debounce |
+| inline field error | none — `aria-describedby` and `aria-invalid` on the field itself | — | reached when focus moves to the field, which is where Requirement 15.4 sends it |
+| hero elapsed, `Running_Indicator`, tab title | no live region; digits `aria-hidden="true"` | never | a per-second announcement makes the page unusable |
+| `Timer_Control` | its accessible name | — | changes between `timer_start` and `timer_stop`, which is the state change worth hearing |
+
+There are exactly two live regions in the whole interface, both in the root layout and
+both **empty at first paint**. A region created at the moment its first message arrives
+is not announced by most screen readers, which is the failure this table exists to
+prevent — and it is invisible in testing unless a screen reader is actually running.
+
 ## Page Layouts
 
 Transcribed from `.design/DESIGN.md` § 6 and the artboards named beside each item.
@@ -553,6 +614,24 @@ The bigger fields and type are a touch decision, not a scaling accident: 48 px c
 The browser computes none of it. It could — the intersection of the day's `uncovered` intervals with the interval the change removes is arithmetic over data the page already holds — but that would be the one place a figure in the report was derived on the client, and the whole `Dry_Run` rests on the rule that it never is. The server performs the write and rolls it back to build the preview anyway, so it has both numbers for free.
 
 The row is rendered last, marked as `Uncovered_Time` rather than as an entry, described in prose, with its tick in `rgba(209,138,106,0.6)` rather than a `Palette_Slot`. It refreshes with the rest of the preview whenever the `Dry_Run` is recomputed.
+
+**Modality is asserted here, not inherited.** The ported `Modal` happens to implement
+most of what follows; that is a fact about the template, not a contract, and nothing in
+it is currently asserted by a criterion or a test, so it can be lost without anything
+failing. Every write dialog, every confirmation and the mobile settings sheet therefore
+carry `role="dialog"` and `aria-modal="true"`, labelled by their own heading.
+
+On open, focus moves into the surface — a rail edge focuses and selects that end's field,
+`Quick_Log` with no project focuses the `Project_Picker`, an `Uncovered_Marker` focuses
+the description, and everything else focuses the first control — and Tab wraps inside it.
+`document.body` takes `overflow: hidden` and the page root takes `inert` for as long as
+the surface is open; the `inert` is also what stops the bottom navigation being tabbable
+underneath a sheet, which no `z-index` can fix.
+
+Escape closes every one of them and returns focus to the opener. **The scrim does not.**
+It closes a confirmation and the `Settings_Menu`, both of which hold nothing, but a write
+dialog holds unsaved input and Requirement 14.14 forbids losing it to a stray click —
+so a scrim activation on `Activity_Dialog` or `Session_Dialog` does nothing at all.
 
 ### Statistics (`Stats`)
 

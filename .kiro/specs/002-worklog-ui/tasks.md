@@ -25,12 +25,12 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
   - [ ] 1.3 Port the `Design_System` subset into `src/lib/ui/`
     - Rewrite every token reference as you port: surface → `--panel`, elevated → `--dialog`, border → `--divider`, muted → `--text-dim`, subtle → `--text-faint`, primary → `--accent`, on-primary → `--ink-on-accent`, danger → `--destructive`, input → `--field`. No aliasing shim and no second vocabulary
-    - `BottomNav`, `Fab` and `SettingsMenu` do not exist in the template — write them from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour
-    - Take into the `Design_System` from `template-crm/src/lib/ui/` only what this project uses: `elements/` (Button, Badge, Icon, Input, Select, Checkbox, Spinner, Tooltip, flags), `forms/` (FormField, DatePicker, TimeInput, SearchInput), `layout/` (Shell, Topbar, BottomNav, Fab, PageHeader, Section), `overlays/` (Modal, ConfirmDialog, Toast, ToastContainer, LoadingSkeleton, toast-store), `components/` (StatCard, EmptyState, DataTable)
+    - `BottomNav`, `Fab`, `TimeInput` and `SettingsMenu` do not exist in the template — write them from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour, and the modality of Requirements 14.20–14.24 is asserted here rather than assumed from it
+    - `TimeInput`: a text field accepting `HH:MM` with keyboard stepping, 44 px tall (48 on mobile), parsing through `parseTimeOfDay` in the server's zone
+    - `Fab`: a 54 pixel round accent button fixed above the bottom bar, with a halo on the design's proportional rule
+    - Take into the `Design_System` from `template-crm/src/lib/ui/` only what this project uses: `elements/` (Button, Badge, Icon, Input, Select, Checkbox, Spinner, Tooltip, flags), `forms/` (FormField, DatePicker, SearchInput), `layout/` (Shell, Topbar, PageHeader, Section), `overlays/` (Modal, ConfirmDialog, Toast, ToastContainer, LoadingSkeleton, toast-store), `components/` (StatCard, EmptyState, DataTable). `layout/` holds six files of which `Sidebar` and `Breadcrumbs` are dropped; it holds **no** `BottomNav` and **no** `Fab`, and `forms/` holds no `TimeInput` — those three are written, not ported, per the bullet above
     - Do **not** port a generic `Chart` component — every statistics visual in this project is bespoke
     - Keep the Svelte 5 runes API — `$props()`, `$bindable()` — and the 44 pixel minimum touch target for everything except the `Day_Timeline` blocks
-    - Add `TimeInput` if the template has no equivalent: a text field accepting `HH:MM` with keyboard stepping
-    - Add `Fab` if the template has no equivalent: a 54 pixel round accent button fixed above the bottom bar
     - Mark every required field as required, and give every control a pointer cursor with distinct hover, active and disabled states from the one derivation rule
     - Every segmented control is a `radiogroup`: one tab stop for the group, arrow keys between its options
     - Take icons from the artboards — they are the source of truth for their geometry — and substitute no icon set
@@ -48,7 +48,9 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Declare the type scale of the design's typography table, Inter Tight 300/400/500/600 with a `system-ui, sans-serif` fallback, `-webkit-font-smoothing: antialiased`, and `font-variant-numeric: tabular-nums` on every numeric readout class
     - Declare the caps label class at 11 px / `letter-spacing: 0.16em` / uppercase (mobile 10)
     - Take radii, heights and widths from the design's dimensions section; use the 4/8/12/16/24/32/48/64 scale only where the `Design_Contract` states no value
-    - Include a `prefers-reduced-motion` block disabling non-essential animation, hover transitions of about 200 ms and panel transitions of about 300 ms, and a styled `::selection`
+    - Declare the five motion tokens — `--ease-standard: cubic-bezier(0.2,0,0,1)`, `--ease-exit: cubic-bezier(0.4,0,1,1)`, `--dur-hover: 200ms`, `--dur-panel: 300ms`, `--dur-shimmer: 1.2s` — and animate **exactly** the surfaces the design's Motion table lists; nothing else transitions, and the theme swap is never animated
+    - The `prefers-reduced-motion: reduce` block sets every transform- and opacity-based transition to `0s` with no transform, freezes the skeleton shimmer to a flat `--panel` fill, draws the gauge arcs unswept, jumps the meter and bar widths, and drops the press scale — keeping only the `--dur-hover` colour transitions, which signal state rather than movement
+    - Add a styled `::selection`
     - The focus ring is `0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)`, with `--focus-gap` set per surface — `--bg` on the page, `--dialog` in a dialog, `--panel` in a panel, the block's `--pj-tint` on a `Segment_Block` — so the ring stays visible on accent-filled controls and on tinted blocks
     - Every interactive control gets an activation area of at least 44 × 44 through padding or a transparent `::after`, while its drawn shape stays at the size the design gives it (chip 30, icon buttons 32, day controls and segmented items 34, dialog buttons 42)
     - Author mobile-first with 768 pixels as the single breakpoint
@@ -256,6 +258,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Validate in the browser through superforms before submitting, showing messages beside the field without clearing input
     - Render the `Change_Preview` live beneath the form, updating as the input changes — not as a separate confirmation step
     - Escape dismisses the dialog and focus returns to the control that opened it; the footer states that nothing is saved until the user confirms
+    - Assert the modality rather than inheriting it from the ported `Modal`: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on its heading, focus moved in on open and Tab confined, `document.body` at `overflow: hidden` and the page root `inert` while open, and a scrim activation that does **nothing** — a write dialog holds unsaved input (Requirements 14.20–14.24). The same clause applies to `SessionDialog` and to every confirmation dialog
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.15, 6.16, 6.19, 7.3, 14.15_
 
   - [ ] 5.5 Implement activity create, edit and delete actions
@@ -439,6 +442,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `LoadingSkeleton` takes the shape and radius of the block it stands in, on `--panel` with a 1.2 s shimmer — never a bare spinner. It has exactly three callers, because every first load is server-rendered and arrives complete: a client-side navigation, an `invalidate` after a write or on `visibilitychange`, and the statistics range switch
     - `EmptyState`: a 20 pixel icon in `--text-faint`, a line at 14 `--text-dim`, one filled accent pill for the obvious next step, `padding: 48px 24px`, `gap: 12`
     - `Toast` and the toast store: bottom centre on mobile, bottom right on desktop, `--dialog` at radius 14 with the dialog shadow, `padding: 12px 16px`, 13.5 text with a 15 pixel leading icon, `max-width: 420`; a success dismisses itself after about four seconds, a failure carries an accent text action and stays
+    - Mount the container **empty in the root layout**, not on first use: `role="status"` `aria-live="polite"` for successes and `role="alert"` `aria-live="assertive"` for failures, each toast `aria-atomic`. A live region created at the moment its first message arrives is not announced by most screen readers, and nothing but a screen reader would reveal it. Nothing that ticks ever goes inside a live region (Requirements 15.13, 15.15)
     - `ConfirmDialog`: the dialog shell at `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, and a filled `--destructive` pill for a destructive confirmation
     - A submit control disables itself and shows progress while its action is in flight; required fields are marked required; leaving a form with unsaved input asks first
     - _Requirements: 14.13, 14.14, 15.1, 15.2, 15.8_

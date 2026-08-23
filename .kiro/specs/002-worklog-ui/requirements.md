@@ -367,6 +367,12 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 17. WHEN the client measures a viewport that differs from the cookie, THE Worklog_UI SHALL update the cookie and lay the page out again, and SHALL do nothing when it matches
 18. THE Worklog_UI SHALL expose every segmented control as a radio group, so the keyboard reaches the group once and the arrow keys move between its options
 19. THE Worklog_UI SHALL take its icons from the artboards, which are the source of truth for their geometry, and SHALL NOT substitute an icon set
+20. WHILE the `Activity_Dialog`, the `Session_Dialog` or a confirmation dialog is open, THE Worklog_UI SHALL render it with `role="dialog"`, `aria-modal="true"` and an `aria-labelledby` naming its own heading
+21. WHEN a dialog opens, THE Worklog_UI SHALL move focus into it — to the field named by the action that opened it where there is one, otherwise to its first focusable control — and SHALL confine Tab and Shift+Tab to the dialog until it closes
+22. THE Activity_Dialog, THE Session_Dialog and every confirmation dialog SHALL close on Escape and SHALL return focus to the control that opened them
+23. THE Worklog_UI SHALL NOT dismiss a write dialog when its scrim is activated, because the dialog holds unsaved input and criterion 14 forbids losing it to a stray click; a confirmation dialog and the `Settings_Menu` SHALL close on an outside activation
+24. WHILE any modal surface is open — a write dialog, a confirmation, or the mobile `Settings_Menu` sheet — THE Worklog_UI SHALL prevent the document beneath from scrolling and SHALL mark it `inert`, so that pointer, keyboard and screen reader all reach only that surface
+25. WHEN the viewport is narrower than 768 pixels, THE statistics page SHALL lay the `KPI_Row` out as two columns, SHALL stack the breakdown and the rhythm panel, and SHALL label the `Day_Rhythm_Strip` axis with three labels instead of five; THE projects page SHALL lay each row out as two lines with its actions behind one overflow control
 
 ### Requirement 15: Feedback, Loading and Error States
 
@@ -386,6 +392,9 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 10. THE projects page SHALL show an empty state when no `Project` exists
 11. WHEN an uncaught client-side error occurs, THE Worklog_UI SHALL report it through the same error surface as a failed request rather than leaving a blank page
 12. WHEN a write is rejected for a named field, THE Worklog_UI SHALL render the message key the server supplied for that field beside the field, and SHALL NOT display the validator's own English text
+13. THE Worklog_UI SHALL render the toast container as a live region present in the document before any toast is inserted — `role="status"` with `aria-live="polite"` for a success and `role="alert"` with `aria-live="assertive"` for a failure, each toast `aria-atomic="true"` — because a live region created at the moment its message arrives is not announced
+14. WHEN a `Dry_Run` settles, THE Change_Preview SHALL announce its headline outcome once, politely, and SHALL NOT announce the intermediate states of a debounced sequence
+15. THE Worklog_UI SHALL announce no ticking value: the hero elapsed readout, the `Running_Indicator` and the browser tab title SHALL sit in no live region and SHALL have their digits hidden from assistive technology, and the state of the timer SHALL be carried instead by the accessible name of the `Timer_Control` and by the `Day_Gauge`'s text alternative, both of which change only when the timer starts or stops
 
 ### Requirement 16: Day Gauge
 
