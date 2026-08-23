@@ -393,7 +393,7 @@ Heights: field 44 · dialog button 42 · segment control item 36 · quick-log pi
 
 Widths: day-page side column **290** · projects content max **940** · `Session_Rail` 8 desktop / 6 mobile · segment left border 3.
 
-**Start/stop button: 104 px with a 42 px icon** (mobile 98 / 40), halo `0 0 0 12px rgba(accent,0.09)`. It was deliberately reduced from 132, where it overpowered the gauge.
+**Start/stop button: 104 px with a 42 px icon** (mobile 98 / 40). The halo is **11 % of the control's diameter** at `rgba(accent,0.09)`: `0 0 0 12px` at the desktop 104, `0 0 0 11px` at the mobile 98. It scales rather than being fixed, because a constant 12 reads as a heavier ring on the smaller button — which is what `TimerMobile` draws. The control was deliberately reduced from 132, where it overpowered the gauge.
 
 The rule is a **ratio, not a distance**: the control's diameter stays at or below **0.31 of the gauge box** (104 / 340 desktop, 98 / 300 mobile). The clear space that leaves between the halo and the inner arc is a consequence of the box size — about 66 px at the desktop's 340 and about 48 px at the mobile's 300, because the gauge scales through its `viewBox` while the control does not. Quoting 66 px as an absolute would make the mobile gauge look broken when it is correct. Do not enlarge the control past the ratio.
 
@@ -555,6 +555,24 @@ A `Break_Marker` is a centred label between two dashed hairlines that run to bot
 
 A `Work_Block` whose session has any part at or after the `Evening_Hour` of its `Logical_Day` adds `· noční` to its head. Deliberately the same hour the statistics measure `eveningSeconds` against — one configured value, one meaning, so a block called noční on the day page is a block contributing to *v noci po 21:00* in the statistics. Crossing midnight is not the test: 22:00–23:30 is a night block and 06:00–09:00 is not, whatever date it started on.
 
+### Running, Capped and Continuing Blocks
+
+Three flags on `DayLayout.blocks` change how a `Work_Block` is drawn, and each is carried
+in text as well as in shape, because Requirement 14.11 forbids meaning by appearance alone.
+Without these, an open session and a closed one are indistinguishable on the day page while
+the gauge already marks the difference in accent.
+
+| State | Rail | Head | Text |
+|---|---|---|---|
+| `running` | `--accent` instead of `--rail`, bottom end square rather than rounded — the block has no end yet | a 6 px `--accent` dot before the head time | `day_block_running` at the head's right, 12/500 `--accent` |
+| `capped` | `--accent` down to the cap instant, then `--rail` at `opacity: 0.5`, the two divided by a 1 px `--hairline` across the rail | as `running` | `day_block_capped` replaces the `v kuse` phrase at 12 `--accent`, and the head time is the cap instant rather than `now` |
+| `continues` | bottom end square, with a 7 px `--rail` triangle centred on the bottom edge — the `Split_Marker` notch in the rail's own ink rather than a project's | unchanged | `day_block_continues` on the meta line at 12 `--text-faint` |
+
+`running` and `continues` can hold at once — a timer started yesterday evening and still
+going — in which case the rail is accent, the end is square, the notch is drawn and both
+strings appear. `capped` excludes `continues`: a session that stopped counting inside the
+day it started in does not reach the next one.
+
 ### The Focus Ring
 
 `box-shadow: 0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)` — an inner ring of the **surrounding** background before the accent ring. Without that gap the indicator disappears exactly where it matters most: on the `Timer_Control`, the FAB and every primary button, which are themselves filled with `--accent`, and on a `Segment_Block`, whose ground is a `--pj-tint`.
@@ -579,7 +597,8 @@ One treatment — the `Uncovered_Marker` — in four variants, all built from th
 |---|---|---|
 | tall block | desktop, ≥ 60 px — the same threshold that shows a description | `Zatím bez popisu` 13/500 accent, then `01:30 – 03:00 · 1 h 30 min — klikni a doplň` 12 `--text-faint` |
 | short block | desktop, under 60 px | `Bez popisu` 13/500 accent · times 12 `--text-faint` · flexible gap · `doplnit` 12 accent at the right edge |
-| mobile pill | mobile | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
+| mobile tall | mobile, above the floor | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
+| mobile short | mobile, at the 26 px floor | `Bez popisu` 12.5/500 accent and the times 10.5 `--text-faint` on one row, **no `doplnit` pill** — 26 px cannot hold it, and the whole block is the activation target anyway, so the pill would be a second affordance for the same tap |
 
 ### Dialogs (`AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`)
 
@@ -642,7 +661,7 @@ Heading row: `Statistiky` 20/500, the range segmented control, the resolved rang
 
 - **`Day_Rhythm_Strip`** — a panel headed `Kam v čase práce padla` with the sub-line `každý řádek je jeden logický den, 03:00 → 03:00` (rendered from the server's `DAY_START_HOUR`, not from a literal) and the project legend at the right. One row per day: the day label in a 58 px gutter, a 22 px strip of radius 5 on `rgba(255,255,255,0.05)` with three recessive tick lines, the day's segments, and the day total in a 62 px right gutter.
 
-**What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**: a 45° `<pattern>` of 1 px accent lines 4 px apart at 45 % over a 6 % accent fill, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis of five labels: `DAY_START_HOUR` at each end and three interior ticks at 25 %, 50 % and 75 % of the span. With the default 3 that reads `03:00 · 09:00 · 15:00 · 21:00 · 03:00`; with a `DAY_START_HOUR` of 5 it reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` interior labels are a drawing convenience — the rule is even divisions, and it is the rule that is implemented. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
+**What the segments are drawn from.** Each `DaySummary` in an `include=intervals` response carries `covered[]` — intervals with a `projectId` and its `colorIndex` — and `uncovered[]`. A covered interval draws as a `<rect>` in its slot colour; an uncovered interval draws in the same geometry with a **hatch**, taken from `Stats`: an SVG `<pattern>` with `patternUnits="userSpaceOnUse"`, `width="6" height="6"` and `patternTransform="rotate(45)"`, holding one `<rect width="3" height="6">` in `--accent` at `fill-opacity: 0.5` — 3 px of accent, 3 px bare, on a 45° diagonal, **with no fill beneath it**. The bare half is what makes a partly-described day read as partly described; a fill underneath closes the texture back up. The light theme keeps the same geometry over its own accent. It is an SVG pattern rather than a CSS gradient because the strip is inline SVG, where a `repeating-linear-gradient` is not available at all, so a day that was worked but never described reads differently from one that was described, in texture as well as in colour. Today's row is labelled in `--accent` and the strip carries `inset 0 0 0 1px rgba(209,138,106,0.30)`; a day with no work shows an empty strip and an em dash. Beneath the rows, an axis of five labels: `DAY_START_HOUR` at each end and three interior ticks at 25 %, 50 % and 75 % of the span. With the default 3 that reads `03:00 · 09:00 · 15:00 · 21:00 · 03:00`; with a `DAY_START_HOUR` of 5 it reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` interior labels are a drawing convenience — the rule is even divisions, and it is the rule that is implemented. The strip is drawn **only** when the response carries the per-day intervals — see *When the server omits the intervals* below.
 - **Breakdown and rhythm panel** — `grid-template-columns: 1.4fr 1fr`. The breakdown lists projects descending: a 9 × 9 swatch, the name at 14, the duration at 14/300 tabular, the share at 12 `--text-faint` in a 42 px gutter, and beneath each a 8 px track of radius 4 filled to that project's **share of the range's total `Covered_Time`**. Below a divider, `Bez popisu` as a plain figure in `--accent` — never a bar. The rhythm panel lists days worked, average per working day, longest day, longest unbroken block, total blocks, and time after the `Evening_Hour`, closing with the observation line at 12.5 `--text-faint`.
 
 **The observation line is three fixed templates.** Exactly one renders — the first whose condition holds — and when none holds the line is **omitted**, not replaced by filler and not left as blank space.
@@ -686,6 +705,28 @@ Nine surfaces are specified here in tokens rather than as artboards. All nine ar
 **Confirmation dialog.** The dialog shell at its smallest: `--dialog` at radius 20, `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, footer as the write dialogs have it — a ghost pill and, for a destructive confirmation, a filled pill in `--destructive` with `--ink-on-accent` text rather than the accent. Never a bare "are you sure": the body names the record and the duration.
 
 **Toast.** Bottom centre on mobile, bottom right on desktop, 16 from the edge, `--dialog` at radius 14 with the dialog's shadow, `padding: 12px 16px`, text 13.5, a 15 px leading icon, `max-width: 420`. A success carries no action and dismisses itself after about four seconds; an error carries a text action in `--accent` and stays until dismissed. Failures never auto-dismiss — a message the user did not see is the same as no message.
+
+**Tooltip.** `--dialog` at radius 9 with the menu shadow and a 1 px `--menu-border`,
+`padding: 7px 10px`, text 12 / line-height 1.4 in `--text` with times in `--text-dim`
+tabular, `max-width: 240`. Placed above the trigger and centred on it with an 8 px offset,
+flipping below when there is no room above and shifting along the axis to stay 8 px inside
+the viewport. No arrow — at this size it costs more than it explains.
+
+**Delay 400 ms in, 100 ms out**, and the delay is skipped entirely when a tooltip is
+already open and the pointer moves to another trigger, so scanning a timeline does not
+stutter. Focus opens one with **no** delay: a keyboard user asked for it explicitly.
+
+It is an **enhancement and never the only carrier**. Everything a tooltip says is already
+in the DOM — a `Segment_Block` carries its project, description and times as text, and the
+tooltip exists for the collapsed block, which drops the description; a gauge arc's project
+is named in the `Project_Legend` beneath. So it renders as `role="tooltip"` referenced by
+`aria-describedby`, it is never the accessible name of anything, and on a touch device,
+where there is no hover at all, a tap activates the element instead. That is why no
+information may live only here.
+
+The `Day_Gauge` positions its own: an SVG `<path>` has no layout box, so an arc's tooltip
+anchors at `pointAt(midAngle, 118)` in the gauge's coordinate space, converted to page
+coordinates by the component.
 
 **Empty state.** Centred in the space its content would have filled: a 20 px icon in `--text-faint`, a line at 14 `--text-dim`, and where there is an obvious next step, one filled accent pill. `padding: 48px 24px`, `gap: 12`. Every empty state in this interface has a next step — start the timer, create the first project, pick another range.
 
@@ -1054,12 +1095,28 @@ Numerals are **two-digit hours with no minutes** — `06 09 12 15 18 21 00` — 
 | `Uncovered_Time` | `--uncovered-dash`, 6 px, `stroke-dasharray="3 6"`, `stroke-linecap="round"` |
 | `Gauge_Gap` | nothing at all — no groove, no mark, no numeral, at any coverage |
 | `Overtime_Arc` | same stroke widths, floating in the gap. **One per stretch outside the window, so a day can carry two** — one before `GAUGE_START`, one after `GAUGE_END`. Each gets a filled `r=4` accent dot at the track end it left and its own 12/500 accent label at **r = 162** on its far end: the earlier arc labels its start, the later one its end, since those are the two instants the gap cannot be read against |
-| Centre | the `Timer_Control`: 104 px (mobile 98), icon 42 (40), halo `0 0 0 12px rgba(accent,0.09)` |
+| Centre | the `Timer_Control`: 104 px (mobile 98), icon 42 (40), halo at 11 % of the diameter in `rgba(accent,0.09)` — `0 0 0 12px` desktop, `0 0 0 11px` mobile |
 | Elapsed | above the circle, never inside it |
 
 At 24 hours of work the arc closes into a complete circle — **and the gap stays bare**. Requirement 16.12 is deliberate: the reason the gap carries no scale is that work there is outside the expected day, and that reason does not stop applying when the day happens to be full. `GaugeNonstop` draws exactly this and is correct.
 
 A closed ring cannot be drawn as an arc back to its own start point — that path is degenerate and paints nothing. At full coverage the outer arc is emitted as a `<circle>` instead.
+
+**The minimum arc.** At 0.25° per minute a two-minute `Activity_Segment` is a 0.5° arc —
+about one unit at r = 118, under a 6 px round-capped stroke whose cap is then six times the
+mark it caps. An arc whose sweep is under **1.5°**, six minutes, is therefore drawn *at*
+1.5°, centred on its true midpoint. `MIN_INTERVAL_SECONDS` defaults to 60, so one-minute
+segments are legal and this case is reachable rather than theoretical.
+
+The floor is cosmetic and never changes a number: the `Project_Legend`, the three figures
+and the gauge's text alternative all report true durations, and the gauge is explicitly not
+the surface anything is measured from.
+
+Floored arcs may overlap, so paint order settles it and is fixed. Inner arcs are emitted in
+chronological order of their interval start, so a later segment paints over an earlier one,
+and the `Uncovered_Time` dashes are emitted **last of all** — undescribed time is what the
+page exists to surface and must never end up hidden under a floored segment. On the outer
+ring the accent `Open_Session` is emitted after the closed arcs, for the same reason.
 
 `GaugeNormal` shows the other end of the range: a day whose sessions are all closed draws every arc in `--arc-closed` and the control carries the **start** icon. The accent appears only while a session is open.
 
@@ -1779,4 +1836,4 @@ Labels with no visible text of their own.
 
 **Accessibility checks** — the Playwright suite runs an axe pass on the timer, day, projects and statistics pages in **both themes**, and a keyboard-only walk of the day page that reaches every block, opens a dialog, and completes a save without a pointer.
 
-**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` is the list, so an artboard added later joins the comparison by appearing there. It holds 20 today; **15 are screens and all 15 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. `Demo` and `DemoSideBySide` in particular are **not** geometric references: they shrink the gauge to fit a teaching layout, so their radii, stroke widths and control size do not match the production figures. Read geometry from `GaugeNormal`, `GaugeOverrun` and `GaugeNonstop` only, and read placement from `Main`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.
+**Visual conformance** — the artboards in `.design/artboards/` are the acceptance reference. `canvas.json` is the list, so an artboard added later joins the comparison by appearing there. It holds 21 today; **16 are screens and all 16 are compared** (`Main`, `TimerLight`, `TimerMobile`, `DayCollapsed`, `DayCollapsedLight`, `DayMobile`, `AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`, `Projects`, `Stats`, `Settings`, `SettingsLight`, `SettingsMobile`, `SettingsMobileLight`), each rendered at its own frame size against the matching PNG in `.design/screens/`. The other five — `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop`, `Demo`, `DemoSideBySide` — explain the gauge and are not compared. `Demo` and `DemoSideBySide` in particular are **not** geometric references: they shrink the gauge to fit a teaching layout, so their radii, stroke widths and control size do not match the production figures. Read geometry from `GaugeNormal`, `GaugeOverrun` and `GaugeNonstop` only, and read placement from `Main`. Arrangement, relative proportion and palette must match; **exact pixel heights need not** — the block heights an artboard draws illustrate the layout algorithm rather than fixing its output, and the algorithm is what is normative. Copy and example data need not match either. This pass is **not optional**: it is the only check covering the surfaces no automated test can see.

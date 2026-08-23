@@ -104,8 +104,11 @@ levels stay visibly apart rather than collapsing into one.
 
 The second collision has been resolved: the artboards originally drew delete controls in
 the pink *project* colour, so recolouring a project would have recoloured every trash icon.
-`--destructive` is now its own token (5.67:1 on the dark ground, 5.79:1 on the light one)
-and must never be derived from the palette.
+`--destructive` is now its own token. It measures **5.67:1** on the dark ground `#0F1319`,
+**5.79:1** on the light page ground `#F3EEE6` and **6.26:1** on the light dialog `#FBF7F1` —
+three grounds, three numbers, all above AA. The table in § 9 reports the dialog figure
+because that is the surface `AddTaskLight` draws; both light values are correct and
+neither supersedes the other. It must never be derived from the palette.
 
 ---
 
@@ -192,7 +195,10 @@ bottom nav 66–68 · FAB 54 · stats strip 22.
 
 Widths: day-page side column **290** · projects content max **940**.
 
-**Start/stop button: 104px, icon 42** (mobile 98 / 40), halo `0 0 0 12px rgba(accent,0.09)`.
+**Start/stop button: 104px, icon 42** (mobile 98 / 40). The halo is **11 % of the control's
+diameter** at `rgba(accent,0.09)` — `0 0 0 12px` at 104, `0 0 0 11px` at the mobile 98, and
+`0 0 0 10px` at the 54 px FAB. It scales with the control: a fixed 12 reads as a heavier
+ring on a smaller button, which is what the mobile artboards drew and the text did not say.
 It was deliberately reduced from 132; at 132 it overpowered the gauge. There must be **66px
 of clear space** between it and the inner project ring. Do not enlarge it back.
 
@@ -372,8 +378,10 @@ axis, hatched where undescribed, today emphasised with an accent label and
 colours descending, with `Bez popisu` separated below it; and a *rytmus týdne* panel (days
 worked, longest day, total blocks), closing with a prose observation.
 
-The bar widths in the breakdown are relative to the **largest** project while the percentages
-are shares of the **total** — 100/54/14 % against 59/32/9 %. That needs deciding.
+The bars are **shares of the range's total `Covered_Time`** — 59/32/9 %, not the artboard's
+100/54/14 %. Scaling them to the largest project makes the top bar always full and the
+track mean nothing; that reading is superseded, and a full track now means the whole
+range. Requirement 12.4 of `002-worklog-ui` states it.
 
 `DayStack` (a stacked bar per day) is in the spec but not in the design; the rhythm strip
 replaced it. Overtime took the fourth KPI card, and the evening figure moved into the
@@ -385,6 +393,14 @@ rhythm panel to make room for it.
 
 These were contradictions, not omissions. All ten are decided; the table records how, so
 that nobody re-opens a settled question by reading only one side of it.
+
+**The requirement numbers below are quoted as they stood when each disagreement was
+found.** Both specifications have since been rewritten to the resolutions in the
+right-hand column, and their criteria have been renumbered more than once — Requirement 12
+of `002` in particular, after a criterion was inserted. Read this table as a record of
+decisions taken, not as a live citation: several of the numbers now point at unrelated
+criteria, and chasing them will mislead rather than inform. The behaviour that was agreed
+is what the specifications say today.
 
 | # | Design says | Spec says | Resolution |
 |---|---|---|---|
@@ -405,9 +421,15 @@ navigation, the project legend, the third timer figure, the day-page side panels
 fact that the application has two themes at all.
 
 Still drawn nowhere: the login screen, the error and offline pages, the timezone notice,
-stale-session and conflict states, the activity list, drag handles on session edges, empty
-states, toasts, skeletons, confirmation dialogs, and the focus ring. Logout used to be on
-this list; § 6a gave it a home.
+conflict states, the activity list, empty states, toasts, skeletons, confirmation dialogs,
+tooltips, and the focus ring. Logout used to be on this list; § 6a gave it a home, and the
+stale-session notice now has one too.
+
+Drag handles on session edges have left this list because the feature has left the
+product. A block's height is proportional only within its own block and is clamped at
+`MIN_BLOCK_PX`, so no pixel-to-minute mapping exists that would not misreport the time a
+drag was setting. A rail edge opens the edit dialog with that field focused instead, and
+the dialog previews the same change honestly. Nothing is owed a drawing here.
 
 Nothing is derived any more. `AddTaskLight` draws the light dialog, so the six tokens that
 used to be computed — dialog, scrim, field, active field, divider and destructive — are now
@@ -426,7 +448,7 @@ painted and measured against the surface they actually sit on:
 | `--accent` | `#A5522E` | 5.12:1 |
 | `--destructive` | `#A8321F` | 6.26:1 |
 
-## 11. The statistics observation line
+## 10. The statistics observation line
 
 The rhythm panel closes with one sentence. It is **not** free-form: exactly one line is
 rendered, the first template below whose condition holds, and when none holds the line is
@@ -442,7 +464,7 @@ Two rules the wording follows on purpose: the countable noun always goes through
 form, because Czech needs one / few / other; and no template puts a verb after a number,
 because the agreement would then depend on the count too.
 
-## 12. Ranges the statistics offer
+## 11. Ranges the statistics offer
 
 Day, week and month — those three, deliberately, and no year. A year of days on the rhythm
 strip would be 365 rows and unreadable, which is the same reason the server caps interval
