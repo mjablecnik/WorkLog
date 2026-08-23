@@ -8,8 +8,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 
 ## Tasks
 
-- [ ] 1. Project scaffolding and server infrastructure
-  - [ ] 1.1 Initialize the SvelteKit project
+- [x] 1. Project scaffolding and server infrastructure
+  - [x] 1.1 Initialize the SvelteKit project
     - Scaffold with Bun 1.2.15; set `packageManager`, `engines.bun`, `.npmrc` with `engine-strict=true`, and `bunfig.toml` with `[run] bun = true`
     - Dependencies, at the versions the workspace already resolves — `@sveltejs/kit` ^2.63.0, `svelte` ^5.56.1, `vite` ^8.0.16, `@sveltejs/adapter-node` ^5.5.7, `typescript` ^6.0.3 strict, `drizzle-orm` ^0.45.2, `zod` ^4.4.3, `@inlang/paraglide-js` ^2.18.2
     - Two dependencies no other workspace project uses, so take the major only and let `bun install` pin the exact version into `bun.lock`: `postgres` ^3.4.0 and `@date-fns/tz` ^1.0.0. Run `bun install` and read the lockfile before committing — a version that does not resolve stops this task, and every other task, dead
@@ -27,7 +27,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Commit `bun.lock`
     - _Requirements: 12.14, 13.8, 13.9, 13.10_
 
-  - [ ] 1.2 Implement configuration in `src/lib/server/core/config.ts`
+  - [x] 1.2 Implement configuration in `src/lib/server/core/config.ts`
     - Define `Config` and `loadConfig()` per design component 12, reading `version` from `package.json`
     - Defaults: `PORT=3000`, `TIMEZONE=Europe/Prague`, `DAY_START_HOUR=3`, `GAUGE_START=06:00`, `GAUGE_END=00:00`, `EVENING_HOUR=21`, `APP_ENV=production` (accepting `development`, `test` and `production` only — `test` exists so the E2E run has an environment of its own), `DB_QUERY_TIMEOUT_SECONDS=5`, `RATE_LIMIT_PER_MINUTE=120`, `SESSION_DURATION_HOURS=720`, `MAX_OPEN_SESSION_HOURS=12`, `MIN_INTERVAL_SECONDS=60`, `ALLOW_DAY_BOUNDARY_CHANGE=false`
     - When `GAUGE_END` is less than or equal to `GAUGE_START`, take the end as falling on the following date — without this the default `06:00`–`00:00` measures zero hours
@@ -46,13 +46,13 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Throw once listing every problem, not just the first
     - _Requirements: 1.13, 2.4, 3.7, 4.10, 7.5, 7.13, 8.10, 8.13, 8.18, 9.6, 10.4, 10.5, 10.9, 10.13, 11.6, 11.13, 11.16, 11.17, 11.20, 11.21, 12.6, 12.9, 12.22, 13.5, 13.6, 13.8, 13.9, 13.10, 13.11, 13.12, 13.13, 13.14, 13.15, 13.16, 13.17, 13.18, 13.19, 13.20, 13.21, 13.22, 13.23, 13.26, 13.27, 13.28, 13.29, 13.30, 13.33, 13.34, 13.35_
 
-  - [ ] 1.3 Implement logging and request identity
+  - [x] 1.3 Implement logging and request identity
     - `src/lib/server/core/logger.ts`: JSON lines to stdout carrying `timestamp`, `level`, `message`, `requestId`; a redaction helper used wherever a secret could reach a log call
     - `src/lib/server/core/request-id.ts`: read `X-Request-Id`, generate a UUID when absent, expose it on `locals`, echo it back
     - Declare `App.Locals` in `src/app.d.ts` with `requestId`, `auth`, `today`, `locale` and `theme`. There is **no** `cspNonce`: `kit.csp` owns the nonce and nothing on `locals` ever holds one, so declaring the field would leave an always-undefined property for someone to build on
     - _Requirements: 11.9, 12.10, 12.11_
 
-  - [ ] 1.4 Implement the error envelope in `src/lib/server/core/errors.ts`
+  - [x] 1.4 Implement the error envelope in `src/lib/server/core/errors.ts`
     - Define the `ErrorCode` union, `ApiError`, `errorResponse()` and `messageKeyFor()` per design component 8, including `SERVICE_UNAVAILABLE` (503) for an unreachable database or a query past `DB_QUERY_TIMEOUT_SECONDS` — a caller must be able to tell a transient failure from a defect and retry
     - Fix the field-naming rule in one place and apply it to every route: JSON bodies use `camelCase`, query parameters use `snake_case`
     - Implement `fieldMessageKeyFor(issue)` returning a `fields_*` key per failing field, from the enumerated table in design component 8 — a schema's English sentence must never reach the screen, and `002` tests its catalogue against that list, so the keys are looked up, never computed
@@ -64,7 +64,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Never place stack traces, SQL text or filesystem paths in a response body
     - _Requirements: 3.7, 4.5, 12.1, 12.2, 12.3, 12.5, 12.15, 12.19, 12.20, 12.21, 12.34_
 
-  - [ ] 1.5 Implement security headers in `src/lib/server/core/security-headers.ts`
+  - [x] 1.5 Implement security headers in `src/lib/server/core/security-headers.ts`
     - The `Content-Security-Policy` — including `frame-ancestors 'none'` — comes from `kit.csp` in `svelte.config.js` (task 1.1). **Do not assemble it in the hook.** A handwritten strict policy cannot nonce SvelteKit's own inline hydration script, so the production build renders a page that never hydrates, and the only way to make it work again is `unsafe-inline`, which Requirement 12.13 forbids
     - The CSP goes on **rendered pages only**; `/api` JSON responses carry the other three headers and no policy, because a JSON body executes nothing
     - `handleSecurityHeaders` sets only what `kit.csp` does not: `Strict-Transport-Security` (production only), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`
@@ -74,7 +74,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Development relaxes the policy in one place only: `svelte.config.js` selects its `csp.directives` from `APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for Vite and HMR; `handleSecurityHeaders` omits `Strict-Transport-Security` outside production. Nothing else differs and the production set is never derived from the development one
     - _Requirements: 12.12, 12.13, 12.33_
 
-  - [ ] 1.6 Write unit tests for configuration, errors and headers
+  - [x] 1.6 Write unit tests for configuration, errors and headers
     - `tests/lib/server/core/config.test.ts`: defaults applied; missing `DATABASE_URL`, short token and missing passphrase hash each rejected; `DAY_START_HOUR=24` rejected; `EVENING_HOUR=24` rejected; bad `TIMEZONE` rejected; wildcard CORS rejected outside development; several failures reported together; version comes from the manifest
     - Gauge window: the default `06:00`–`00:00` measures 18 hours, not 0; `22:00`–`02:00` measures 4; a window of 30 minutes and one of 25 hours are both rejected
     - `dayStartIsInGaugeGap`: the default `DAY_START_HOUR=3` against the default window passes; `DAY_START_HOUR=0` also passes, since the window is half-open and midnight is the gap's first instant; `DAY_START_HOUR=12` against the default window is rejected; `DAY_START_HOUR=6` against `GAUGE_START=04:00`, `GAUGE_END=00:00` is rejected — that is the configuration where the `Gauge_Window` would split into two arcs on different `Logical_Day` values
@@ -86,7 +86,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `tests/lib/server/core/security-headers.test.ts`: a rendered page response carries all five headers; the production CSP is free of `unsafe-inline` and `unsafe-eval` in both `script-src` and `style-src`; the nonce differs between requests; SvelteKit's own hydration script carries that nonce — the assertion that fails when the policy is assembled by hand instead of by `kit.csp`
     - _Requirements: 10.9, 11.16, 11.17, 12.2, 12.3, 12.12, 12.13, 13.9, 13.11, 13.12, 13.13, 13.14, 13.15, 13.16, 13.17_
 
-  - [ ] 1.7 Create `.env.example` and fix `.gitignore`
+  - [x] 1.7 Create `.env.example` and fix `.gitignore`
     - `.env.example` lists every variable `loadConfig` reads, with no exceptions: `PORT`, `DATABASE_URL`, `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS`, `TRUSTED_PROXY_HOPS`, `DB_QUERY_TIMEOUT_SECONDS`, `DB_POOL_MAX`, `RATE_LIMIT_PER_MINUTE`, `SESSION_DURATION_HOURS`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `ALLOW_DAY_BOUNDARY_CHANGE` — grouped by comments, placeholders for the two secrets and real defaults everywhere else
     - Point the `WORKLOG_PASSPHRASE_HASH` placeholder at `./scripts/hash-passphrase.sh`, so nobody has to work out how the value is produced
     - Add `TEST_DATABASE_URL` with the placeholder `postgres://worklog:worklog@localhost:5432/worklog_test` and the comment `# Integration and E2E tests only. MUST NOT equal DATABASE_URL — the suites truncate every table.` It is required only when `APP_ENV=test` and is never read otherwise
@@ -94,7 +94,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `.gitignore` covers `.env`, `.env.*`, `!.env.example`, `src/lib/paraglide/`, `build/`, `node_modules/`, `.svelte-kit/`
     - _Requirements: 13.8, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21_
 
-  - [ ] 1.8 Declare the shared contracts in `src/lib/contracts/`
+  - [x] 1.8 Declare the shared contracts in `src/lib/contracts/`
     - Every schema from the design's Field Naming and the Shared Schemas section: `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `startSessionSchema`, `stopSessionSchema`, `patchSessionSchema`, `createProjectSchema`, `patchProjectSchema`, `loginSchema`, and the query schemas `listActivitiesQuery`, `listSessionsQuery`, `listProjectsQuery`, `daysQuery`, `coverageQuery`, `deleteSessionQuery` and `deleteActivityQuery`, plus `dryRunFields` and the inferred types. There is **no** `deleteSessionSchema`: a DELETE carries its dry-run flags as `dry_run` and `preview_token` **query parameters**, in snake_case like every other query parameter, and that is the single spelling — `dryRun`/`previewToken` on a DELETE is a 400 from `.strict()`
     - `src/lib/contracts/constants.ts` declares `MAX_RANGE_DAYS = 366`, `MAX_INTERVAL_RANGE_DAYS = 62` and `ACTIVITY_PAGE_SIZE = 200` as pure data. The schemas need them (`limit` is capped at `ACTIVITY_PAGE_SIZE`) and `lib/contracts` may not import from `lib/server`, so `core/config.ts` re-exports these three from here instead of declaring them again. The policy field is `untrackedPolicy` — it governs what happens to the part of a request lying in `Untracked_Time`, and the old name said the opposite of what it does
     - **The path is deliberate: `src/lib/contracts/`, outside `src/lib/server/`.** `002` validates the same forms in the browser through superforms **and types its components with the same domain types**, and nothing under `lib/server/` may be imported by client code
@@ -104,7 +104,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - JSON bodies name fields in `camelCase`; query parameters stay `snake_case` and are parsed at the route
     - _Requirements: 12.1, 12.4_
 
-  - [ ] 1.9 Write `vitest.config.ts`, `playwright.config.ts` and the test setup
+  - [x] 1.9 Write `vitest.config.ts`, `playwright.config.ts` and the test setup
     - **There is no "workspace pattern" to follow.** This repository contains no other project, so every reference to one in either specification means this task. It is the pattern
     - `vitest.config.ts` declares three projects, because they need different environments and different concurrency:
       ```ts
@@ -133,29 +133,29 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Wire the `test`, `test:watch`, `test:coverage`, `test:e2e`, `test:e2e:local` and `test:all` scripts of task 1.1 to these two files, and state what distinguishes `test:e2e` from `test:e2e:local` — or drop whichever is redundant, rather than shipping two names for one thing
     - _Requirements: 13.8_
 
-- [ ] 2. Pure domain — interval algebra and logical day
-  - [ ] 2.1 Implement the interval algebra in `src/lib/server/domain/interval.ts`
+- [x] 2. Pure domain — interval algebra and logical day
+  - [x] 2.1 Implement the interval algebra in `src/lib/server/domain/interval.ts`
     - Define `Interval` as half-open `[start, end)` and implement `isEmpty`, `duration`, `overlaps`, `normalize`, `union`, `intersect`, `subtract`, `clamp`, `total`, `take`, `gaps` per design component 1
     - `normalize` sorts by start, drops empty intervals, merges overlapping **and touching** ones
     - `take(input, ms, minIntervalMs)` splits the interval in which the requested duration runs out, **never emits a piece shorter than `minIntervalMs`**, **skips a stretch already below the floor and carries on past it**, and reports everything it could not place as the remainder. Stopping at a thirty-second fragment in the middle of `eligible` would strand the hours after it. Without the floor here the walk ends in a sliver that `clip` must throw away, and then placed + unplaced no longer equals what was asked for
     - The module imports nothing from the project, no Drizzle and no SvelteKit
     - _Requirements: 9.2, 9.3_
 
-  - [ ] 2.2 Write unit tests for the interval algebra
+  - [x] 2.2 Write unit tests for the interval algebra
     - `tests/lib/server/domain/interval.test.ts`: empty input; single interval; touching merge; overlapping merge; disjoint stay separate
     - `subtract` producing a hole in the middle, at the head, at the tail, and eliminating an interval entirely
     - `take` with zero, less than the first interval, exactly the first interval, spanning two intervals, and exceeding the total; and the floor case — eligible `[11:00–12:00, 13:00–16:00]` with `ms = 1 h 0 min 20 s` and `minIntervalMs = 60 s` emits no 20-second tail and reports those 20 seconds as remainder
     - `gaps` over a window wider than, narrower than and equal to the input
     - _Requirements: 9.2, 9.3_
 
-  - [ ]* 2.3 Write property tests for the interval algebra
+  - [x]* 2.3 Write property tests for the interval algebra
     - `tests/lib/server/domain/interval.property.test.ts` with generators producing unsorted lists with duplicates and zero-length entries
     - **Property 4: Interval algebra is conservative** — `total(intersect(a,b)) + total(subtract(a,b)) === total(normalize(a))`
     - **Property 5: Normalization is idempotent and canonical**
     - **Property 6: Take is exact and order-preserving**
     - **Validates: Requirements 5.8, 5.10, 9.2, 9.3**
 
-  - [ ] 2.4 Implement `createDayResolver` in `src/lib/server/domain/logical-day.ts`
+  - [x] 2.4 Implement `createDayResolver` in `src/lib/server/domain/logical-day.ts`
     - Use `TZDate` from `@date-fns/tz` for DST-correct arithmetic
     - Throw when the timezone is not loadable or `startHour` is outside 0..23
     - `bounds(date)` runs from `startHour` to `startHour` the next date; `dateOf(t)` attributes instants before `startHour` to the previous date; `range(from, to)` yields one window per day
@@ -163,18 +163,18 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Fix the fold policy explicitly and apply it in `bounds`, `dateOf` and `range` alike: an ambiguous wall-clock time takes the **earlier** offset, a non-existent one moves **forward** to the first instant that exists. If the two functions disagree, an instant can fall outside `bounds(dateOf(t))` and Property 12 fails on exactly two days a year
     - _Requirements: 10.4, 10.5, 10.6, 10.13, 10.14_
 
-  - [ ] 2.5 Write unit tests for the logical day
+  - [x] 2.5 Write unit tests for the logical day
     - `tests/lib/server/domain/logical-day.test.ts`: `02:30` belongs to the previous date; `03:00` and `23:59` to the current one
     - Pin the DST dates exactly — with `startHour = 3` in `Europe/Prague` the **day before** each transition is the irregular one: `2026-03-28` is 23 hours, `2026-10-24` is 25 hours, and both transition dates are 24. Do not assume the transition date itself is short or long.
     - `startHour = 0` behaves as a plain calendar day; a malformed date string is rejected
     - _Requirements: 10.4, 10.5, 10.6_
 
-  - [ ]* 2.6 Write a property test for the logical day
+  - [x]* 2.6 Write a property test for the logical day
     - `tests/lib/server/domain/logical-day.property.test.ts` over several years including both transitions
     - **Property 12: Logical day assignment is a partition**
     - **Validates: Requirements 10.5, 10.6**
 
-  - [ ] 2.7 Implement the shared types in `src/lib/contracts/models.ts` and `responses.ts`
+  - [x] 2.7 Implement the shared types in `src/lib/contracts/models.ts` and `responses.ts`
     - `Interval`, `WorkSession`, `Project` (carrying `archived` and `updatedAt` beside `archivedAt`), `ActivityEntry`, `ActivitySegment`, `ActivityMode`, `NewActivityEntry`, `ProjectTotal`, `ProjectInterval` in `models.ts`; every response shape — `ActivityResponse`, `ActivityListResponse`, `SessionListResponse`, `ProjectListResponse`, `SessionWriteResponse`, `SessionChangePreview`, `CurrentSessionResponse`, `DaySummary`, `DaysRangeResponse`, `DayResponse`, `CoverageResponse`, `HealthResponse` — in `responses.ts`
     - **Not under `lib/server/domain/`.** `002` types its components with these, and the Module Boundaries forbid `lib/ui`, `modules` and the routes from importing anything under `lib/server/`; declared there, the interface would have nothing to compile against and would end up with a second copy that drifts. `src/lib/server/domain/interval.ts` imports `Interval` from here and contributes only the algebra
     - Every shape that names a `Project` carries its `colorIndex` as well: `ActivityEntry`, `ProjectTotal`, `ReclipOutcome` and the `ACTIVITY_OVERLAP` conflict details. The timeline, the gauge, the legend, the statistics breakdown and the rhythm strip all colour by project, and none of them may fetch the project list to do it
@@ -184,11 +184,11 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Serialize every timestamp as RFC 3339 in UTC
     - _Requirements: 1.10, 4.2, 5.13, 7.3, 7.15, 8.5, 8.16, 10.1, 10.3, 14.2_
 
-- [ ] 3. Checkpoint — pure domain proven
+- [x] 3. Checkpoint — pure domain proven
   - Run `bun run check && bun run test tests/lib/server/domain tests/lib/server/core` with no database running
 
 - [ ] 4. Schema and data layer
-  - [ ] 4.1 Write `migrations/001_init.sql`
+  - [x] 4.1 Write `migrations/001_init.sql`
     - Create `btree_gist`, then `projects`, `work_sessions`, `activity_entries`, `activity_segments`, `auth_sessions`, `idempotency_keys` and `day_boundary_config` exactly as in the design Data Models section
     - **Do not create `schema_migrations` here.** `scripts/migrate.sh` creates it before applying anything, so a second `CREATE TABLE` without `IF NOT EXISTS` raises 42P07 on a clean database and no migration ever succeeds. One owner: the script
     - Primary keys are UUID v7 generated by the application (`Bun.randomUUIDv7()`), never v4 and never `gen_random_uuid()` — v7 is time-ordered, so inserts stay at the right edge of every index
@@ -203,7 +203,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `idempotency_keys.entry_id` is `ON DELETE SET NULL`, never `CASCADE`: cascading deletes the key with the entry, so the next retry creates a second one. Store the HTTP `status` beside the response body
     - _Requirements: 1.9, 2.9, 3.2, 3.3, 4.5, 4.8, 5.13, 6.4, 7.13, 10.10, 11.7, 12.8, 12.17, 12.18, 13.7_
 
-  - [ ] 4.2 Write `scripts/migrate.sh`
+  - [x] 4.2 Write `scripts/migrate.sh`
     - `#!/bin/bash` with `set -euo pipefail` and the **Script Portability preamble**, which is these three lines and is identical in every script of this project:
       ```bash
       SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
