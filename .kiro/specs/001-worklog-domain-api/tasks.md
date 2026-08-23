@@ -187,7 +187,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - [x] 3. Checkpoint — pure domain proven
   - Run `bun run check && bun run test tests/lib/server/domain tests/lib/server/core` with no database running
 
-- [ ] 4. Schema and data layer
+- [x] 4. Schema and data layer
   - [x] 4.1 Write `migrations/001_init.sql`
     - Create `btree_gist`, then `projects`, `work_sessions`, `activity_entries`, `activity_segments`, `auth_sessions`, `idempotency_keys` and `day_boundary_config` exactly as in the design Data Models section
     - **Do not create `schema_migrations` here.** `scripts/migrate.sh` creates it before applying anything, so a second `CREATE TABLE` without `IF NOT EXISTS` raises 42P07 on a clean database and no migration ever succeeds. One owner: the script
@@ -219,12 +219,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - The script **creates the database if it does not exist** (`CREATE DATABASE` against the maintenance database when the connection fails with 3D000), so a fresh machine needs only PostgreSQL running and a `DATABASE_URL`; nothing else provisions it
     - _Requirements: 13.8_
 
-  - [ ] 4.3 Write the Drizzle schema in `src/db/schema/`
+  - [x] 4.3 Write the Drizzle schema in `src/db/schema/`
     - One file per table plus a barrel `index.ts`, mirroring the SQL for typed queries
     - Do not express `EXCLUDE` constraints, expression indexes or triggers here — the SQL is the authority
     - _Requirements: 1.1, 3.1, 4.1, 11.7_
 
-  - [ ] 4.4 Implement the transaction helper in `src/lib/server/store/tx.ts`
+  - [x] 4.4 Implement the transaction helper in `src/lib/server/store/tx.ts`
     - Build the Drizzle client over `postgres.js` with the configured query timeout
     - `withTx(fn, { dryRun })` opens a transaction, runs `select pg_advisory_xact_lock($1)` with `WORKLOG_ADVISORY_LOCK` imported from `core/config.ts` first, runs `fn`, then commits — or rolls back when `dryRun` is set, by throwing a private rollback signal caught outside
     - **In the `dryRun` branch, issue `SET CONSTRAINTS ALL IMMEDIATE` after `fn` resolves and before the rollback.** `activity_segments_no_overlap` is `DEFERRABLE INITIALLY DEFERRED`, so it is checked at `COMMIT` — which a dry run never reaches. Without this statement the dry run reports success for a write that then fails, and the guarantee the whole preview rests on is false
@@ -233,20 +233,20 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Build the pool with `max: DB_POOL_MAX` (10) and enforce `DB_QUERY_TIMEOUT_SECONDS` as `statement_timeout` **on the connection**, not as a JavaScript timer — a timer abandons the client while the server keeps executing. A cancellation arrives as SQLSTATE 57014 and maps to 503 `SERVICE_UNAVAILABLE`; register a shutdown handler on `sveltekit:shutdown` closing it, and set `SHUTDOWN_TIMEOUT` to `SHUTDOWN_GRACE_SECONDS` (30) so `adapter-node` drains before exiting 0
     - _Requirements: 6.11, 12.15, 13.5, 13.6, 14.1, 14.3, 14.5_
 
-  - [ ] 4.5 Implement `src/lib/server/store/work-sessions.ts`
+  - [x] 4.5 Implement `src/lib/server/store/work-sessions.ts`
     - Open, close, current, get, list overlapping, create closed, update, delete, insert many
     - `trackedIntervals` returns normalized intervals, treating an `Open_Session` as running until `now` **but never longer than `MAX_OPEN_SESSION_HOURS`**, so an abandoned timer cannot inflate totals
     - Every function returning a `WorkSession` sets its `stale` flag from `now` and `MAX_OPEN_SESSION_HOURS`, and never closes the session itself
     - `sessionsConflictingWith` reports overlaps **including the `Open_Session`**, read as `[startedAt, now)` — **uncapped**, unlike `trackedIntervals`. The `EXCLUDE` constraint is declared `WHERE (ended_at IS NOT NULL)`, so the database does not stop a closed session being written straight across a running timer; this query, called inside the writing transaction under the advisory lock, is what does. The cap belongs to totalling: capping it here leaves a `Stale_Session`'s tail invisible to the guard *and* outside `Tracked_Time`, so `extend` fills it and the next stop can never succeed (Requirements 1.15, 6.18)
     - _Requirements: 1.1, 1.5, 1.8, 1.10, 1.11, 1.12, 1.15, 1.16, 2.1, 2.2, 2.5, 2.8_
 
-  - [ ] 4.6 Implement `src/lib/server/store/projects.ts`
+  - [x] 4.6 Implement `src/lib/server/store/projects.ts`
     - Create, list with `includeArchived`, update name, archived state and colour index, delete
     - Translate the uniqueness violation to `PROJECT_EXISTS`; on a foreign-key violation return `PROJECT_IN_USE` from `entriesBlockingProject`, which yields the total count plus up to `ERROR_DETAIL_SAMPLE_SIZE` entries with their description and requested interval — the fields the error promises, so the client writes its sentence without fetching them back
     - `createProject` assigns `colorIndex` as the lowest value in 0..7 not held by a non-archived project; when all eight are taken it assigns the index held by the fewest non-archived projects, lowest index winning a tie, so a ninth project is coloured deterministically rather than by an unstated rule. Renaming, archiving and unarchiving never change it
     - _Requirements: 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11, 3.12_
 
-  - [ ] 4.7 Implement `src/lib/server/store/activities.ts`
+  - [x] 4.7 Implement `src/lib/server/store/activities.ts`
     - Every function from design component 6, including `orphanedEntriesOverlapping` and `entryIdsForProject`; `listEntriesOverlapping` orders by `requestedStartedAt, createdAt, id` — the one total order every listing and the cursor share, and the only one an `Orphaned_Entry` has a key in
     - `createEntry` writes the `Activity_Entry` and its `Activity_Segment` rows together; `replaceSegments` deletes then reinserts, relying on the deferred constraint
     - `coveredIntervals` accepts an `Activity_Entry` to exclude; `entriesOverlapping` orders by `requestedStartedAt` then `createdAt`
@@ -255,7 +255,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `src/lib/server/store/aggregates.ts`: `daySummaries`, `dayIntervals` and `suggestedWindow` compute the `/api/days` figures **in SQL** over the requested day windows. A 366-day range must not be answered by reading a year of sessions and segments into the process and reducing in TypeScript; the day boundaries are passed in from the `DayResolver`, so the database never reasons about the `Logical_Day`
     - _Requirements: 4.1, 7.1, 7.2, 7.3, 7.6, 7.7, 7.9, 7.11, 7.13, 7.14, 8.4, 8.5, 8.9, 8.11, 8.12, 8.13, 8.15, 8.16, 8.19_
 
-  - [ ] 4.8 Write integration tests for the schema constraints
+  - [x] 4.8 Write integration tests for the schema constraints
     - `tests/lib/server/store/schema.test.ts` against PostgreSQL 16 started with plain `docker run` on the sandbox network and reached by container name
     - **Every database-touching Vitest project runs single-threaded** (`poolOptions.threads.singleThread: true`): the suites share one database and truncate between tests, so parallel workers would truncate each other's fixtures and fail at random. The pure-domain project keeps full parallelism
     - A second `Open_Session` rejected; overlapping closed `Work_Session` rows rejected; sessions touching at one instant accepted
@@ -269,7 +269,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Assert every Drizzle column exists in the migrated database with a compatible type
     - _Requirements: 1.9, 2.7, 3.2, 3.7, 4.5, 6.4, 13.7_
 
-  - [ ] 4.9 Write integration tests for the stores
+  - [x] 4.9 Write integration tests for the stores
     - `tests/lib/server/store/work-sessions.test.ts`: start, stop, current when none open, create closed, listing by window with partial overlaps, `trackedIntervals` with an `Open_Session`, and with a `Stale_Session` past `MAX_OPEN_SESSION_HOURS` contributing only the capped part
     - `tests/lib/server/store/activities.test.ts`: create with several `Activity_Segment` rows, `coveredIntervals` with and without exclusion, `replaceSegments`, `entriesOverlapping` ordering, cascade delete, and an emptied `Activity_Entry` still returned as an `Orphaned_Entry` by `orphanedEntriesOverlapping`
     - `tests/lib/server/store/projects.test.ts`: colour index assignment, reuse after delete, stability across rename and archive, `PROJECT_IN_USE` carrying `Activity_Entry` ids; the ninth `Project` takes the least-used index and the tenth the next, deterministically
@@ -281,7 +281,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Provide `tests/setup/db.ts` exporting `resetDb()`, truncating every table between tests in one statement. It connects to **`TEST_DATABASE_URL`, never `DATABASE_URL`**, and refuses to run at all unless three things hold, checked before the first statement: `TEST_DATABASE_URL` is set; it differs from `DATABASE_URL`; and its database name ends in `_test`. Any failure throws `TEST_DATABASE_URL must be set, must differ from DATABASE_URL and must name a database ending in _test — refusing to truncate`. The guard exists because the alternative is a helper that silently erases the operator's own working history — which this project treats as invoicing evidence — and no test failure would ever reveal it
     - _Requirements: 1.1, 1.5, 1.8, 1.12, 2.1, 3.7, 3.9, 3.10, 3.12, 4.1, 7.1, 7.2, 7.11, 14.5_
 
-- [ ] 5. Checkpoint — data layer proven against a real database
+- [x] 5. Checkpoint — data layer proven against a real database
   - Start PostgreSQL, run `./scripts/migrate.sh`, then `bun run test tests/lib/server/store`
 
 - [ ] 6. Reconciliation core
