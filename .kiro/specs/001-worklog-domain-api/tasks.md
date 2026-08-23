@@ -18,6 +18,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Set `version` in `package.json` to `0.1.0` as the single source of truth; nothing else may declare a version
     - Aliases in `svelte.config.js`: `$lib`, `$db`, `$modules`; `compilerOptions.runes: true`
     - Configure `kit.csp` in `svelte.config.js` with `mode: 'nonce'` and the directives from design component 9, `'font-src': ['self']` among them — Inter Tight is self-hosted and must not depend on the `default-src` fallback, and no directive in any environment names a Google Fonts host. This is where the `Content-Security-Policy` is built: only SvelteKit can nonce its own inline hydration script, so a hand-assembled strict policy blocks hydration in a production build
+    - **Create four minimal build inputs that `002` later replaces**, because `bun run build` cannot run without them and checkpoint 12 has to be reachable from this specification alone:
+      - `src/app.html` as a bare shell — `<!doctype html><html lang="%lang%" data-theme="%theme%"><head>%sveltekit.head%</head><body>%sveltekit.body%</body></html>`
+      - `project.inlang/settings.json` with `baseLocale: "en"`, `locales: ["en", "cs"]`, `pathPattern: "./messages/{locale}.json"` and the message-format plugin
+      - `messages/en.json` and `messages/cs.json` holding **only** the error keys of the design's Error Handling table — the keys `001` itself emits as `messageKey`
+      - `static/.gitkeep`, because `adapter-node` copies `static/` and the build fails without the directory
+      `002` owns the content of all four and rewrites them freely — the pre-paint markup, the full message catalogue, the fonts. `001` creates them once here and never edits them again. Without this, `001` depends on four artefacts only `002` produces and cannot build on its own, which contradicts the whole two-specification split
     - Commit `bun.lock`
     - _Requirements: 12.14, 13.8, 13.9, 13.10_
 
@@ -63,7 +69,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - The CSP goes on **rendered pages only**; `/api` JSON responses carry the other three headers and no policy, because a JSON body executes nothing
     - `handleSecurityHeaders` sets only what `kit.csp` does not: `Strict-Transport-Security` (production only), `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`
     - Its `transformPageChunk` performs two substitutions: `%lang%` → `locals.locale` and `%theme%` → `locals.theme` resolved to `light` or `dark`, never the literal `system` (task 7.4). It performs **no nonce injection** — that is `kit.csp`'s job
-    - **Do not create or edit `src/app.html`.** That file belongs to `002-worklog-ui`, which authors it with `<html lang="%lang%" data-theme="%theme%">` and with `%sveltekit.nonce%` for any inline script of its own
+    - **Do not edit `src/app.html` beyond the bare shell task 1.1 creates.** Its content belongs to `002-worklog-ui`, which authors it with `<html lang="%lang%" data-theme="%theme%">` and with `%sveltekit.nonce%` for any inline script of its own
     - The production policy carries neither `unsafe-inline` nor `unsafe-eval` in `script-src` or `style-src`; `002` colours projects through eight static classes rather than an inline custom property, so nothing needs an inline `style`
     - Development relaxes the policy in one place only: `svelte.config.js` selects its `csp.directives` from `APP_ENV`, and the development set adds `'unsafe-inline'` and `'unsafe-eval'` to `script-src` and `'unsafe-inline'` to `style-src` for Vite and HMR; `handleSecurityHeaders` omits `Strict-Transport-Security` outside production. Nothing else differs and the production set is never derived from the development one
     - _Requirements: 12.12, 12.13, 12.33_
@@ -83,11 +89,13 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - [ ] 1.7 Create `.env.example` and fix `.gitignore`
     - `.env.example` lists every variable `loadConfig` reads, with no exceptions: `PORT`, `DATABASE_URL`, `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS`, `TRUSTED_PROXY_HOPS`, `DB_QUERY_TIMEOUT_SECONDS`, `DB_POOL_MAX`, `RATE_LIMIT_PER_MINUTE`, `SESSION_DURATION_HOURS`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `ALLOW_DAY_BOUNDARY_CHANGE` — grouped by comments, placeholders for the two secrets and real defaults everywhere else
     - Point the `WORKLOG_PASSPHRASE_HASH` placeholder at `./scripts/hash-passphrase.sh`, so nobody has to work out how the value is produced
+    - Add `TEST_DATABASE_URL` with the placeholder `postgres://worklog:worklog@localhost:5432/worklog_test` and the comment `# Integration and E2E tests only. MUST NOT equal DATABASE_URL — the suites truncate every table.` It is required only when `APP_ENV=test` and is never read otherwise
+    - Write `scripts/hash-passphrase.sh` here rather than with the other operational scripts in task 11.3. `loadConfig` refuses to start without a parseable hash from task 1.2 onward, so a generator delivered in the final wave would leave every wave before it with no runnable server
     - `.gitignore` covers `.env`, `.env.*`, `!.env.example`, `src/lib/paraglide/`, `build/`, `node_modules/`, `.svelte-kit/`
     - _Requirements: 13.8, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21_
 
   - [ ] 1.8 Declare the shared contracts in `src/lib/contracts/`
-    - Every schema from the design's Field Naming and the Shared Schemas section: `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `startSessionSchema`, `stopSessionSchema`, `patchSessionSchema`, `createProjectSchema`, `patchProjectSchema`, `loginSchema`, and the query schemas `listActivitiesQuery`, `daysQuery`, `coverageQuery`, `deleteSessionQuery` and `deleteActivityQuery`, plus `dryRunFields` and the inferred types. There is **no** `deleteSessionSchema`: a DELETE carries its dry-run flags as `dry_run` and `preview_token` **query parameters**, in snake_case like every other query parameter, and that is the single spelling — `dryRun`/`previewToken` on a DELETE is a 400 from `.strict()`
+    - Every schema from the design's Field Naming and the Shared Schemas section: `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `startSessionSchema`, `stopSessionSchema`, `patchSessionSchema`, `createProjectSchema`, `patchProjectSchema`, `loginSchema`, and the query schemas `listActivitiesQuery`, `listSessionsQuery`, `listProjectsQuery`, `daysQuery`, `coverageQuery`, `deleteSessionQuery` and `deleteActivityQuery`, plus `dryRunFields` and the inferred types. There is **no** `deleteSessionSchema`: a DELETE carries its dry-run flags as `dry_run` and `preview_token` **query parameters**, in snake_case like every other query parameter, and that is the single spelling — `dryRun`/`previewToken` on a DELETE is a 400 from `.strict()`
     - `src/lib/contracts/constants.ts` declares `MAX_RANGE_DAYS = 366`, `MAX_INTERVAL_RANGE_DAYS = 62` and `ACTIVITY_PAGE_SIZE = 200` as pure data. The schemas need them (`limit` is capped at `ACTIVITY_PAGE_SIZE`) and `lib/contracts` may not import from `lib/server`, so `core/config.ts` re-exports these three from here instead of declaring them again. The policy field is `untrackedPolicy` — it governs what happens to the part of a request lying in `Untracked_Time`, and the old name said the opposite of what it does
     - **The path is deliberate: `src/lib/contracts/`, outside `src/lib/server/`.** `002` validates the same forms in the browser through superforms **and types its components with the same domain types**, and nothing under `lib/server/` may be imported by client code
     - The directory imports `zod` and nothing else — no database client, no `$env`, no `$app/server`, no SvelteKit runtime, no Drizzle. It must be safe to ship to the browser
@@ -95,6 +103,29 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Every schema is `.strict()`, so an unknown field is rejected wherever the body is parsed
     - JSON bodies name fields in `camelCase`; query parameters stay `snake_case` and are parsed at the route
     - _Requirements: 12.1, 12.4_
+
+  - [ ] 1.9 Write `vitest.config.ts`, `playwright.config.ts` and the test setup
+    - **There is no "workspace pattern" to follow.** This repository contains no other project, so every reference to one in either specification means this task. It is the pattern
+    - `vitest.config.ts` declares three projects, because they need different environments and different concurrency:
+      ```ts
+      test: { projects: [
+        { test: { name: 'domain', environment: 'node',
+                  include: ['tests/lib/server/domain/**/*.test.ts', 'tests/lib/viz/**/*.test.ts'] } },
+        { test: { name: 'server', environment: 'node',
+                  include: ['tests/lib/server/**/*.test.ts', 'tests/api/**/*.test.ts'],
+                  exclude: ['tests/lib/server/domain/**'],
+                  setupFiles: ['tests/setup/db.ts'],
+                  poolOptions: { threads: { singleThread: true } } } },
+        { test: { name: 'components', environment: 'jsdom',
+                  include: ['tests/modules/**/*.test.ts'],
+                  setupFiles: ['tests/setup/dom.ts'] } }
+      ] }
+      ```
+      `domain` keeps full parallelism — it touches no database. `server` is single-threaded because its suites share one database and truncate between tests, so parallel workers would truncate each other's fixtures
+    - `playwright.config.ts`: `testDir: 'tests/e2e'`, `workers: 1`, `fullyParallel: false`, `retries: 0`, `use.baseURL` pointing at the preview server, and a `webServer` running `bun run preview` with `APP_ENV=test` and `TEST_DATABASE_URL` in its environment, `reuseExistingServer: !process.env.CI`
+    - Extend Playwright's `test` with a worker-scoped auto fixture calling the same `resetDb()` from task 4.9, so an E2E run starts from an empty database exactly as the integration suites do
+    - Wire the `test`, `test:watch`, `test:coverage`, `test:e2e`, `test:e2e:local` and `test:all` scripts of task 1.1 to these two files, and state what distinguishes `test:e2e` from `test:e2e:local` — or drop whichever is redundant, rather than shipping two names for one thing
+    - _Requirements: 13.8_
 
 - [ ] 2. Pure domain — interval algebra and logical day
   - [ ] 2.1 Implement the interval algebra in `src/lib/server/domain/interval.ts`
@@ -241,7 +272,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `withReadTx` does not take the exclusive lock: two concurrent read transactions overlap, while a write held open blocks a second write and not a read
     - `translateConstraintError` maps SQLSTATE 23503 on `activity_entries_project_id_fkey` to `PROJECT_IN_USE` for a project delete and to `VALIDATION_ERROR` for an entry write
     - `tests/lib/server/store/aggregates.test.ts`: `daySummaries` matches figures computed by hand over a seeded fortnight; `longestBlockSeconds` merges two touching sessions into one block while `sessionCount` still reports two; `suggestedWindow` returns a window crossing midnight for an evening worker and `null` for an empty range
-    - Provide a helper truncating every table between tests
+    - Provide `tests/setup/db.ts` exporting `resetDb()`, truncating every table between tests in one statement. It connects to **`TEST_DATABASE_URL`, never `DATABASE_URL`**, and refuses to run at all unless three things hold, checked before the first statement: `TEST_DATABASE_URL` is set; it differs from `DATABASE_URL`; and its database name ends in `_test`. Any failure throws `TEST_DATABASE_URL must be set, must differ from DATABASE_URL and must name a database ending in _test — refusing to truncate`. The guard exists because the alternative is a helper that silently erases the operator's own working history — which this project treats as invoicing evidence — and no test failure would ever reveal it
     - _Requirements: 1.1, 1.5, 1.8, 1.12, 2.1, 3.7, 3.9, 3.10, 3.12, 4.1, 7.1, 7.2, 7.11, 14.5_
 
 - [ ] 5. Checkpoint — data layer proven against a real database
@@ -584,13 +615,35 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Copy `migrations/` and `scripts/` into the runtime image.** Readiness compares the filenames in `migrations/` against `schema_migrations` (task 7.4), so without them the check cannot run at all and an unmigrated production database is undetectable. Baking a build-time list instead is rejected: it goes stale the first time anyone migrates by hand
     - Placeholder env values so build-time validation passes, `bun x svelte-kit sync && bun run build`, `CMD ["bun", "run", "build/index.js"]`, port 3000, non-root user
     - `.dockerignore` excludes `.git`, `tests/`, `.env*`, `.kiro/`, `build/`, `node_modules/`, `.svelte-kit/`, `*.md`, `.vscode/`, `.idea/` — and **not** `migrations/` or `scripts/`, which the image needs
-    - _Requirements: 13.10_
+    - Install `postgresql-client` in the runtime stage (`apt-get update && apt-get install -y --no-install-recommends postgresql-client && rm -rf /var/lib/apt/lists/*`). `migrate.sh` drives `psql`, and the release command of task 11.2 runs it from inside this image; without the client the deploy fails on a missing binary rather than on anything about the database
+    - Set `APP_ENV=production` explicitly in the **builder** stage before `bun run build`, beside the placeholder values that let build-time validation pass. The `Content-Security-Policy` is chosen at build time from that variable, and an unset one must never be able to bake a development policy into a shipped image
+    - _Requirements: 12.13, 13.10_
 
   - [ ] 11.2 Write `fly.toml`
     - `app = "worklog"`, `primary_region = "fra"`, `internal_port = 3000`, `force_https`, health check against `/api/health`
     - `[env]` carries only non-secret configuration — `PORT`, `PUBLIC_ORIGIN`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `APP_ENV`, `TRUSTED_PROXY_HOPS`, `LOG_LEVEL`, `DB_POOL_MAX`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `SESSION_DURATION_HOURS`, `RATE_LIMIT_PER_MINUTE`. `PUBLIC_ORIGIN` is the app's `https://` URL: behind Fly's TLS proxy the runtime otherwise infers `http://localhost:3000`, and both the cross-origin check and the form-action CSRF protection are decided from it
     - Never place `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH` or `DATABASE_URL` in this file
-    - _Requirements: 11.16, 13.1, 13.10, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21_
+    - **Migrate as a release command**, so a deploy carrying a migration cannot produce a server that answers 503 on every route (Requirement 13.4):
+      ```toml
+      [deploy]
+        release_command = "./scripts/migrate.sh"
+        strategy = "immediate"
+      ```
+      Fly runs it in a temporary machine built from the new image, inside the app's private network and with the app's secrets in the environment — the only place a `.internal` `DATABASE_URL` resolves at all. A non-zero exit aborts the deploy and the previous release keeps serving, so the unmigrated state never ships. `strategy = "immediate"` rather than a rolling replacement, because the next bullet permits exactly one machine and a rolling strategy has nothing to roll onto
+    - **Pin the app to one machine**, because Requirement 13.25 requires it: the rate-limit buckets live in process memory and the `Day_Boundary_Config` startup write races between processes. Two machines silently double the login allowance that Requirement 11.13 deliberately made unconfigurable
+      ```toml
+      [http_service]
+        internal_port = 3000
+        force_https = true
+        auto_stop_machines = false
+        auto_start_machines = false
+        min_machines_running = 1
+
+      [[vm]]
+        count = 1
+      ```
+      `auto_stop_machines = false` matters as much as the count: an autostopped machine loses its in-memory buckets on every wake, which turns the login limiter off for the first `LOGIN_ATTEMPT_LIMIT` attempts after each idle period
+    - _Requirements: 11.16, 13.1, 13.4, 13.10, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21, 13.25_
 
   - [ ] 11.3 Write the operational scripts
     - `scripts/build.sh`, `start-docker.sh`, `stop-docker.sh`, `deploy.sh`, `backup.sh`, `hash-passphrase.sh` and `test-e2e.sh`, all with `#!/bin/bash`, `set -euo pipefail` and the Script Portability preamble defined in task 4.2, parsing the app name from the resolved fly config
@@ -599,7 +652,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
       read -rs -p 'Passphrase: ' PASSPHRASE < /dev/tty; echo
       bun -e 'console.log(await Bun.password.hash(process.env.PASSPHRASE, { algorithm: "argon2id", memoryCost: 65536, timeCost: 3 }))'
       ```
-    - `deploy.sh` takes the environment as `$1` defaulting to `prod`, resolves `.env.<env>` and `fly.<env>.toml` with a `fly.toml` fallback, validates required files before any remote call and exits 2 when one is missing, resolves the org prompting through `/dev/tty` when absent and persisting the choice, creates the app only when missing, sets secrets skipping keys already in `[env]`, then deploys
+    - `deploy.sh` takes the environment as `$1` defaulting to `prod`, resolves `.env.<env>` and `fly.<env>.toml` with a `fly.toml` fallback, validates required files before any remote call and exits 2 when one is missing, resolves the org prompting through `/dev/tty` when absent and persisting the choice, creates the app only when missing, sets secrets skipping keys already in `[env]`, then deploys. Never pass `--ha` — the default high-availability pair violates Requirement 13.25
+    - **`deploy.sh` never runs `migrate.sh` itself.** `DATABASE_URL` names a Fly private address that does not resolve from a developer's machine, so a local run either fails or — worse, with a stale `.env` — migrates the wrong database. Migration belongs to the deploy transaction and is the `release_command` of task 11.2. For a manual repair: `fly ssh console --app worklog -C './scripts/migrate.sh'`, which runs the same script in the same network
     - `backup.sh` takes the environment as `$1`, runs `pg_dump` into a timestamped file, and prints the restore command — the data becomes invoicing evidence, so a backup path must exist from day one
     - `test-e2e.sh` starts PostgreSQL with plain `docker run`, migrates, runs Playwright and tears everything down
     - _Requirements: 13.8, 13.10_
@@ -628,7 +682,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 {
   "waves": [
     { "id": 0, "tasks": ["1.1", "1.7"] },
-    { "id": 1, "tasks": ["1.2", "1.3", "1.4", "1.5", "1.8", "2.1", "2.4", "2.7", "4.1", "4.2"] },
+    { "id": 1, "tasks": ["1.2", "1.3", "1.4", "1.5", "1.8", "1.9", "2.1", "2.4", "2.7", "4.1", "4.2"] },
     { "id": 2, "tasks": ["1.6", "2.2", "2.3", "2.5", "2.6", "4.3", "6.1"] },
     { "id": 3, "tasks": ["4.4", "6.2", "6.3", "6.4", "6.5"] },
     { "id": 4, "tasks": ["4.5", "4.6", "4.7", "6.6", "7.1", "7.2", "7.3"] },
@@ -649,7 +703,9 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - **Logical day and DST**: with `DAY_START_HOUR=3` in `Europe/Prague`, the irregular day is the one **before** each transition — `2026-03-28` is 23 hours, `2026-10-24` is 25 hours — while the transition dates themselves are 24. This was measured, not assumed.
 - **A record crossing a day boundary is never split.** It is returned whole and each day counts only its own part. Getting this wrong double-counts night work in the yearly total.
 - **The gauge is a clock, not a scaled day.** The interface's dial is `angle(t) = 45° + minutes_since_midnight × 0.25` — one hour is always 15°, on the 23-hour day and the 25-hour day alike. The `Gauge_Window` is therefore a pair of wall-clock times, and two startup checks keep it coherent: `GAUGE_END` wraps to the following date when it is not after `GAUGE_START`, and `DAY_START_HOUR` must fall inside the `Gauge_Gap`. The second is what puts both Prague DST transitions — which happen between 02:00 and 03:00 — in the bare part of the circle, so the drawn track is 18 hours wide on all 365 days. Property 19 pins it.
-- **File ownership across the two specs is by file, not by folder.** `001` owns `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts`; `002` owns their `+page.svelte` halves and owns `src/app.html` outright, including `<html lang="%lang%" data-theme="%theme%">` and `%sveltekit.nonce%`. `001` never creates or edits that file: it substitutes `%lang%` and `%theme%` through `transformPageChunk`, and the nonce is stamped by `kit.csp`, not by a hook.
+- **File ownership across the two specs is by file, not by folder — with four scaffolding exceptions.** `001` owns `src/routes/login/+page.server.ts` and `src/routes/logout/+page.server.ts`; `002` owns their `+page.svelte` halves and owns the *content* of `src/app.html`, including `<html lang="%lang%" data-theme="%theme%">` and `%sveltekit.nonce%`. `001` substitutes `%lang%` and `%theme%` through `transformPageChunk`, and the nonce is stamped by `kit.csp`, not by a hook.
+
+  The exceptions: task 1.1 creates `src/app.html`, `project.inlang/settings.json`, `messages/{cs,en}.json` and `static/` as **minimal build inputs**, because `bun run build` — and therefore checkpoint 12 — cannot run without them, and all four are otherwise `002`'s. `002` replaces their content rather than creating them, and `001` does not touch them again after task 1.1.
 - **`src/lib/contracts/` is owned by `001` but lives outside `lib/server/` on purpose.** It holds the Zod schemas, the domain types and the response types, because `002` validates the same forms through superforms *and* types its components with `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project` — none of which client code may import from `lib/server/`. The directory carries no database, no `$env`, no `$app`, no Drizzle and no SvelteKit; `lib/server/domain` imports its types from there like everyone else, and task 10.1 fails the build if that slips. There is exactly one definition of every request body and every shared type; `002` writes none of its own.
 - **Every shape that names a `Project` carries its `colorIndex`.** The timeline, the gauge, the legend, the statistics breakdown and the rhythm strip all colour by project; without it each of them would fetch the project list and join client-side.
 - **`Untracked_Policy`, not `Uncovered_Policy`.** It governs the part of a request lying outside the timer frame — `Untracked_Time`. `Uncovered_Time` is tracked but undescribed and no policy applies to it; the old name said the opposite of what the field does.

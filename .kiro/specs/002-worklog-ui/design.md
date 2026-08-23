@@ -1281,7 +1281,7 @@ Escape, an activation outside the container, and choosing logout all close it, a
 
 ### 11. Internationalization (`src/lib/core/i18n/`)
 
-Follows the workspace pattern exactly: `@inlang/paraglide-js` with flat snake_case keys in `messages/cs.json` and `messages/en.json`, compiled into `src/lib/paraglide/`, imported as `import * as m from '$lib/paraglide/messages'`.
+Follows the ecosystem default: `@inlang/paraglide-js` with flat snake_case keys in `messages/cs.json` and `messages/en.json`, compiled into `src/lib/paraglide/`, imported as `import * as m from '$lib/paraglide/messages'`.
 
 **The locale is resolved on the server, exactly like the theme.** Resolving it in `onMount` over an English base would server-render English and switch to Czech on hydration — the same flash the theme avoids — and would emit the wrong `lang` on `<html>` for the whole SSR pass, which is a correctness problem for a screen reader, not only a visual one.
 
@@ -1765,7 +1765,7 @@ Labels with no visible text of their own.
 
 **Message coverage test** — `tests/lib/i18n.test.ts` asserts that `cs.json` and `en.json` hold exactly the same key set, that every error code from the `001` table has a message in both, and that no `.svelte` file under `src/` contains a user-facing string literal outside a message call.
 
-**E2E tests** (Playwright, `tests/e2e/`) — against a real database seeded by fixtures, `workers: 1` with a `resetDb` fixture, following the workspace pattern. Scenarios:
+**E2E tests** (Playwright, `tests/e2e/`) — against a real database on `TEST_DATABASE_URL` seeded by fixtures, `workers: 1` with the `resetDb` fixture, both configured by `001` task 1.9. Scenarios:
 
 1. **The day in the requirements** — start the timer, stop it at the break, start again, stop at the end; then log `13:00–16:00` on a project and assert the timeline shows two blocks with the `Break_Marker` between them, the split blocks carry the part counter, and the entry list states it was split.
 2. **Duration mode** — log "2 hours" with no start over the same frame and assert the segments total exactly 120 minutes across the break.

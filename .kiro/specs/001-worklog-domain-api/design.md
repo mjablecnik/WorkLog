@@ -2215,7 +2215,7 @@ All error responses use the shape from Requirement 12.2: `{ error, message, mess
 
 ## Testing Strategy
 
-Tests live under `tests/`, mirroring `src/`, run by Vitest with the workspace's `test.projects` split (node for logic, jsdom for components). Property tests use `fast-check` with `fc.assert(fc.property(...), { numRuns: 100 })` and a `describe('Property N: …')` block matching the sections above.
+Tests live under `tests/`, mirroring `src/`, run by Vitest with the three-project `test.projects` split that task 1.9 writes — `domain` in node and parallel, `server` in node and single-threaded because its suites share one database, `components` in jsdom. Property tests use `fast-check` with `fc.assert(fc.property(...), { numRuns: 100 })` and a `describe('Property N: …')` block matching the sections above.
 
 **Unit tests** — `tests/lib/server/domain/interval.test.ts`, `logical-day.test.ts`, `clipping.test.ts`; `tests/lib/server/core/config.test.ts`, `errors.test.ts`. No database. `clipping.test.ts` carries the worked example from the requirements as a named case: tracked `[08:00–14:48, 15:12–18:00]`, explicit request `13:00–16:00` → segments `[13:00–14:48, 15:12–16:00]`; and the duration case anchored at `14:00` with `2h` over the same frame → `[14:00–14:48, 15:12–16:24]`, totalling exactly 120 minutes. `logical-day.test.ts` pins the DST dates: `2026-03-28` is 23 hours, `2026-10-24` is 25 hours, both transition dates are 24, and `02:30` belongs to the previous logical day.
 

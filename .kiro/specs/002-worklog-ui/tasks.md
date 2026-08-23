@@ -64,9 +64,9 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Distinguish a primary action from `Uncovered_Time` by shape: a filled accent pill or circle against a dashed accent outline on a 6 % accent fill
     - _Requirements: 11.9, 17.11, 17.12, 17.13, 17.14_
 
-  - [ ] 1.6 Write `src/app.html` with the server-substituted placeholders
+  - [ ] 1.6 Replace the `src/app.html` scaffold `001` task 1.1 created with the server-substituted placeholders
     - Create `src/app.html` with `<html lang="%lang%" data-theme="%theme%">` plus `%sveltekit.head%`, `%sveltekit.body%` and `%sveltekit.nonce%`
-    - **`002` writes the placeholders; `001` substitutes all four** in its `transformPageChunk`, from the language and `Theme` its hook resolved out of the cookies. Confirm that contract with `001` before building on it — neither half works alone
+    - **`002` writes the placeholders; `001` substitutes `%lang%` and `%theme%`** in its `transformPageChunk`, from the language and `Theme` its hook resolved out of the cookies. `%sveltekit.nonce%`, `%sveltekit.head%` and `%sveltekit.body%` are filled by SvelteKit itself — `kit.csp` stamps the nonce, and `001` must not inject it. Neither half does the `%lang%`/`%theme%` pair alone
     - `001` picks `%theme%` from `worklog_theme`, and only when that says `system` from `worklog_theme_resolved`; with neither it renders `DEFAULT_RENDER_THEME` (`dark`)
     - The only inline script is one nonced line for the case the server cannot know: on a first visit it resolves `prefers-color-scheme`, corrects the attribute and writes `worklog_theme_resolved`. That single correction is the one flash the interface permits, and every later visit is right in the first byte
     - No other inline script and no inline style goes into this file
@@ -90,14 +90,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 1.6, 1.16, 1.17, 1.18, 1.19, 1.20, 1.21, 1.22, 2.5, 13.10, 17.4_
 
   - [ ] 1.9 Set up Paraglide and the message files
-    - `project.inlang/settings.json` with `baseLocale: "en"`, `locales: ["en","cs"]`, `pathPattern: "./messages/{locale}.json"`, the message-format and m-function-matcher plugins
+    - Replace the `project.inlang/settings.json` scaffold `001` task 1.1 created: `baseLocale: "en"`, `locales: ["en","cs"]`, `pathPattern: "./messages/{locale}.json"`, the message-format and m-function-matcher plugins
     - Wire `paraglideVitePlugin` into `vite.config.ts` after `tailwindcss()` and `sveltekit()`, compiling into `src/lib/paraglide/`
     - **Do not resolve the locale at all.** `001`'s hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech and puts the answer on `locals.locale`, which also fills `%lang%`. `002` seeds its rune from `locals.locale`; put no `Accept-Language` logic in `+layout.server.ts` — Czech is the single fallback in all three places, and `baseLocale: "en"` is only what Paraglide compiles message ids against, never a user-facing default
     - `src/lib/core/i18n/state.svelte.ts` overrides `getLocale`/`setLocale` over a `$state` rune seeded from `locals.locale`; `switchLocale()` writes the `worklog_locale` cookie (one year, `SameSite=Lax`, readable by the client), strips the hash with `history.replaceState` and updates `document.documentElement.lang`
     - Declare every message that carries a count with plural forms, so Czech selects one / few (2–4) / many (5+) — `2 záznamy` against `5 záznamů`, `část 2 ze 3`, `6 ze 7 dnů`, `Bloky práce 3`. A flat string with the number interpolated is wrong in Czech for most of the values it can take
     - The `Locale_Switcher` indicates the active language and changes it without a reload, without a flash and without losing scroll position
     - Create **no** `src/hooks.ts`: there is no `reroute`, no `deLocalizeUrl` and no locale prefix in any URL — the language is a cookie, and a prefix would be a second source of truth
-    - Write `messages/cs.json` and `messages/en.json` from the design's **Message Catalogue** — every key it lists, both languages, nothing invented and nothing omitted. A string that is not in the catalogue does not go on screen; if one is missing, add it to the catalogue first
+    - Extend the `messages/cs.json` and `messages/en.json` scaffolds `001` task 1.1 created — which hold only `001`'s own error keys — to the design's full **Message Catalogue** — every key it lists, both languages, nothing invented and nothing omitted. A string that is not in the catalogue does not go on screen; if one is missing, add it to the catalogue first
     - Include the three statistics observation keys with both languages exactly as the design's table gives them: `stats_observation_nights` — `Práce po {eveningHour} padla na {nights, plural, one {# den} few {# dny} other {# dnů}} z {workdays}.` / `Work after {eveningHour} fell on {nights, plural, one {# day} other {# days}} of {workdays}.`; `stats_observation_longest` — `Nejdelší nepřerušený úsek: {duration}, {weekday}.` / `Longest unbroken stretch: {duration}, {weekday}.`; `stats_observation_idle` — `Bez práce: {idleDays, plural, one {# den} few {# dny} other {# dnů}}.` / `No work on {idleDays, plural, one {# day} other {# days}}.`
     - Two rules that hold for **every** message, not only those three: a countable noun always goes through a plural form, and **no verb ever follows a number** — Czech verb agreement would then depend on the count as well. Write noun phrases (`Nejdelší nepřerušený úsek: …`), never `Nejdelší úsek trval …`
     - _Requirements: 13.1, 13.3, 13.4, 13.5, 13.6, 13.9, 13.10, 13.12, 13.13, 13.14_
@@ -468,7 +468,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
 - [ ] 11. End-to-end, accessibility and visual conformance
   - [ ] 11.1 Write the reconciliation E2E scenarios
-    - `tests/e2e/day.spec.ts` following the workspace pattern — `workers: 1`, a `resetDb` fixture, a real database
+    - `tests/e2e/day.spec.ts` against the `playwright.config.ts` and the `resetDb` fixture that `001` task 1.9 writes — `workers: 1`, a real database on `TEST_DATABASE_URL`
     - Start the timer, stop at the break, start again, stop at the end; log `13:00–16:00` and assert two `Work_Block` groups with the `Break_Marker` between them, the part counter on both split blocks, and a list entry stating it was split
     - Log two hours in `Duration_Mode` with no start over the same frame and assert the segments total exactly 120 minutes across the break
     - _Requirements: 4.1, 4.6, 6.4, 7.2_
