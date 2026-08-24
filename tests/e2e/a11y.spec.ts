@@ -19,6 +19,9 @@
 import AxeBuilder from '@axe-core/playwright';
 import type { Browser, Page } from '@playwright/test';
 import { test, expect, login, createProject, createSessionViaApi, createActivityViaApi, findProjectId } from './fixtures';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 
 const PAGES = [
 	{ name: 'timer', path: '/' },
@@ -27,13 +30,17 @@ const PAGES = [
 	{ name: 'statistics', path: '/stats' }
 ];
 
-const SCRATCH = '/tmp/claude-1000/-workspace/02439d03-f232-4a99-b57d-36aab892936c/scratchpad';
+// Same pattern as fixtures.ts's SESSION_STATE_DIR: a run-scoped cache directory
+// under the OS temp dir, never inside the repo, so this file works unmodified
+// from any checkout rather than only from the session that happened to write it.
+const STATE_DIR = join(tmpdir(), 'worklog-e2e-a11y-state');
 const STATE_PATH: Record<'dark' | 'light', string> = {
-	dark: `${SCRATCH}/a11y-state-dark.json`,
-	light: `${SCRATCH}/a11y-state-light.json`
+	dark: join(STATE_DIR, 'a11y-state-dark.json'),
+	light: join(STATE_DIR, 'a11y-state-light.json')
 };
 
 test.beforeAll(async ({ browser }: { browser: Browser }) => {
+	await mkdir(STATE_DIR, { recursive: true });
 	for (const theme of ['dark', 'light'] as const) {
 		const context = await browser.newContext();
 		const page = await context.newPage();

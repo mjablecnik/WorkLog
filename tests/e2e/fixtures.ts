@@ -17,16 +17,15 @@ import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { E2E_PASSPHRASE } from './e2e-passphrase';
 
-export { test, expect };
+export { test, expect, E2E_PASSPHRASE };
 
-/**
- * The plaintext behind the E2E run's throwaway `WORKLOG_PASSPHRASE_HASH`. Only
- * valid when the suite is started through the scratchpad `run-e2e.sh` wrapper (or
- * an equivalent env setup) that mints this exact hash — never the committed
- * `.env`'s real hash, whose plaintext nobody recorded.
- */
-export const E2E_PASSPHRASE = 'e2e-test-passphrase-9182';
+// E2E_PASSPHRASE itself lives in ./e2e-passphrase (imported above, re-exported
+// below) — the plaintext behind the E2E run's throwaway `WORKLOG_PASSPHRASE_HASH`.
+// `scripts/test-e2e.sh` mints that hash from the same constant (via a plain `bun
+// -e` import of that file, never `@playwright/test`) before starting the app —
+// never the committed `.env`'s real hash, whose plaintext nobody recorded.
 
 /**
  * KNOWN BUG WORKAROUND — see `.agents/ISSUES.md`, "Every fresh visit (system theme

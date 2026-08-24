@@ -15,6 +15,19 @@ export TEST_DATABASE_URL="postgres://worklog:worklog@localhost:${DB_PORT}/worklo
 export DATABASE_URL="${TEST_DATABASE_URL}"
 export APP_ENV="test"
 
+# loadConfig() (src/lib/server/core/config.ts) refuses to start without a real
+# WORKLOG_API_TOKEN (>= 32 chars) and a real argon2id WORKLOG_PASSPHRASE_HASH — on a
+# clean checkout neither is set, since .env is gitignored and never committed. A
+# throwaway token is fine here (nothing in this suite exercises the bearer-token
+# API surface). The passphrase hash MUST match tests/e2e/e2e-passphrase.ts's
+# E2E_PASSPHRASE — minted through scripts/hash-passphrase.sh (the one place the
+# hashing algorithm/parameters are defined) rather than duplicated here, so the
+# plaintext every spec logs in with and the hash the server checks against can
+# never drift apart.
+export WORKLOG_API_TOKEN="${WORKLOG_API_TOKEN:-e2e-test-api-token-abcdefghijklmnop}"
+E2E_PASSPHRASE_VALUE="$(bun -e "import { E2E_PASSPHRASE } from './tests/e2e/e2e-passphrase.ts'; console.log(E2E_PASSPHRASE);")"
+export WORKLOG_PASSPHRASE_HASH="$(PASSPHRASE="${E2E_PASSPHRASE_VALUE}" "${SCRIPT_DIR}/hash-passphrase.sh")"
+
 cleanup() {
 	docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 }
