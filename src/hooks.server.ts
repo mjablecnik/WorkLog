@@ -16,6 +16,7 @@ import type { Handle, RequestEvent } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
 import {
 	CLEANUP_INTERVAL_MINUTES,
+	ConfigError,
 	IDEMPOTENCY_RETENTION_HOURS,
 	MAX_BODY_BYTES,
 	SERVICE_RETRY_AFTER_SECONDS,
@@ -48,9 +49,31 @@ import { readDayBoundaryConfig, writeDayBoundaryConfig } from '$lib/server/store
 import { purgeIdempotencyKeys } from '$lib/server/store/idempotency';
 import { apiError, errorResponse } from '$lib/server/core/errors';
 
-export type AuthResult = { kind: 'browser' } | { kind: 'token' } | { kind: 'none' };
+export type AuthResult =
+	| { kind: 'browser' }
+	| { kind: 'token' }
+	| { kind: 'none'; reason?: 'expired' };
 
-const config = getConfig();
+// Requirement 13.24: a bad configuration logs the complete problem list and exits
+// non-zero before the process accepts any connection. `loadConfig()` only throws —
+// this is the one place that catches it, since module-load code is the only place
+// that runs before any request could possibly be served, and killing the process
+// from inside `config.ts` would make it untestable without exiting the test runner.
+// `logger` reads LOG_LEVEL straight from `process.env` rather than through
+// `getConfig()` for exactly this reason, so it stays usable even here.
+let config: ReturnType<typeof getConfig>;
+try {
+	config = getConfig();
+} catch (err) {
+	if (err instanceof ConfigError) {
+		logger.error('invalid configuration, refusing to start', { problems: err.problems });
+	} else {
+		logger.error('failed to load configuration, refusing to start', {
+			error: err instanceof Error ? err.message : String(err)
+		});
+	}
+	process.exit(1);
+}
 const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
 
 const SUPPORTED_LOCALES = ['cs', 'en'] as const;
@@ -139,9 +162,6 @@ export async function getReadiness(): Promise<{ ready: boolean; reason?: string 
 	if (readinessPromise === null || now - readinessCheckedAt > CLEANUP_INTERVAL_MINUTES * 60_000) {
 		readinessCheckedAt = now;
 		readinessPromise = probeReadiness();
-		const result = await readinessPromise;
-		if (!result.ready) readinessPromise = null; // force a fresh probe next time
-		return result;
 	}
 	return readinessPromise;
 }
@@ -242,6 +262,25 @@ export const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
 		event.cookies.get('worklog_theme'),
 		event.cookies.get('worklog_theme_resolved')
 	);
+
+	// Requirement 12.30: the server SHALL set, not merely accept, all three preference
+	// cookies — with these exact attributes — on every rendered page, so a first visit
+	// (no cookies at all) leaves the browser holding a script-readable default rather
+	// than nothing. Spec `002` (not yet built) is free to overwrite any of them from
+	// script at any time; this only guarantees they exist with the right shape.
+	if (isPage) {
+		const preferenceCookieOptions = {
+			path: '/',
+			httpOnly: false,
+			sameSite: 'lax' as const,
+			maxAge: 31536000,
+			secure: config.appEnv !== 'development'
+		};
+		event.cookies.set('worklog_locale', event.locals.locale, preferenceCookieOptions);
+		event.cookies.set('worklog_theme', event.locals.theme, preferenceCookieOptions);
+		event.cookies.set('worklog_theme_resolved', renderTheme, preferenceCookieOptions);
+	}
+
 	const response = await resolve(event, {
 		transformPageChunk: ({ html }) =>
 			substitutePagePlaceholders(html, event.locals.locale, renderTheme)
@@ -255,8 +294,11 @@ export const handleSecurityHeaders: Handle = async ({ event, resolve }) => {
 	return response;
 };
 
+/** `*` is only ever stored when `APP_ENV=development` (loadConfig() rejects it
+ *  elsewhere) — Requirement 11.17's development wildcard, honoured here rather than
+ *  matched as a literal origin string it can never equal. */
 function matchesOrigin(origin: string, allowed: string[]): boolean {
-	return allowed.includes(origin);
+	return allowed.includes('*') || allowed.includes(origin);
 }
 
 export const handleCors: Handle = async ({ event, resolve }) => {
@@ -329,10 +371,14 @@ export async function authenticate(event: RequestEvent): Promise<AuthResult> {
 	}
 
 	// A Browser_Session cookie is never valid cross-origin: SameSite=Strict already
-	// keeps the browser from sending it, and this is a second, explicit check.
+	// keeps the browser from sending it, and this is a second, explicit check —
+	// unconditional (Requirement 11.18), not gated on APP_ENV. Production requires
+	// PUBLIC_ORIGIN to be set (enforced by loadConfig()); development and test may
+	// leave it unset, in which case the request's own resolved origin is what "same
+	// origin" means, so a genuinely same-origin request is never rejected.
 	const origin = event.request.headers.get('origin');
-	const isCrossOrigin =
-		origin !== null && origin !== config.publicOrigin && config.appEnv === 'production';
+	const expectedOrigin = config.publicOrigin.length > 0 ? config.publicOrigin : event.url.origin;
+	const isCrossOrigin = origin !== null && origin !== expectedOrigin;
 	if (isCrossOrigin) return { kind: 'none' };
 
 	const cookieValue = event.cookies.get(SESSION_COOKIE);
@@ -342,7 +388,7 @@ export async function authenticate(event: RequestEvent): Promise<AuthResult> {
 	if (session === null) return { kind: 'none' };
 	if (session.expiresAt.getTime() <= Date.now()) {
 		void withTx((tx) => deleteAuthSession(tx, tokenHash)).catch(() => undefined);
-		return { kind: 'none' };
+		return { kind: 'none', reason: 'expired' };
 	}
 	return { kind: 'browser' };
 }
@@ -377,7 +423,13 @@ export const handleAuth: Handle = async ({ event, resolve }) => {
 			);
 		}
 		const next = encodeURIComponent(pathname + event.url.search);
-		return new Response(null, { status: 303, headers: { location: `/login?next=${next}` } });
+		// Requirement 11.25: distinguish "the cookie you had expired" from "you were
+		// never signed in" so `002` can show the right message on `/login`.
+		const reasonParam = auth.reason === 'expired' ? '&reason=session_expired' : '';
+		return new Response(null, {
+			status: 303,
+			headers: { location: `/login?next=${next}${reasonParam}` }
+		});
 	}
 
 	return resolve(event);
@@ -432,12 +484,61 @@ export const handleBodySizeLimit: Handle = async ({ event, resolve }) => {
 	}
 };
 
+/**
+ * Converts framework-level failures on `/api` paths into the standard envelope —
+ * an unmatched route (SvelteKit's default 404), a method the matched route does not
+ * implement (SvelteKit's built-in 405, which sets `Allow` but not the envelope body),
+ * and a genuinely uncaught exception this app's own routes did not already turn into
+ * an `ApiError` (Requirements 12.2, 12.5, 12.24). A response that already carries the
+ * envelope (`content-type: application/json`, set only by `errorResponse()`) is left
+ * alone rather than rewrapped.
+ */
+export const handleApiErrors: Handle = async ({ event, resolve }) => {
+	const isApi = event.url.pathname.startsWith('/api');
+	try {
+		const response = await resolve(event);
+		if (!isApi) return response;
+		const alreadyEnveloped =
+			response.headers.get('content-type')?.includes('application/json') ?? false;
+		if (alreadyEnveloped) return response;
+		if (response.status === 405) {
+			const allowHeader = response.headers.get('allow');
+			const allowed = allowHeader !== null ? allowHeader.split(',').map((m) => m.trim()) : [];
+			return errorResponse(
+				apiError('METHOD_NOT_ALLOWED', 'That method is not allowed on this resource.', {
+					allowed
+				}),
+				event.locals.requestId
+			);
+		}
+		if (response.status === 404) {
+			return errorResponse(
+				apiError('NOT_FOUND', 'That resource was not found.'),
+				event.locals.requestId
+			);
+		}
+		return response;
+	} catch (err) {
+		if (!isApi) throw err;
+		return errorResponse(err, event.locals.requestId);
+	}
+};
+
+// `handleRequestLog` and `handleSecurityHeaders` sit ahead of `handleReadiness` so a
+// 503 from the readiness gate still gets a log line and the standard security headers
+// (Requirements 12.10, 12.12 apply to every response, this one included) — the reverse
+// of the two's relative order left `handleReadiness`'s early return skipping both
+// entirely, since `sequence()` only runs a later handle when an earlier one calls
+// `resolve()`. `handleLocals` moves up alongside `handleSecurityHeaders` since the
+// latter needs `locals.locale`/`locals.theme`; both are in-memory and cheap, so
+// running them before the database-backed readiness probe costs nothing.
 export const handle = sequence(
 	handleRequestId,
-	handleReadiness,
 	handleRequestLog,
+	handleApiErrors,
 	handleLocals,
 	handleSecurityHeaders,
+	handleReadiness,
 	handleCors,
 	handleBodySizeLimit,
 	handleRateLimit,
