@@ -1,0 +1,95 @@
+/**
+ * GENERATED — do not hand-edit. Run `bun run generate:css` to regenerate.
+ * Source: src/lib/viz/palette.ts (PROJECT_PALETTE), by scripts/generate-palette-and-heights.ts
+ *
+ * Eight classes, `.pj-0` … `.pj-7` — one per Palette_Slot — each theme-aware through
+ * the same `:root` / `[data-theme='dark']` / `[data-theme='light']` selector pattern
+ * `theme.css` uses (dark doubles as the `:root` fallback, for anything rendered before
+ * `data-theme` is known). `--pj` is the slot's hex for that theme; `--pj-tint` is the
+ * same colour at 0.16 alpha in dark and 0.13 in light — computed from each
+ * theme's own hex, never derived by reusing the dark hex with a different alpha.
+ *
+ * No `.pj-*` class references `--destructive`, and no destructive control references a
+ * `.pj-*` class — the pink slot and the destructive colour sit close together and must
+ * stay separable.
+ */
+
+:root .pj-0,
+[data-theme='dark'] .pj-0 {
+	--pj: #3899ea;
+	--pj-tint: rgba(56, 153, 234, 0.16);
+}
+[data-theme='light'] .pj-0 {
+	--pj: #2287d7;
+	--pj-tint: rgba(34, 135, 215, 0.13);
+}
+
+:root .pj-1,
+[data-theme='dark'] .pj-1 {
+	--pj: #b7466c;
+	--pj-tint: rgba(183, 70, 108, 0.16);
+}
+[data-theme='light'] .pj-1 {
+	--pj: #cc5a7f;
+	--pj-tint: rgba(204, 90, 127, 0.13);
+}
+
+:root .pj-2,
+[data-theme='dark'] .pj-2 {
+	--pj: #09af72;
+	--pj-tint: rgba(9, 175, 114, 0.16);
+}
+[data-theme='light'] .pj-2 {
+	--pj: #006640;
+	--pj-tint: rgba(0, 102, 64, 0.13);
+}
+
+:root .pj-3,
+[data-theme='dark'] .pj-3 {
+	--pj: #a67102;
+	--pj-tint: rgba(166, 113, 2, 0.16);
+}
+[data-theme='light'] .pj-3 {
+	--pj: #b27a00;
+	--pj-tint: rgba(178, 122, 0, 0.13);
+}
+
+:root .pj-4,
+[data-theme='dark'] .pj-4 {
+	--pj: #7c5cc0;
+	--pj-tint: rgba(124, 92, 192, 0.16);
+}
+[data-theme='light'] .pj-4 {
+	--pj: #613fa0;
+	--pj-tint: rgba(97, 63, 160, 0.13);
+}
+
+:root .pj-5,
+[data-theme='dark'] .pj-5 {
+	--pj: #019fb5;
+	--pj-tint: rgba(1, 159, 181, 0.16);
+}
+[data-theme='light'] .pj-5 {
+	--pj: #0191a6;
+	--pj-tint: rgba(1, 145, 166, 0.13);
+}
+
+:root .pj-6,
+[data-theme='dark'] .pj-6 {
+	--pj: #a19201;
+	--pj-tint: rgba(161, 146, 1, 0.16);
+}
+[data-theme='light'] .pj-6 {
+	--pj: #7f7302;
+	--pj-tint: rgba(127, 115, 2, 0.13);
+}
+
+:root .pj-7,
+[data-theme='dark'] .pj-7 {
+	--pj: #ba4939;
+	--pj-tint: rgba(186, 73, 57, 0.16);
+}
+[data-theme='light'] .pj-7 {
+	--pj: #cb5848;
+	--pj-tint: rgba(203, 88, 72, 0.13);
+}

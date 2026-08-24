@@ -1,0 +1,460 @@
+/**
+ * GENERATED — do not hand-edit. Run `bun run generate:css` to regenerate.
+ * Source: src/modules/day/components/timeline-geometry.ts (MIN_BLOCK_PX, HEIGHT_STEP_PX,
+ * FILL_THRESHOLD_PX), by scripts/generate-palette-and-heights.ts
+ *
+ * A continuous ladder, `.tl-h-26` … `.tl-h-320` in 2px steps (148 rules), so
+ * every height `layOutDay` can produce is a member by construction — see design.md,
+ * "Applying Tokens Without Inline Styles". `layOutDay` does the quantising itself and
+ * returns a `heightPx` already on the ladder; the component only picks the matching
+ * class. `.tl-h-fill` (`flex: 1 1 auto`) is for the one segment per block column whose
+ * true height exceeds the ladder's ceiling (`fillsColumn` in `LaidOutSegment`).
+ */
+
+.tl-h-26 {
+	height: 26px;
+}
+.tl-h-28 {
+	height: 28px;
+}
+.tl-h-30 {
+	height: 30px;
+}
+.tl-h-32 {
+	height: 32px;
+}
+.tl-h-34 {
+	height: 34px;
+}
+.tl-h-36 {
+	height: 36px;
+}
+.tl-h-38 {
+	height: 38px;
+}
+.tl-h-40 {
+	height: 40px;
+}
+.tl-h-42 {
+	height: 42px;
+}
+.tl-h-44 {
+	height: 44px;
+}
+.tl-h-46 {
+	height: 46px;
+}
+.tl-h-48 {
+	height: 48px;
+}
+.tl-h-50 {
+	height: 50px;
+}
+.tl-h-52 {
+	height: 52px;
+}
+.tl-h-54 {
+	height: 54px;
+}
+.tl-h-56 {
+	height: 56px;
+}
+.tl-h-58 {
+	height: 58px;
+}
+.tl-h-60 {
+	height: 60px;
+}
+.tl-h-62 {
+	height: 62px;
+}
+.tl-h-64 {
+	height: 64px;
+}
+.tl-h-66 {
+	height: 66px;
+}
+.tl-h-68 {
+	height: 68px;
+}
+.tl-h-70 {
+	height: 70px;
+}
+.tl-h-72 {
+	height: 72px;
+}
+.tl-h-74 {
+	height: 74px;
+}
+.tl-h-76 {
+	height: 76px;
+}
+.tl-h-78 {
+	height: 78px;
+}
+.tl-h-80 {
+	height: 80px;
+}
+.tl-h-82 {
+	height: 82px;
+}
+.tl-h-84 {
+	height: 84px;
+}
+.tl-h-86 {
+	height: 86px;
+}
+.tl-h-88 {
+	height: 88px;
+}
+.tl-h-90 {
+	height: 90px;
+}
+.tl-h-92 {
+	height: 92px;
+}
+.tl-h-94 {
+	height: 94px;
+}
+.tl-h-96 {
+	height: 96px;
+}
+.tl-h-98 {
+	height: 98px;
+}
+.tl-h-100 {
+	height: 100px;
+}
+.tl-h-102 {
+	height: 102px;
+}
+.tl-h-104 {
+	height: 104px;
+}
+.tl-h-106 {
+	height: 106px;
+}
+.tl-h-108 {
+	height: 108px;
+}
+.tl-h-110 {
+	height: 110px;
+}
+.tl-h-112 {
+	height: 112px;
+}
+.tl-h-114 {
+	height: 114px;
+}
+.tl-h-116 {
+	height: 116px;
+}
+.tl-h-118 {
+	height: 118px;
+}
+.tl-h-120 {
+	height: 120px;
+}
+.tl-h-122 {
+	height: 122px;
+}
+.tl-h-124 {
+	height: 124px;
+}
+.tl-h-126 {
+	height: 126px;
+}
+.tl-h-128 {
+	height: 128px;
+}
+.tl-h-130 {
+	height: 130px;
+}
+.tl-h-132 {
+	height: 132px;
+}
+.tl-h-134 {
+	height: 134px;
+}
+.tl-h-136 {
+	height: 136px;
+}
+.tl-h-138 {
+	height: 138px;
+}
+.tl-h-140 {
+	height: 140px;
+}
+.tl-h-142 {
+	height: 142px;
+}
+.tl-h-144 {
+	height: 144px;
+}
+.tl-h-146 {
+	height: 146px;
+}
+.tl-h-148 {
+	height: 148px;
+}
+.tl-h-150 {
+	height: 150px;
+}
+.tl-h-152 {
+	height: 152px;
+}
+.tl-h-154 {
+	height: 154px;
+}
+.tl-h-156 {
+	height: 156px;
+}
+.tl-h-158 {
+	height: 158px;
+}
+.tl-h-160 {
+	height: 160px;
+}
+.tl-h-162 {
+	height: 162px;
+}
+.tl-h-164 {
+	height: 164px;
+}
+.tl-h-166 {
+	height: 166px;
+}
+.tl-h-168 {
+	height: 168px;
+}
+.tl-h-170 {
+	height: 170px;
+}
+.tl-h-172 {
+	height: 172px;
+}
+.tl-h-174 {
+	height: 174px;
+}
+.tl-h-176 {
+	height: 176px;
+}
+.tl-h-178 {
+	height: 178px;
+}
+.tl-h-180 {
+	height: 180px;
+}
+.tl-h-182 {
+	height: 182px;
+}
+.tl-h-184 {
+	height: 184px;
+}
+.tl-h-186 {
+	height: 186px;
+}
+.tl-h-188 {
+	height: 188px;
+}
+.tl-h-190 {
+	height: 190px;
+}
+.tl-h-192 {
+	height: 192px;
+}
+.tl-h-194 {
+	height: 194px;
+}
+.tl-h-196 {
+	height: 196px;
+}
+.tl-h-198 {
+	height: 198px;
+}
+.tl-h-200 {
+	height: 200px;
+}
+.tl-h-202 {
+	height: 202px;
+}
+.tl-h-204 {
+	height: 204px;
+}
+.tl-h-206 {
+	height: 206px;
+}
+.tl-h-208 {
+	height: 208px;
+}
+.tl-h-210 {
+	height: 210px;
+}
+.tl-h-212 {
+	height: 212px;
+}
+.tl-h-214 {
+	height: 214px;
+}
+.tl-h-216 {
+	height: 216px;
+}
+.tl-h-218 {
+	height: 218px;
+}
+.tl-h-220 {
+	height: 220px;
+}
+.tl-h-222 {
+	height: 222px;
+}
+.tl-h-224 {
+	height: 224px;
+}
+.tl-h-226 {
+	height: 226px;
+}
+.tl-h-228 {
+	height: 228px;
+}
+.tl-h-230 {
+	height: 230px;
+}
+.tl-h-232 {
+	height: 232px;
+}
+.tl-h-234 {
+	height: 234px;
+}
+.tl-h-236 {
+	height: 236px;
+}
+.tl-h-238 {
+	height: 238px;
+}
+.tl-h-240 {
+	height: 240px;
+}
+.tl-h-242 {
+	height: 242px;
+}
+.tl-h-244 {
+	height: 244px;
+}
+.tl-h-246 {
+	height: 246px;
+}
+.tl-h-248 {
+	height: 248px;
+}
+.tl-h-250 {
+	height: 250px;
+}
+.tl-h-252 {
+	height: 252px;
+}
+.tl-h-254 {
+	height: 254px;
+}
+.tl-h-256 {
+	height: 256px;
+}
+.tl-h-258 {
+	height: 258px;
+}
+.tl-h-260 {
+	height: 260px;
+}
+.tl-h-262 {
+	height: 262px;
+}
+.tl-h-264 {
+	height: 264px;
+}
+.tl-h-266 {
+	height: 266px;
+}
+.tl-h-268 {
+	height: 268px;
+}
+.tl-h-270 {
+	height: 270px;
+}
+.tl-h-272 {
+	height: 272px;
+}
+.tl-h-274 {
+	height: 274px;
+}
+.tl-h-276 {
+	height: 276px;
+}
+.tl-h-278 {
+	height: 278px;
+}
+.tl-h-280 {
+	height: 280px;
+}
+.tl-h-282 {
+	height: 282px;
+}
+.tl-h-284 {
+	height: 284px;
+}
+.tl-h-286 {
+	height: 286px;
+}
+.tl-h-288 {
+	height: 288px;
+}
+.tl-h-290 {
+	height: 290px;
+}
+.tl-h-292 {
+	height: 292px;
+}
+.tl-h-294 {
+	height: 294px;
+}
+.tl-h-296 {
+	height: 296px;
+}
+.tl-h-298 {
+	height: 298px;
+}
+.tl-h-300 {
+	height: 300px;
+}
+.tl-h-302 {
+	height: 302px;
+}
+.tl-h-304 {
+	height: 304px;
+}
+.tl-h-306 {
+	height: 306px;
+}
+.tl-h-308 {
+	height: 308px;
+}
+.tl-h-310 {
+	height: 310px;
+}
+.tl-h-312 {
+	height: 312px;
+}
+.tl-h-314 {
+	height: 314px;
+}
+.tl-h-316 {
+	height: 316px;
+}
+.tl-h-318 {
+	height: 318px;
+}
+.tl-h-320 {
+	height: 320px;
+}
+.tl-h-fill {
+	flex: 1 1 auto;
+}

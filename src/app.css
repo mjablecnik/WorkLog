@@ -18,6 +18,8 @@
 
 @import 'tailwindcss';
 @import './lib/theme/theme.css';
+@import './lib/theme/palette.css';
+@import './lib/theme/timeline-heights.css';
 
 @theme {
 	/* -------------------------------------------------------------------
