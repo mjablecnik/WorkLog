@@ -23,6 +23,7 @@
 	 * functions already guard their `window`/`document` touches internally, so
 	 * calling them unconditionally here is safe server-side.
 	 */
+	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
