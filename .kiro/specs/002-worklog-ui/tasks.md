@@ -452,7 +452,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - A submit control disables itself and shows progress while its action is in flight; required fields are marked required; leaving a form with unsaved input asks first
     - _Requirements: 14.13, 14.14, 15.1, 15.2, 15.8_
 
-  - [ ] 9.2 Implement result and error feedback
+  - [x] 9.2 Implement result and error feedback
     - Toasts: bottom centre on mobile, bottom right on desktop, `--dialog` at radius 14 with the dialog shadow, `padding: 12px 16px`, 13.5 text, a 15 pixel leading icon, `max-width: 420`. A success dismisses itself after about four seconds; a failure carries an accent text action and stays until dismissed — a message the user never saw is the same as no message
     - Confirmation dialogs: the dialog shell at `max-width: 420`, header 17/500, body 13.5 `--text-dim` naming exactly what will be lost, and for a destructive confirmation a filled `--destructive` pill rather than an accent one. Never a bare "are you sure"
     - A field-level rejection renders the key from `details.fields[name]` beneath the field at 12 px in `--destructive`, with the field taking `inset 0 0 0 1px var(--destructive)` and keeping its value. **Never render the validator's English sentence** — the schema is shared with a REST API whose prose is deliberately English
