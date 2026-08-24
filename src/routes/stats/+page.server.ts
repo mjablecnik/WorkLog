@@ -172,7 +172,12 @@ async function loadStatsData(url: URL, locals: App.Locals) {
 		),
 		dayStartHour: config.dayStartHour,
 		eveningHour: config.eveningHour,
-		timeZone: config.timezone
+		timeZone: config.timezone,
+		// `stats_rhythm_unavailable`'s `{days}` param, for the (never-reached through
+		// this UI's own day/week/month ranges, but still handled) branch where
+		// `intervalsIncluded` is false — see that message's own doc comment in
+		// StatsPage.svelte.
+		maxIntervalRangeDays: MAX_INTERVAL_RANGE_DAYS
 	};
 }
 
