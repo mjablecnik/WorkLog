@@ -1,5 +1,28 @@
 # Issues
 
+## [LOW] Task 10.5 (gauge window / suggested window property tests) not written
+- Run: 2026-08-23-2200
+- Phase: impl
+- Status: OPEN
+- What: `tests/api/days.property.test.ts` (Property 19: overtime and in-window time
+  partition the day; Property 21: the suggested window brackets the bulk of the work),
+  marked optional (`*`) in `tasks.md`, was not written. Tasks 10.1 (required) and
+  10.2-10.4 (optional) were all implemented and verified against the real database;
+  10.5 was the one optional task deliberately left for time budget reasons after the
+  test suite's runtime had already grown substantially from 10.2-10.4 (real-database
+  property tests are far slower than the in-memory ones in `domain/`).
+- Impact: Low. The underlying behaviour Properties 19 and 21 would check —
+  `overtimeSeconds` against the `Gauge_Window`, `suggestedWindow` bracketing 90% of
+  `Tracked_Time` — already has deterministic coverage in `tests/api/days.test.ts`
+  (day ending at 03:00 reports 3h overtime, `eveningSeconds`, a populated
+  `suggestedWindow`), just not as a randomized property test sweeping DST transition
+  dates and arbitrary `Gauge_Window` configurations.
+- Tried: Nothing — deliberately deferred, not attempted and abandoned.
+- Next: Write `tests/api/days.property.test.ts` per task 10.5's description if this
+  spec is revisited: generate random session frames across ranges including both
+  Prague DST transitions (2026-03-28, 2026-10-24) and gauge windows other than the
+  default, asserting the two identities design.md states for Properties 19 and 21.
+
 ## [LOW] aggregates.ts computes day summaries in TypeScript, not SQL
 - Run: 2026-08-23-2200
 - Phase: impl

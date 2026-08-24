@@ -600,7 +600,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Property 18: Idempotent writes create one record**
     - **Validates: Requirements 12.8, 12.9, 14.1, 14.3, 14.4, 14.5**
 
-  - [ ]* 10.4 Write property tests for the global invariants
+  - [x]* 10.4 Write property tests for the global invariants
     - `tests/lib/server/store/overlap.property.test.ts`
     - **Property 8: Activity segments never overlap globally**
     - **Property 7: Coverage partitions tracked time**
