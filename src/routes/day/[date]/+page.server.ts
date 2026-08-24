@@ -44,6 +44,11 @@ import {
 	patchActivityAction,
 	deleteActivityAction
 } from '$lib/server/services/activity-form-actions';
+import {
+	createSessionAction,
+	patchSessionAction,
+	deleteSessionAction
+} from '$lib/server/services/session-form-actions';
 
 export type DayPageData = DayResponse & {
 	projects: Project[];
@@ -178,5 +183,8 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
 	createActivity: createActivityAction,
 	patchActivity: patchActivityAction,
-	deleteActivity: deleteActivityAction
+	deleteActivity: deleteActivityAction,
+	createSession: createSessionAction,
+	patchSession: patchSessionAction,
+	deleteSession: deleteSessionAction
 };

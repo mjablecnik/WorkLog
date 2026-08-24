@@ -937,3 +937,53 @@ and marked accordingly.
 - Tried: confirmed by dumping the rendered DOM at failure — the hidden wire-form's
   inputs (`projectId`, `description`, `startedAt`, `endedAt`, …) were visible in the
   `screen.debug()` output where the visible dialog's own fields should have been.
+
+## [LOW] SessionDialog's Editing->Confirming shortcut ignores lostUncoveredSeconds
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `SessionDialog.svelte` (task 5.6)'s shortcut — a `Dry_Run` with nothing to
+  confirm skips straight from Editing to the real write — follows design.md's own
+  wording verbatim: "a `Dry_Run` reporting no `reclipped` entries and
+  `removedSeconds: 0` has nothing to confirm." `ChangePreview.svelte`'s own
+  `sessionHasLoss` check (used to decide whether ITS `--loss` styling applies) is a
+  three-way check that also weighs `lostUncoveredSeconds > 0`. The two are now
+  inconsistent: a session edit that only pushes `Uncovered_Time` outside
+  `Tracked_Time` — no `Activity_Entry` affected, `removedSeconds: 0` — skips
+  Confirming entirely under `SessionDialog`'s shortcut, even though `ChangePreview`
+  would have rendered that exact case as a loss had the dialog shown it.
+- Impact: A narrow case (editing a session's bounds in a way that only shrinks
+  `Tracked_Time` where nothing was logged, not where an `Activity_Entry` overlaps)
+  saves immediately with no confirmation naming the lost `Uncovered_Time`. Every case
+  that also touches a real entry, or removes `Tracked_Time` `Activity_Entry` seconds,
+  is unaffected and still confirms correctly.
+- Tried: the task 5.6 agent implemented the shortcut exactly as design.md states
+  rather than silently widening it to match `ChangePreview`'s own three-way check,
+  since design.md is the normative source here and the discrepancy might be
+  deliberate (a session's own "nothing to confirm" bar could reasonably be narrower
+  than `ChangePreview`'s cosmetic `--loss` styling threshold) rather than an oversight.
+- Next: confirm with the design's author (or re-derive from Requirement 8.4's exact
+  wording) whether the shortcut should also weigh `lostUncoveredSeconds > 0`; if so,
+  widen the condition in `handleSubmit`/`handleDeleteConfirmConfirm`
+  (`SessionDialog.svelte`) to match `ChangePreview`'s `sessionHasLoss`.
+
+## [LOW] Mobile FAB two-item create sheet still has no entry point
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN (unchanged since first logged; noted here as still blocking `SessionDialog`)
+- What: see the earlier "No FAB-content mechanism exists between the shell and pages"
+  entry above — `Shell.svelte` declares a `fab` snippet slot the root layout never
+  fills, and no page has a way to push content into it. Task 5.6 (`SessionDialog`) now
+  gives the day page a real create-session flow, but its only entry points are the
+  desktop "+ úsek" ghost pill and the timeline's rail edges/heads (both already
+  wired) — the design's documented mobile path ("the FAB opens a two-item sheet —
+  Přidat úkol and Přidat úsek timeru") remains unreachable on mobile until the
+  FAB-passthrough mechanism is built.
+- Impact: mobile users have no way to start a brand-new (not rail-edge-initiated)
+  `Work_Session` — `ActivityDialog`'s mobile create path has the identical gap.
+- Tried: deliberately out of scope for task 5.6/5.7 (touches `+layout.svelte`/
+  `Shell.svelte`, files outside both tasks' declared file lists) — not invented here
+  to avoid a second FAB mechanism needing reconciliation later.
+- Next: unchanged from the original entry — build the context/snippet passthrough in
+  `+layout.svelte`/`Shell.svelte` first, then wire each page's two-item (or
+  single-action) sheet content through it.

@@ -4,19 +4,10 @@
 	 * Mobile"; Requirements 5.1-5.6, 6.1). Assembles the heading line, `DayNav`,
 	 * the two create-action pills (desktop only) and the two-column layout
 	 * (`DayTimeline` + a side column) around the read-only load from
-	 * `+page.server.ts`.
-	 *
-	 * TWO INTEGRATION POINTS ARE STILL OPEN, both flagged in the task's own brief:
-	 *
-	 * 1. `DaySummaryPanels` (task 3.8, running in parallel this same wave) does not
-	 *    exist yet. `.day-page__summary-slot` below is where it mounts — desktop's
-	 *    fixed 290px column, sliding below the timeline on mobile per design.md's
-	 *    own words ("The two side panels move below the timeline"). Left as an
-	 *    empty, `aria-hidden` placeholder rather than invented content.
-	 * 2. `SessionDialog` (task 5.6) does not exist yet either. The `+ úsek` pill and
-	 *    `DayTimeline`'s `onSessionActivate`/`onSessionEdgeActivate` callbacks are
-	 *    wired to real handlers that currently do nothing (see the `TODO(5.6)`
-	 *    comments below) rather than opening a dialog that isn't built.
+	 * `+page.server.ts`. `DaySummaryPanels` (task 3.8) and `SessionDialog` (task 5.6)
+	 * are both wired in below — the `+ úsek` pill and `DayTimeline`'s
+	 * `onSessionActivate`/`onSessionEdgeActivate` callbacks open `SessionDialog` in
+	 * create/edit mode, the latter with the activated edge's field focused.
 	 *
 	 * `density` comes from `data.density` — the root layout's server-resolved value
 	 * (`+layout.server.ts`, from the `worklog_viewport` cookie). `+layout.svelte`
@@ -31,13 +22,14 @@
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import type { PageData } from './$types';
-	import type { ActivityEntry, Interval, Project } from '$lib/contracts/models';
+	import type { ActivityEntry, Interval, Project, WorkSession } from '$lib/contracts/models';
 	import * as m from '$lib/paraglide/messages';
 	import { formatDayLabel, formatTimeOfDay, formatDuration } from '$lib/viz/format';
 	import Icon from '$lib/ui/elements/Icon.svelte';
 	import DayNav from '$modules/day/components/DayNav.svelte';
 	import DayTimeline from '$modules/day/components/DayTimeline.svelte';
 	import ActivityDialog from '$modules/day/components/ActivityDialog.svelte';
+	import SessionDialog from '$modules/day/components/SessionDialog.svelte';
 	import DaySummaryPanels from '$modules/day/components/DaySummaryPanels.svelte';
 	import ConfirmDialog from '$lib/ui/overlays/ConfirmDialog.svelte';
 	import { addSuccessToast, addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
@@ -104,17 +96,40 @@
 	}
 
 	// ---------------------------------------------------------------------------
-	// Session_Dialog (task 5.6) does not exist yet — see the doc comment above.
-	// These are real, wired handlers that intentionally do nothing until that task
-	// builds the dialog; they are not stand-ins for missing plumbing.
+	// Session_Dialog wiring (task 5.6; Requirements 8.1, 8.7, 8.9). Mirrors the
+	// Activity_Dialog wiring above: the desktop "+ úsek" ghost pill opens create mode,
+	// a Work_Block's head/rail-mid opens edit mode with no field focused, and a
+	// Session_Rail edge opens edit mode with that end's field focused and selected
+	// (task 5.6's own `initialFocus` prop, resolved by `SessionDialog` itself).
+	let sessionDialogOpen = $state(false);
+	let sessionDialogMode = $state<'create' | 'edit'>('create');
+	let sessionDialogSession = $state<WorkSession | undefined>(undefined);
+	let sessionDialogInitialFocus = $state<'start' | 'end' | undefined>(undefined);
+
 	function handleAddSession(): void {
-		// TODO(5.6): open SessionDialog in create mode once it exists.
+		sessionDialogMode = 'create';
+		sessionDialogSession = undefined;
+		sessionDialogInitialFocus = undefined;
+		sessionDialogOpen = true;
 	}
-	function handleSessionActivate(_sessionId: string): void {
-		// TODO(5.6): open SessionDialog in edit mode once it exists.
+	function handleSessionActivate(sessionId: string): void {
+		const found = data.sessions.find((s) => s.id === sessionId);
+		if (!found) return;
+		sessionDialogMode = 'edit';
+		sessionDialogSession = found;
+		sessionDialogInitialFocus = undefined;
+		sessionDialogOpen = true;
 	}
-	function handleSessionEdgeActivate(_sessionId: string, _edge: 'start' | 'end'): void {
-		// TODO(5.6): open SessionDialog in edit mode, focused on the given edge.
+	function handleSessionEdgeActivate(sessionId: string, edge: 'start' | 'end'): void {
+		const found = data.sessions.find((s) => s.id === sessionId);
+		if (!found) return;
+		sessionDialogMode = 'edit';
+		sessionDialogSession = found;
+		sessionDialogInitialFocus = edge;
+		sessionDialogOpen = true;
+	}
+	function closeSessionDialog(): void {
+		sessionDialogOpen = false;
 	}
 
 	// ---------------------------------------------------------------------------
@@ -258,6 +273,18 @@
 	{density}
 	recentEntry={data.recentEntry}
 	onProjectCreated={handleProjectCreated}
+/>
+
+<SessionDialog
+	mode={sessionDialogMode}
+	session={sessionDialogSession}
+	date={data.date}
+	open={sessionDialogOpen}
+	onClose={closeSessionDialog}
+	{timeZone}
+	{density}
+	now={data.now}
+	initialFocus={sessionDialogInitialFocus}
 />
 
 <ConfirmDialog

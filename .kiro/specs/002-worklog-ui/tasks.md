@@ -131,7 +131,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Plus `formatTimeOfDay`, `parseTimeOfDay` and `formatDayLabel(date, locale, today, form)` with `form` one of `relative` (`dnes` / `včera`, else long), `long` (`pátek 21. srpna`) and `short` (`pá 21.`) — all locale aware and all taking the server time zone explicitly
     - _Requirements: 11.9, 13.7, 17.11_
 
-  - [ ] 1.13 Point the form actions at the shared Zod schemas
+  - [x] 1.13 Point the form actions at the shared Zod schemas
     - Import `createActivitySchema`, `patchActivitySchema`, `createSessionSchema`, `patchSessionSchema`, `createProjectSchema` and `patchProjectSchema` from `src/lib/contracts/schemas.ts`, which `001` owns and places outside `src/lib/server/` precisely so superforms can import it in the browser
     - There is **no** `deleteSessionSchema`. A delete carries its dry-run flags as the `dry_run` and `preview_token` query parameters, validated by `deleteSessionQuery` and `deleteActivityQuery` — used by the dry-run client of task 5.1, not by superforms
     - Import the domain types the same way — `Interval`, `WorkSession`, `ActivityEntry`, `ActivitySegment` and `Project` from `src/lib/contracts/models.ts`, and `DaySummary`, `DayResponse`, `DaysRangeResponse`, `CoverageResponse`, `ActivityResponse`, `ActivityListResponse`, `SessionChangePreview`, `CurrentSessionResponse` and `HealthResponse` from `src/lib/contracts/responses.ts`. `001` splits models from response shapes across two files; both are client-safe, and a type under `src/lib/server/` cannot be imported by a `.svelte` file at all
@@ -271,7 +271,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - After any write the `Day_Timeline` updates without a full page reload
     - _Requirements: 6.1, 6.14, 7.4, 7.5, 7.6, 7.7, 7.8_
 
-  - [ ] 5.6 Build `SessionDialog` and the frame-editing actions
+  - [x] 5.6 Build `SessionDialog` and the frame-editing actions
     - Editable start and end, a changed value shown beside the previous one struck through, reached from a `+ úsek` ghost pill in the day heading on desktop and from the mobile FAB's two-item sheet, and deletion as an inline control styled from the destructive token — never from a `Palette_Slot` — behind a confirmation naming the interval
     - A change altering existing segments shows the `Change_Preview` as a distinct confirmation state: the save action becomes confirm-and-save beside a way back to editing
     - An overlap shows which sessions conflict and does not save; an inverted interval shows the error beside the field
@@ -279,7 +279,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The `Day_Timeline` updates without a full page reload after a change; below 768 pixels the dialog fills the screen on the same terms as the `Activity_Dialog`
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.9, 8.10, 9.7, 14.15, 14.20, 14.21, 14.22, 14.23, 14.24, 17.8_
 
-  - [ ] 5.7 Wire the session rail edges to the dialog
+  - [x] 5.7 Wire the session rail edges to the dialog
     - **Implement no dragging.** A block's height is proportional only within its block and every segment is clamped at `MIN_BLOCK_PX`, so the axis is non-linear the moment anything is pinned and no pixel-to-minute mapping exists that would not misreport the time being set
     - The rail's top and bottom 12 pixels are their own buttons: activating one opens the `Session_Dialog` with that end's field focused and its content selected. The rail's middle opens the same dialog with neither field focused
     - **Below a block height of 60 pixels render no edges at all** — the rail becomes one target. Three stacked targets inside 36 pixels cannot be hit reliably, and the dialog is still one activation away on the block. The edges take the same activation-area exception as a `Segment_Block`
