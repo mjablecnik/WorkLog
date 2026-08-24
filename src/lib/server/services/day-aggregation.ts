@@ -7,7 +7,7 @@
 import type { Interval } from '$lib/contracts/models';
 import type { DayWindow } from '../store/aggregates';
 import { createDayResolver, materializeWallClock, type DayResolver } from '../domain/logical-day';
-import type { Config } from './config';
+import type { Config } from '../core/config';
 
 /** Every `Logical_Day` window intersecting `[range.start, range.end)`, with its date. */
 export function dayWindowsInRange(dayResolver: DayResolver, range: Interval): DayWindow[] {

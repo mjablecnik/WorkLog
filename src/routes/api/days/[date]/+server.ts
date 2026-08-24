@@ -8,7 +8,7 @@ import {
 	buildDayResolver,
 	eveningStartFor,
 	gaugeWindowFor
-} from '$lib/server/core/day-aggregation';
+} from '$lib/server/services/day-aggregation';
 import { NoPlacementAnchorError, resolveAnchor } from '$lib/server/domain/clipping';
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';

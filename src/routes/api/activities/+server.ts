@@ -9,7 +9,7 @@ import {
 import { getConfig } from '$lib/server/core/config';
 import { apiError, errorResponse, parseJsonBody, parseRequest } from '$lib/server/core/errors';
 import { createDayResolver } from '$lib/server/domain/logical-day';
-import { resolveQueryRange } from '$lib/server/core/query-range';
+import { resolveQueryRange } from '$lib/server/services/query-range';
 import { withReadTx } from '$lib/server/store/tx';
 import { listEntriesOverlapping, type EntryCursor } from '$lib/server/store/activities';
 import { createActivity } from '$lib/server/services/activities';

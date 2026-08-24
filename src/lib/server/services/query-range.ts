@@ -7,7 +7,10 @@
 import type { Interval } from '$lib/contracts/models';
 import { MAX_RANGE_DAYS } from '$lib/contracts/constants';
 import type { DayResolver } from '../domain/logical-day';
-import { apiError } from './errors';
+import { apiError } from '../core/errors';
+
+/** A Logical_Day never runs longer than 25 hours (the longest a DST fold can make it). */
+const MAX_LOGICAL_DAY_MS = 25 * 3_600_000;
 
 export function resolveQueryRange(
 	dayResolver: DayResolver,
@@ -25,6 +28,21 @@ export function resolveQueryRange(
 			end: to.toISOString()
 		});
 	}
+
+	// A cheap lower bound first: no Logical_Day is longer than MAX_LOGICAL_DAY_MS, so
+	// covering the requested span needs at least this many of them. When that alone
+	// already exceeds MAX_RANGE_DAYS, reject without materialising every day's bounds —
+	// `dayResolver.range()` walks day by day, each one a DST-aware calculation, and a
+	// multi-year span would otherwise force thousands of them just to be refused.
+	const spanMs = to.getTime() - from.getTime();
+	const lowerBoundDays = Math.floor(spanMs / MAX_LOGICAL_DAY_MS);
+	if (lowerBoundDays > MAX_RANGE_DAYS) {
+		throw apiError('RANGE_TOO_LARGE', 'That range is too large.', {
+			maxDays: MAX_RANGE_DAYS,
+			requestedDays: lowerBoundDays
+		});
+	}
+
 	const days = dayResolver.range(from, to).length;
 	if (days > MAX_RANGE_DAYS) {
 		throw apiError('RANGE_TOO_LARGE', 'That range is too large.', {

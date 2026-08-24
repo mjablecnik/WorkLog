@@ -11,7 +11,7 @@ import {
 	parseRequest
 } from '$lib/server/core/errors';
 import { createDayResolver } from '$lib/server/domain/logical-day';
-import { resolveQueryRange } from '$lib/server/core/query-range';
+import { resolveQueryRange } from '$lib/server/services/query-range';
 import { withReadTx } from '$lib/server/store/tx';
 import { listSessionsOverlapping } from '$lib/server/store/work-sessions';
 import { createSession } from '$lib/server/services/sessions';

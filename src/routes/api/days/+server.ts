@@ -9,8 +9,8 @@ import {
 	dayWindowsInRange,
 	eveningStartFor,
 	gaugeWindowFor
-} from '$lib/server/core/day-aggregation';
-import { resolveQueryRange } from '$lib/server/core/query-range';
+} from '$lib/server/services/day-aggregation';
+import { resolveQueryRange } from '$lib/server/services/query-range';
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries, dayIntervals, suggestedWindow } from '$lib/server/store/aggregates';
 

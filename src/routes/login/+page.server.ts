@@ -7,14 +7,12 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { loginSchema } from '$lib/contracts/schemas';
-import { getConfig } from '$lib/server/core/config';
 import {
-	mintSessionToken,
-	safeRedirectTarget,
-	sessionCookieOptions,
-	verifyPassphrase,
+	beginBrowserSessionCookie,
+	resolveSafeRedirect,
+	verifyLoginPassphrase,
 	SESSION_COOKIE
-} from '$lib/server/core/auth';
+} from '$lib/server/services/auth';
 import { withTx } from '$lib/server/store/tx';
 import { beginBrowserSession } from '$lib/server/store/auth-sessions';
 
@@ -38,21 +36,19 @@ export const actions: Actions = {
 			return fail(400, { messageKey: 'errors_login_failed' });
 		}
 
-		const ok = await verifyPassphrase(parsed.data.passphrase);
+		const ok = await verifyLoginPassphrase(parsed.data.passphrase);
 		if (!ok) {
 			return fail(400, { messageKey: 'errors_login_failed' });
 		}
 
-		const { token, tokenHash } = mintSessionToken();
-		const config = getConfig();
-		const expiresAt = new Date(Date.now() + config.sessionDurationHours * 3_600_000);
+		const { token, tokenHash, expiresAt, cookieOptions } = beginBrowserSessionCookie();
 		await withTx((tx) => beginBrowserSession(tx, tokenHash, expiresAt));
 
-		event.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+		event.cookies.set(SESSION_COOKIE, token, cookieOptions);
 
 		// The field wins over the query string when both are present: the field is
 		// what the submitted form carried.
-		const target = safeRedirectTarget(parsed.data.next ?? event.url.searchParams.get('next'));
+		const target = resolveSafeRedirect(parsed.data.next ?? event.url.searchParams.get('next'));
 		redirect(303, target);
 	}
 };

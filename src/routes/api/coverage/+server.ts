@@ -3,8 +3,8 @@ import type { RequestHandler } from './$types';
 import { coverageQuery } from '$lib/contracts/schemas';
 import { getConfig } from '$lib/server/core/config';
 import { errorResponse, parseRequest } from '$lib/server/core/errors';
-import { buildDayResolver } from '$lib/server/core/day-aggregation';
-import { resolveQueryRange } from '$lib/server/core/query-range';
+import { buildDayResolver } from '$lib/server/services/day-aggregation';
+import { resolveQueryRange } from '$lib/server/services/query-range';
 import { withReadTx } from '$lib/server/store/tx';
 import { coverageForRange } from '$lib/server/store/aggregates';
 
