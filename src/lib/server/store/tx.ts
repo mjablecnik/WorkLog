@@ -128,7 +128,28 @@ type ConstraintOp = 'write-entry' | 'delete-project' | 'write-session';
 type PostgresError = {
 	code?: string;
 	constraint_name?: string;
+	cause?: unknown;
 };
+
+/**
+ * `postgres.js` throws a `PostgresError` carrying `.code`/`.constraint_name` directly,
+ * but Drizzle wraps every driver error in its own `DrizzleQueryError` before it ever
+ * reaches a caller — the original error survives only as `.cause`, and the wrapper's
+ * own `.code` is `undefined`. Every check below reads through that one level of
+ * wrapping (verified against this project's actual `drizzle-orm` version — a plain
+ * driver error with no `.cause` still works, since the wrapper is then just `err`
+ * itself), so a genuinely unwrapped error keeps working too.
+ */
+function unwrapPgError(err: unknown): PostgresError | null {
+	if (typeof err !== 'object' || err === null) return null;
+	const top = err as PostgresError;
+	if (top.code !== undefined) return top;
+	if (typeof top.cause === 'object' && top.cause !== null) {
+		const cause = top.cause as PostgresError;
+		if (cause.code !== undefined) return cause;
+	}
+	return top;
+}
 
 /**
  * Maps PostgreSQL constraint violations to `ApiError` codes. `op` disambiguates
@@ -137,8 +158,8 @@ type PostgresError = {
  * that does not exist (400 VALIDATION_ERROR).
  */
 export function translateConstraintError(err: unknown, op: ConstraintOp): ApiError | null {
-	if (typeof err !== 'object' || err === null) return null;
-	const pgErr = err as PostgresError;
+	const pgErr = unwrapPgError(err);
+	if (pgErr === null) return null;
 	const code = pgErr.code;
 	const constraint = pgErr.constraint_name;
 
@@ -174,7 +195,7 @@ export function translateConstraintError(err: unknown, op: ConstraintOp): ApiErr
  * is applied by the caller that knows the `op`, not blindly here.
  */
 function translateOrRethrow(err: unknown): unknown {
-	const code = (err as PostgresError | undefined)?.code;
+	const code = unwrapPgError(err)?.code;
 	if (code === '57014') {
 		logger.warn('database statement timeout', { code });
 		return apiError('SERVICE_UNAVAILABLE', 'The service is temporarily unavailable.', {
