@@ -23,7 +23,11 @@
 		| 'info'
 		| 'check'
 		| 'search'
-		| 'eye';
+		| 'eye'
+		| 'timer'
+		| 'day'
+		| 'projects'
+		| 'stats';
 
 	type IconDef = {
 		/** Always `0 0 24 24` for the extracted set — kept explicit per icon in case a future
@@ -34,6 +38,7 @@
 		 * warning) are drawn from the artboard as multiple subpaths. */
 		paths: string[];
 		circles?: { cx: number; cy: number; r: number }[];
+		rects?: { x: number; y: number; width: number; height: number; rx?: number }[];
 	};
 
 	const ICONS: Record<IconName, IconDef> = {
@@ -145,6 +150,32 @@
 			strokeWidth: 1.8,
 			circles: [{ cx: 12, cy: 12, r: 9 }],
 			paths: ['M8 12.5l2.5 2.5 5-5']
+		},
+		// verbatim — TimerMobile.dc.html / DayMobile.dc.html bottom-nav tab bar (task 1.10)
+		timer: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			circles: [{ cx: 12, cy: 13, r: 8 }],
+			paths: ['M12 9v4l2.5 2', 'M9 2h6']
+		},
+		// verbatim — TimerMobile.dc.html / DayMobile.dc.html bottom-nav tab bar (task 1.10)
+		day: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			rects: [{ x: 3, y: 5, width: 18, height: 16, rx: 2 }],
+			paths: ['M3 10h18M8 3v4M16 3v4']
+		},
+		// verbatim — TimerMobile.dc.html / DayMobile.dc.html bottom-nav tab bar (task 1.10)
+		projects: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			paths: ['M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z']
+		},
+		// verbatim — TimerMobile.dc.html / DayMobile.dc.html bottom-nav tab bar (task 1.10)
+		stats: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			paths: ['M4 20V10M10 20V4M16 20v-7M22 20H2']
 		}
 	};
 </script>
@@ -178,6 +209,9 @@
 	>
 		{#each def.circles ?? [] as circle, i (i)}
 			<circle cx={circle.cx} cy={circle.cy} r={circle.r} />
+		{/each}
+		{#each def.rects ?? [] as rect, i (i)}
+			<rect x={rect.x} y={rect.y} width={rect.width} height={rect.height} rx={rect.rx} />
 		{/each}
 		{#each def.paths as d, i (i)}
 			<path {d} />
