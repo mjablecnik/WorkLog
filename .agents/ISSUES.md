@@ -1,5 +1,60 @@
 # Issues
 
+## [HIGH] `scripts/test-e2e.sh` always throws in `global-setup.ts` before any test runs — `DATABASE_URL`/`TEST_DATABASE_URL` contradiction, not a sandbox artifact
+- Run: 2026-08-24-0659
+- Phase: docs
+- Status: OPEN
+- What: `scripts/test-e2e.sh` sets `DATABASE_URL="${TEST_DATABASE_URL}"` — the two
+  are made byte-identical on purpose, per the script's own comment ("Point the
+  app's own `DATABASE_URL` at the test database too"). `tests/setup/db.ts`
+  (imported by `tests/e2e/global-setup.ts`, which `playwright.config.ts` wires in
+  as `globalSetup`, run once before any spec) refuses to run — unconditionally,
+  not gated by `process.env.VITEST` like the rest of that file — whenever
+  `TEST_DATABASE_URL === DATABASE_URL`, throwing `"TEST_DATABASE_URL must be set,
+  must differ from DATABASE_URL and must name a database ending in _test —
+  refusing to truncate"`. The two files' authors each independently imposed a
+  correct-sounding rule that directly contradicts the other's.
+- Impact: `bun run test:e2e:local` (`./scripts/test-e2e.sh`) cannot ever get past
+  `global-setup.ts` as currently written — not a sandbox limitation, reproduces
+  identically on any machine, since it is purely a same-string comparison with no
+  network or Docker involved. This is a regression hiding behind the verify
+  phase's "RESOLVED" entry for "The E2E suite is not runnable from a clean
+  checkout" (UC-508) — that phase's own `./scripts/test-e2e.sh` run never actually
+  reached this code path: it failed earlier, at `migrate.sh`'s `psql` call, on
+  this sandbox's separate, pre-existing inability to reach a `docker run
+  -p`-published port from its own shell (see the `sandbox-docker-net` skill) — so
+  the fix was verified only up through the point that failure masked, not
+  end-to-end.
+- Tried: reproduced live, three ways, in this (docs) phase, using the
+  `sandbox-docker-net` skill's plain-`docker run`-on-shared-network pattern to
+  reach the pre-existing `worklog-pg` container directly by name (bypassing the
+  port-publish limitation entirely, so the sandbox quirk cannot be blamed here):
+  1. `bunx playwright test tests/e2e/auth.spec.ts` with `DATABASE_URL` and
+     `TEST_DATABASE_URL` both set to
+     `postgres://worklog:worklog@worklog-pg:5432/worklog_test` (test-e2e.sh's
+     exact pattern) — failed immediately with the exact error above.
+  2. Isolated the failure to `global-setup.ts` specifically by invoking it
+     directly (`bun -e "import gs from './tests/e2e/global-setup.ts'; await
+     gs();"`) with the same two env vars — same error, same line
+     (`tests/setup/db.ts:47`).
+  3. `bun run test` (the separate unit/integration suite, which does NOT set
+     `DATABASE_URL === TEST_DATABASE_URL`) ran clean against the same `worklog-pg`
+     container reached the same way — 52 files / 545 tests passed — isolating the
+     contradiction to `test-e2e.sh`'s specific choice to make the two identical,
+     not to `db.ts`'s check being broken in general, nor to database reachability.
+- Next: `test-e2e.sh` needs `DATABASE_URL` to end up pointing the running app at
+  the same database `TEST_DATABASE_URL` names, without the two environment
+  variables being the literal same string `db.ts`'s check compares — e.g. two
+  different connection strings that resolve to the same database (a second
+  alias/port), or move the
+  "point the app at the test database" step to `playwright.config.ts`'s
+  `webServer.env` alone (which already does exactly this, correctly, for the
+  actual app process) and stop `test-e2e.sh` from separately exporting
+  `DATABASE_URL` into its own shell before invoking `bunx playwright test` at
+  all, since nothing in `test-e2e.sh` itself needs `DATABASE_URL` set — only
+  `migrate.sh` does, and `migrate.sh` could be pointed at `TEST_DATABASE_URL`
+  explicitly instead of relying on the ambient `DATABASE_URL` export.
+
 ## [LOW] Three spec-001 property tests failed once under this run's heavy sandbox load, passed clean on retry
 - Run: 2026-08-24-0659
 - Phase: verify
