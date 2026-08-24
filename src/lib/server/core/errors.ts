@@ -7,6 +7,7 @@
  */
 import type { z } from 'zod';
 import { logger } from './logger';
+import { MAX_BODY_BYTES } from './config';
 
 export type ErrorCode =
 	| 'VALIDATION_ERROR'
@@ -131,7 +132,17 @@ export function fieldMessageKeyFor(issue: z.core.$ZodIssue): string {
 	if (path === 'startedAt' || path === 'endedAt') {
 		if (issue.code === 'custom') return 'fields_bounds_together';
 	}
-	if (path === 'date' && issue.code === 'custom') return 'fields_date_required_for_duration';
+	if (path === 'date' && issue.code === 'custom') {
+		// Two different `date`-field refinements share this path and issue code: the
+		// calendar-validity check on `dateString` itself (`schemas.ts`'s
+		// `isRealCalendarDate`) and the object-level "date required when a duration is
+		// given" rule. They are told apart by message, since Zod gives every `.refine()`
+		// issue the same generic `custom` code.
+		if ('message' in issue && issue.message === 'must be a real calendar date') {
+			return 'fields_invalid_date';
+		}
+		return 'fields_date_required_for_duration';
+	}
 
 	switch (issue.code) {
 		case 'invalid_type':
@@ -143,7 +154,13 @@ export function fieldMessageKeyFor(issue: z.core.$ZodIssue): string {
 		case 'invalid_format':
 			if (issue.format === 'uuid') return 'fields_invalid_id';
 			if (issue.format === 'datetime') return 'fields_invalid_timestamp';
-			if (issue.format === 'regex') return 'fields_invalid_date';
+			// `regex` format is shared by `dateString` (schemas.ts) and by the unrelated
+			// `Idempotency-Key` shape — both raw strings validated outside any object, so
+			// `issue.path` cannot tell them apart (both are '(root)'). The regex source
+			// itself can: only `dateString`'s pattern means "not shaped like a date".
+			if (issue.format === 'regex' && issue.pattern === '/^\\d{4}-\\d{2}-\\d{2}$/') {
+				return 'fields_invalid_date';
+			}
 			return 'fields_invalid';
 		case 'invalid_value':
 			return 'fields_invalid_choice';
@@ -226,12 +243,22 @@ export function assertNotTooFarInFuture(
 	}
 }
 
-/** Throws `INTERVAL_TOO_SHORT` when `[start, end)` is shorter than `minIntervalSeconds`. */
+/**
+ * Throws `INVALID_INTERVAL` when `end` does not fall strictly after `start`, else
+ * `INTERVAL_TOO_SHORT` when `[start, end)` is shorter than `minIntervalSeconds`. The
+ * reversed/equal case is checked first — a negative duration is not a short one.
+ */
 export function assertIntervalNotTooShort(
 	start: Date,
 	end: Date,
 	minIntervalSeconds: number
 ): void {
+	if (end.getTime() <= start.getTime()) {
+		throw apiError('INVALID_INTERVAL', 'The interval is invalid.', {
+			start: start.toISOString(),
+			end: end.toISOString()
+		});
+	}
 	const actualSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
 	if (actualSeconds < minIntervalSeconds) {
 		throw apiError('INTERVAL_TOO_SHORT', 'That interval is too short.', {
@@ -255,10 +282,26 @@ export type ErrorBody = {
  * body — no stack traces, no SQL text, no filesystem paths (Requirement 12.3).
  */
 export function errorResponse(err: unknown, requestId: string): Response {
-	const apiErr =
-		err instanceof ApiError ? err : apiError('INTERNAL_ERROR', 'Something went wrong.', undefined);
+	// The streaming body-size guard (`withBodySizeLimit` in hooks.server.ts) errors the
+	// request's own ReadableStream with a plain Error rather than an ApiError — a route
+	// reading `request.json()`/`request.text()` sees that rejection first, before the
+	// hook's own catch ever runs, so it must be classified here too (Requirement 12.15).
+	// A `status: 413` on the thrown value is adapter-node's OWN body-size ceiling
+	// (`BODY_SIZE_LIMIT`, a `SvelteKitError`) firing ahead of this app's own check —
+	// normally never reached in production, where the Dockerfile sets that limit above
+	// `MAX_BODY_BYTES`, but still classified correctly rather than leaking as a 500 if
+	// some environment leaves it at adapter-node's low default.
+	const isBodyTooLarge =
+		(err instanceof Error && err.message === 'PAYLOAD_TOO_LARGE') ||
+		(err instanceof Error && 'status' in err && (err as { status?: unknown }).status === 413);
 
-	if (!(err instanceof ApiError)) {
+	const apiErr = err instanceof ApiError
+		? err
+		: isBodyTooLarge
+			? apiError('PAYLOAD_TOO_LARGE', 'The request body is too large.', { maxBytes: MAX_BODY_BYTES })
+			: apiError('INTERNAL_ERROR', 'Something went wrong.', undefined);
+
+	if (!(err instanceof ApiError) && !isBodyTooLarge) {
 		logger.error('unhandled error', {
 			requestId,
 			error: err instanceof Error ? err.message : String(err),
