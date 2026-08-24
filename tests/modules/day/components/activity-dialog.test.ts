@@ -329,7 +329,12 @@ describe('ActivityDialog', () => {
 		// `requestSubmit()` runs first and which would otherwise block the "from"
 		// pattern mismatch before the component's own onsubmit ever ran — is bypassed,
 		// exercising exactly the client-side Zod validation this test targets.
-		const form = baseElement.querySelector('form')!;
+		//
+		// Selected by `.activity-dialog` specifically (task 5.5 added two more hidden
+		// `use:enhance` wire-forms — `submitFormEl`/`deleteFormEl` — as siblings for the
+		// real write; a bare `form` selector would ambiguously match whichever of the
+		// three happens to be first in DOM order, not necessarily this visible one).
+		const form = baseElement.querySelector('form.activity-dialog')!;
 		await fireEvent.submit(form);
 		await tick();
 

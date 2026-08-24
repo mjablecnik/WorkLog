@@ -27,6 +27,9 @@
 	 * already documents for itself) rather than live on an in-place resize.
 	 */
 	import { untrack } from 'svelte';
+	import { enhance, applyAction } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
+	import type { ActionResult } from '@sveltejs/kit';
 	import type { PageData } from './$types';
 	import type { ActivityEntry, Interval, Project } from '$lib/contracts/models';
 	import * as m from '$lib/paraglide/messages';
@@ -36,6 +39,8 @@
 	import DayTimeline from '$modules/day/components/DayTimeline.svelte';
 	import ActivityDialog from '$modules/day/components/ActivityDialog.svelte';
 	import DaySummaryPanels from '$modules/day/components/DaySummaryPanels.svelte';
+	import ConfirmDialog from '$lib/ui/overlays/ConfirmDialog.svelte';
+	import { addSuccessToast, addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 
 	interface Props {
 		data: PageData;
@@ -117,14 +122,62 @@
 	// the time reuses the same Activity_Dialog edit flow as any other entry -- an
 	// Orphaned_Entry is still a real ActivityEntry, just one with an empty
 	// `segments` array, and ActivityDialog already renders its "requested vs
-	// stored" note for exactly this case. Deletion has no write action yet
-	// (task 5.5), so it's the same documented no-op pattern as the session handlers
-	// above rather than invented plumbing.
+	// stored" note for exactly this case. Deletion mirrors ActivityDialog's own
+	// hidden-form-behind-ConfirmDialog pattern (task 5.5) rather than opening the
+	// dialog first, since the Orphan_Panel's own foot actions are the direct trigger
+	// per design.md -- Requirement 7.7 only asks that deletion sit behind a
+	// confirmation naming what is removed, not that it go through the edit dialog.
 	function handleReenterOrphan(entryId: string): void {
 		openEditActivity(entryId);
 	}
-	function handleDeleteOrphan(_entryId: string): void {
-		// TODO(5.5): call the delete-activity form action once it exists.
+
+	let deleteOrphanConfirmOpen = $state(false);
+	let deleteOrphanId = $state<string | null>(null);
+	let deleteOrphanDeleting = $state(false);
+	let deleteOrphanFormEl = $state<HTMLFormElement | undefined>();
+
+	function handleDeleteOrphan(entryId: string): void {
+		deleteOrphanId = entryId;
+		deleteOrphanConfirmOpen = true;
+	}
+
+	const deleteOrphanEntry = $derived(
+		deleteOrphanId ? (data.entries.find((e) => e.id === deleteOrphanId) ?? null) : null
+	);
+
+	const deleteOrphanBody = $derived(
+		deleteOrphanEntry
+			? m.day_orphans_row({
+					from: formatTimeOfDay(deleteOrphanEntry.requestedStartedAt, locale, timeZone),
+					to: formatTimeOfDay(deleteOrphanEntry.requestedEndedAt, locale, timeZone)
+				})
+			: ''
+	);
+
+	function handleDeleteOrphanEnhance() {
+		deleteOrphanDeleting = true;
+		return async ({ result }: { result: ActionResult }) => {
+			deleteOrphanDeleting = false;
+			deleteOrphanConfirmOpen = false;
+			deleteOrphanId = null;
+
+			if (result.type === 'success') {
+				await invalidateAll();
+				addSuccessToast(m.feedback_deleted());
+				return;
+			}
+			if (result.type === 'failure') {
+				const failureData = result.data as { toastMessage?: string; notFound?: boolean } | undefined;
+				if (failureData?.toastMessage) addErrorToast(failureData.toastMessage);
+				if (failureData?.notFound) await invalidateAll();
+				return;
+			}
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+		};
 	}
 </script>
 
@@ -207,7 +260,33 @@
 	onProjectCreated={handleProjectCreated}
 />
 
+<ConfirmDialog
+	open={deleteOrphanConfirmOpen}
+	title={m.activity_delete_title()}
+	message={deleteOrphanBody}
+	variant="destructive"
+	loading={deleteOrphanDeleting}
+	onconfirm={() => deleteOrphanFormEl?.requestSubmit()}
+	oncancel={() => {
+		deleteOrphanConfirmOpen = false;
+		deleteOrphanId = null;
+	}}
+/>
+<form
+	bind:this={deleteOrphanFormEl}
+	method="POST"
+	action="?/deleteActivity"
+	class="day-page__wire-form"
+	use:enhance={handleDeleteOrphanEnhance}
+>
+	<input type="hidden" name="id" value={deleteOrphanId ?? ''} />
+</form>
+
 <style>
+	.day-page__wire-form {
+		display: none;
+	}
+
 	.day-page {
 		display: flex;
 		flex-direction: column;

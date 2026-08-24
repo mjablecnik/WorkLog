@@ -23,7 +23,7 @@
  * client natively, so nothing here revives strings.
  */
 import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { DayResponse } from '$lib/contracts/responses';
 import type { Project } from '$lib/contracts/models';
 import { dayDateParam } from '$lib/contracts/schemas';
@@ -39,6 +39,11 @@ import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
 import { coveredIntervals, entriesOverlapping, mostRecentEntry } from '$lib/server/store/activities';
 import { listProjects } from '$lib/server/store/projects';
+import {
+	createActivityAction,
+	patchActivityAction,
+	deleteActivityAction
+} from '$lib/server/services/activity-form-actions';
 
 export type DayPageData = DayResponse & {
 	projects: Project[];
@@ -155,4 +160,23 @@ export const load: PageServerLoad = async ({ params }) => {
 	});
 
 	return data;
+};
+
+// ---------------------------------------------------------------------------
+// Task 5.5 — the write actions `ActivityDialog.svelte` and the Orphan_Panel's
+// delete control submit to. Requirements 6.1, 6.14, 7.4-7.8; design.md's Error
+// Handling table (search "## Error Handling").
+//
+// The actual logic lives in `$lib/server/services/activity-form-actions.ts`,
+// shared with `src/routes/+page.server.ts` (the timer page) — `ActivityDialog` is
+// mounted on both routes (Requirement 6.18's Quick_Log "no project" fallback opens
+// it there too), and a SvelteKit form action resolves relative to whichever route
+// rendered the form, so both `+page.server.ts` files must export actions under
+// these same names. See that module's own doc comment for the full rationale.
+// ---------------------------------------------------------------------------
+
+export const actions: Actions = {
+	createActivity: createActivityAction,
+	patchActivity: patchActivityAction,
+	deleteActivity: deleteActivityAction
 };

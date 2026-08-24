@@ -74,23 +74,50 @@
 	 * calls, and exactly the translation task 5.5's real form action will need too.
 	 *
 	 * ---------------------------------------------------------------------------
-	 * NO SUBMISSION WIRING YET (task 5.5's job — no
-	 * `src/routes/day/[date]/+page.server.ts` exists). The fields below ARE real
-	 * named `<input>`s inside a real `<form>` (`bind:this={formEl}`), so task 5.5 can
-	 * add `method="POST"` and `use:enhance` to the same element. The footer's Save
-	 * button lives in `Modal`'s `footer` snippet — a DOM sibling of `.modal__body`,
-	 * not a descendant of this `<form>` — so it can't rely on being a native
-	 * `type="submit"` button inside it; `Button` (deliberately left untouched) has no
-	 * `form=` passthrough either. It instead calls `formEl?.requestSubmit()`
-	 * directly, which fires the form's real `submit` event exactly as a native submit
-	 * button would. `handleSubmit` currently only runs the local validation and
-	 * `preventDefault()`s — task 5.5 should either move the footer buttons inside the
-	 * form, or add a `form` passthrough prop to `Button`, once there is somewhere for
-	 * a real submission to go.
+	 * SUBMISSION WIRING (task 5.5). `formEl` (above) is the UI-shaped form — its
+	 * named inputs (`mode`, `from`, `to`, `durationMinutes`) exist for `sf`'s local
+	 * validation only and it is NEVER actually POSTed (`handleSubmit` always
+	 * `preventDefault()`s); `createActivitySchema`/`patchActivitySchema` are `.strict()`
+	 * against a completely different, wire-shaped set of field names
+	 * (`startedAt`/`endedAt`/`date`/`durationMinutes`, no `mode` at all), so this UI
+	 * form's own fields could never be posted to those actions directly.
+	 *
+	 * Instead, two SEPARATE hidden `<form>`s exist purely as `use:enhance` submission
+	 * vehicles, each holding hidden inputs bound to values already computed for the
+	 * live `Dry_Run` (`wireStartedAt`/`wireEndedAt` below, `$form.date`,
+	 * `$form.durationMinutes`, `untrackedPolicy`, and `preview.previewToken` —
+	 * Requirement 9.14's "carry previewToken into the confirming write"): one posts to
+	 * `?/createActivity` or `?/patchActivity` (`submitFormEl`), the other to
+	 * `?/deleteActivity` (`deleteFormEl`, behind `ConfirmDialog`, mirroring
+	 * `ProjectRow.svelte`'s own hidden-delete-form pattern). `handleSubmit` runs the
+	 * local validation as before, then — once it passes — calls
+	 * `submitFormEl?.requestSubmit()`, letting `use:enhance`'s real network round trip
+	 * take over from there.
+	 *
+	 * This is the "hidden mirror input, native `use:enhance` submission" option rather
+	 * than a hand-rolled `fetch`+`deserialize`: it lets SvelteKit's own tested
+	 * machinery build the request and parse the `ActionResult` (no manual
+	 * `x-sveltekit-action`/`Accept` header wrangling), and it matches this codebase's
+	 * own established convention for a small, purpose-built submission form
+	 * (`ProjectRow.svelte`'s `archiveFormEl`/`deleteFormEl`) rather than introducing a
+	 * second transport mechanism. The one thing it does NOT get for free is
+	 * field-error sync: `use:enhance`'s default callback would write a failure's
+	 * `form` data into `$page.form`, but `sf` here is a client-only (`SPA: true`)
+	 * instance never bound to page data (task 5.4's own "VALIDATION" doc comment
+	 * above), so nothing reads `$page.form` automatically. `handleActivitySubmitEnhance`
+	 * below bridges this by hand: the action returns a plain `fieldErrors` /
+	 * `toastMessage` payload (`+page.server.ts`'s own doc comment explains why it
+	 * avoids `setError` for the same reason), and the callback writes those straight
+	 * into `errors` — the SAME store `fieldMessage()` already reads for the live local
+	 * validation, so a server-rejected field renders through the identical code path
+	 * (Requirement 6.10).
 	 */
 	import { z } from 'zod';
 	import { superForm } from 'sveltekit-superforms';
 	import { zod4Client } from 'sveltekit-superforms/adapters';
+	import { enhance, applyAction } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
+	import type { ActionResult } from '@sveltejs/kit';
 	import type { ActivityEntry, Interval, Project } from '$lib/contracts/models';
 	import type { CreateActivityInput, PatchActivityInput } from '$lib/contracts/schemas';
 	import { previewCreateActivity, previewPatchActivity, type Preview } from '../dry-run';
@@ -98,6 +125,8 @@
 	import ChangePreview from './ChangePreview.svelte';
 	import ProjectPicker from '$modules/projects/components/ProjectPicker.svelte';
 	import Modal from '$lib/ui/overlays/Modal.svelte';
+	import ConfirmDialog from '$lib/ui/overlays/ConfirmDialog.svelte';
+	import { addSuccessToast, addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 	import Button from '$lib/ui/elements/Button.svelte';
 	import FormField from '$lib/ui/forms/FormField.svelte';
 	import DatePicker from '$lib/ui/forms/DatePicker.svelte';
@@ -125,9 +154,18 @@
 		recentEntry?: { projectId: string; description: string } | null;
 		/** Addition — forwards `ProjectPicker`'s inline-creation result. */
 		onProjectCreated?: (project: Project) => void;
-		/** Addition — task 3.7/5.5's seam; unused by this task, see "NO SUBMISSION
-		 * WIRING YET" above. */
+		/** Task 3.7's seam, wired by task 5.5: fires with the saved `ActivityEntry`
+		 * once a create/patch submission succeeds. The day page does not currently
+		 * need it — `invalidateAll()` (called from the same success path, just below)
+		 * already reruns `load` and refreshes `Day_Timeline` without a full reload
+		 * (Requirement 6.14/7.8) — but it stays available for a caller that wants the
+		 * saved entry synchronously, before that reload lands. */
 		onSaved?: (entry: ActivityEntry) => void;
+		/** Addition — `ACTIVITY_OVERLAP`'s design.md row ("names each conflicting
+		 * entry and offers to open it"): fired with the id of the entry a rejected
+		 * submission conflicted with, so the caller (which holds the day's entry list,
+		 * unlike this dialog) can open it for editing. */
+		onConflict?: (entryId: string) => void;
 		/** Addition — which control should receive focus on open, when the opener
 		 * knows (e.g. Quick_Log's no-project fallback). */
 		initialFocus?: 'project' | 'description';
@@ -145,7 +183,8 @@
 		density,
 		recentEntry = null,
 		onProjectCreated,
-		onSaved: _onSaved,
+		onSaved,
+		onConflict,
 		initialFocus
 	}: Props = $props();
 
@@ -224,8 +263,19 @@
 	});
 	const { form, errors, allErrors } = sf;
 
+	/** Local-only placeholder issue message (`activityFormSchema.superRefine` above) —
+	 * never displayed itself, a signal that `fieldMessage()` should compute the real
+	 * text from `fallback()`. A server-rejected field (`handleActivitySubmitEnhance`
+	 * below, via `applyServerFieldErrors`) writes its own ALREADY-TRANSLATED message
+	 * into the same store instead of this token, so `fieldMessage` renders that text
+	 * verbatim rather than recomputing a generic fallback over it — both a live local
+	 * validation error and a server rejection reach the screen through this one
+	 * function (Requirement 6.10). */
+	const LOCAL_PLACEHOLDER = 'required';
 	function fieldMessage(fieldErrors: string[] | undefined, fallback: () => string): string | undefined {
-		return fieldErrors && fieldErrors.length > 0 ? fallback() : undefined;
+		if (!fieldErrors || fieldErrors.length === 0) return undefined;
+		const first = fieldErrors[0];
+		return first === LOCAL_PLACEHOLDER ? fallback() : first;
 	}
 	const fromMessage = $derived(fieldMessage($errors.from, m.fields_invalid_timestamp));
 	const toMessage = $derived(fieldMessage($errors.to, m.fields_invalid_timestamp));
@@ -429,14 +479,187 @@
 		$form.durationMinutes = raw === '' ? null : Number(raw);
 	}
 
-	async function handleSubmit(event: SubmitEvent): Promise<void> {
-		event.preventDefault();
-		await sf.validateForm({ update: true });
-		// Task 5.5 wires the real submission (see the "NO SUBMISSION WIRING YET" doc
-		// comment above) — nothing is persisted from here yet.
+	// ---------------------------------------------------------------------------
+	// Task 5.5 — the real write. See the "SUBMISSION WIRING" doc comment above for
+	// why this is two hidden `use:enhance` forms rather than a `fetch`+`deserialize`.
+	let submitFormEl: HTMLFormElement | undefined = $state();
+	let deleteFormEl: HTMLFormElement | undefined = $state();
+	let submitting = $state(false);
+	let deleting = $state(false);
+	let confirmDeleteOpen = $state(false);
+
+	/** `startedAt`/`endedAt` for the hidden wire-form's `Explicit_Mode` inputs.
+	 * Guarded exactly like `canPreview` (regex-shaped, non-empty) PLUS a try/catch —
+	 * `TIME_RE` alone accepts an out-of-range "25:99", which `parseTimeOfDay` rejects
+	 * (Requirement: never let a reactive `$derived` throw mid-keystroke and take the
+	 * component down with it). Falls back to `''`, which is harmless: the Save button
+	 * stays disabled — via `confirmDisabled` from `ChangePreview`, itself `true`
+	 * whenever `preview` is `null` — for exactly as long as these would be empty. */
+	function safeParseTimeOfDay(text: string, date: string): string {
+		if (!DATE_RE.test(date) || !TIME_RE.test(text)) return '';
+		try {
+			return parseTimeOfDay(text, date, timeZone).toISOString();
+		} catch {
+			return '';
+		}
+	}
+	const wireStartedAt = $derived($form.mode === 'explicit' ? safeParseTimeOfDay($form.from, $form.date) : '');
+	const wireEndedAt = $derived($form.mode === 'explicit' ? safeParseTimeOfDay($form.to, $form.date) : '');
+
+	type ActivityUiField = 'from' | 'to' | 'durationMinutes' | 'projectId' | 'description';
+	type ActivityFailureData = {
+		fieldErrors?: Partial<Record<ActivityUiField, string>>;
+		toastMessage?: string;
+		conflictEntryId?: string;
+		stalePreview?: boolean;
+		notFound?: boolean;
+	};
+	type ActivitySuccessData = {
+		activity?: { entry: ActivityEntry; discarded: Interval[]; unplacedMinutes: number };
+	};
+
+	function applyServerFieldErrors(fieldErrors: NonNullable<ActivityFailureData['fieldErrors']>): void {
+		errors.update((current) => {
+			const next = { ...current };
+			for (const [field, message] of Object.entries(fieldErrors)) {
+				if (message !== undefined) next[field as ActivityUiField] = [message];
+			}
+			return next;
+		});
 	}
 
-	const submitDisabled = $derived(confirmDisabled || $allErrors.length > 0);
+	/** `removedSeconds + lostUncoveredSeconds` is `ChangePreview`'s own headline
+	 * total (design.md, task 5.2) for a SESSION change; an activity write has no
+	 * `lostUncoveredSeconds` at all — what did not fit is `discarded` (policy `clip`)
+	 * plus `unplacedMinutes` (Duration_Mode's leftover), exactly the two figures
+	 * Requirement 15.6 says a "partial" success must name. */
+	function partialSavedSeconds(activity: NonNullable<ActivitySuccessData['activity']>): number {
+		const discardedSeconds = activity.discarded.reduce(
+			(sum, iv) => sum + (iv.end.getTime() - iv.start.getTime()) / 1000,
+			0
+		);
+		return discardedSeconds + activity.unplacedMinutes * 60;
+	}
+
+	function handleActivitySubmitEnhance() {
+		submitting = true;
+		return async ({ result }: { result: ActionResult }) => {
+			submitting = false;
+
+			if (result.type === 'success') {
+				await invalidateAll();
+				const data = result.data as ActivitySuccessData | undefined;
+				const activity = data?.activity;
+				onClose();
+				if (activity) {
+					onSaved?.(activity.entry);
+					const partialSeconds = partialSavedSeconds(activity);
+					addSuccessToast(
+						partialSeconds > 0
+							? m.feedback_saved_partial({ duration: formatDuration(partialSeconds, '') })
+							: m.feedback_saved()
+					);
+				} else {
+					addSuccessToast(m.feedback_saved());
+				}
+				return;
+			}
+
+			if (result.type === 'failure') {
+				const data = result.data as ActivityFailureData | undefined;
+				if (!data) return;
+				if (data.fieldErrors) applyServerFieldErrors(data.fieldErrors);
+				if (data.toastMessage) {
+					const conflictId = data.conflictEntryId;
+					addErrorToast(
+						data.toastMessage,
+						conflictId
+							? {
+									label: m.feedback_open_conflict(),
+									onclick: () => {
+										onClose();
+										onConflict?.(conflictId);
+									}
+								}
+							: undefined
+					);
+				}
+				if (data.stalePreview) void runPreview();
+				if (data.notFound) {
+					onClose();
+					await invalidateAll();
+				}
+				return;
+			}
+
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+
+			// `result.type === 'error'` — a genuine server/network failure. design.md's
+			// Error Handling table: "the dialog stays open with its input intact" for
+			// both a network failure and an internal error, rather than the navigation
+			// `applyAction` would perform for an 'error' result.
+			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+		};
+	}
+
+	function handleDeleteEnhance() {
+		deleting = true;
+		return async ({ result }: { result: ActionResult }) => {
+			deleting = false;
+			confirmDeleteOpen = false;
+
+			if (result.type === 'success') {
+				await invalidateAll();
+				onClose();
+				addSuccessToast(m.feedback_deleted());
+				return;
+			}
+			if (result.type === 'failure') {
+				const data = result.data as { toastMessage?: string; notFound?: boolean } | undefined;
+				if (data?.toastMessage) addErrorToast(data.toastMessage);
+				if (data?.notFound) {
+					onClose();
+					await invalidateAll();
+				}
+				return;
+			}
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+		};
+	}
+
+	/** Requirement 7.7: the confirmation names what will be removed — the entry's
+	 * `Project`, its requested interval, and the duration actually stored (0 for an
+	 * `Orphaned_Entry`, which has no segments — matching `Orphan_Panel`'s own "0 min
+	 * left" wording rather than implying something is being taken away that already
+	 * is not there). */
+	function deleteBodyText(e: ActivityEntry): string {
+		const totalSeconds = e.segments.reduce(
+			(sum, seg) => sum + (seg.endedAt.getTime() - seg.startedAt.getTime()) / 1000,
+			0
+		);
+		return m.activity_delete_body({
+			project: e.projectName,
+			from: timeOf(e.requestedStartedAt),
+			to: timeOf(e.requestedEndedAt),
+			duration: formatDuration(totalSeconds, '')
+		});
+	}
+
+	async function handleSubmit(event: SubmitEvent): Promise<void> {
+		event.preventDefault();
+		const result = await sf.validateForm({ update: true });
+		if (!result.valid) return;
+		submitFormEl?.requestSubmit();
+	}
+
+	const submitDisabled = $derived(confirmDisabled || $allErrors.length > 0 || submitting);
 </script>
 
 <Modal
@@ -590,13 +813,76 @@
 	{#snippet footer()}
 		<p class="modal__footer-hint">{m.common_esc_hint()}</p>
 		<div class="modal__footer-actions">
-			<Button variant="ghost" onclick={onClose}>{m.common_cancel()}</Button>
-			<Button disabled={submitDisabled} onclick={() => formEl?.requestSubmit()}>
+			{#if mode === 'edit' && entry}
+				<Button
+					variant="ghost"
+					class="activity-dialog__delete-trigger"
+					disabled={submitting}
+					onclick={() => (confirmDeleteOpen = true)}
+				>
+					{m.common_delete()}
+				</Button>
+			{/if}
+			<Button variant="ghost" disabled={submitting} onclick={onClose}>{m.common_cancel()}</Button>
+			<Button disabled={submitDisabled} loading={submitting} onclick={() => formEl?.requestSubmit()}>
 				{m.activity_submit()}
 			</Button>
 		</div>
 	{/snippet}
 </Modal>
+
+<!-- The real write — see the "SUBMISSION WIRING" doc comment at the top of the
+     script. A hidden `use:enhance` form, never the UI form above: its inputs are
+     the WIRE shape `createActivitySchema`/`patchActivitySchema` expect, not this
+     dialog's own `mode`/`from`/`to` fields. -->
+<form
+	bind:this={submitFormEl}
+	method="POST"
+	action={mode === 'create' ? '?/createActivity' : '?/patchActivity'}
+	class="activity-dialog__wire-form"
+	use:enhance={handleActivitySubmitEnhance}
+>
+	{#if mode === 'edit' && entry}
+		<input type="hidden" name="id" value={entry.id} />
+	{/if}
+	<input type="hidden" name="projectId" value={$form.projectId} />
+	<input type="hidden" name="description" value={$form.description} />
+	<input type="hidden" name="untrackedPolicy" value={untrackedPolicy} />
+	<input type="hidden" name="dryRun" value="false" />
+	{#if $form.mode === 'explicit'}
+		<input type="hidden" name="startedAt" value={wireStartedAt} />
+		<input type="hidden" name="endedAt" value={wireEndedAt} />
+	{:else if $form.mode === 'duration'}
+		<input type="hidden" name="date" value={$form.date} />
+		<input type="hidden" name="durationMinutes" value={$form.durationMinutes ?? ''} />
+	{:else}
+		<input type="hidden" name="date" value={$form.date} />
+	{/if}
+	{#if preview && preview.rejection === null}
+		<input type="hidden" name="previewToken" value={preview.previewToken} />
+	{/if}
+</form>
+
+{#if mode === 'edit' && entry}
+	<ConfirmDialog
+		open={confirmDeleteOpen}
+		title={m.activity_delete_title()}
+		message={deleteBodyText(entry)}
+		variant="destructive"
+		loading={deleting}
+		onconfirm={() => deleteFormEl?.requestSubmit()}
+		oncancel={() => (confirmDeleteOpen = false)}
+	/>
+	<form
+		bind:this={deleteFormEl}
+		method="POST"
+		action="?/deleteActivity"
+		class="activity-dialog__wire-form"
+		use:enhance={handleDeleteEnhance}
+	>
+		<input type="hidden" name="id" value={entry.id} />
+	</form>
+{/if}
 
 <style>
 	.activity-dialog {
@@ -755,5 +1041,25 @@
 		background-color: var(--field-active-bg);
 		box-shadow: var(--field-active-ring);
 		outline: none;
+	}
+
+	/* --------------------------------------------------------------------
+	 * Submission plumbing (task 5.5) — the two hidden `use:enhance` forms
+	 * carry no visible content of their own (see the "SUBMISSION WIRING" doc
+	 * comment). The footer's delete trigger tints `Button`'s own `ghost`
+	 * variant toward `--destructive`, matching the token
+	 * `session_delete_link` (task 5.6) is asked to use for the same action
+	 * elsewhere.
+	 * ------------------------------------------------------------------ */
+	.activity-dialog__wire-form {
+		display: none;
+	}
+
+	/* :global -- passed as a `class` prop into `Button` (a child component), not
+	   written on an element in THIS component's own template, so Svelte's
+	   scoped-CSS dead-code analysis can't see it's used and would otherwise prune
+	   it (the same reason `+page.svelte`'s `.day-page__summary-slot` needs it). */
+	:global(.activity-dialog__delete-trigger) {
+		color: var(--destructive);
 	}
 </style>

@@ -35,6 +35,7 @@
 	"auth_session_expired": "Přihlášení vypršelo, přihlas se znovu",
 	"timer_start": "Spustit timer",
 	"timer_stop": "Zastavit timer",
+	"timer_stop_discarded": "Příliš krátké na uložení — nic se neuložilo.",
 	"timer_running_since": "běží od {time}",
 	"timer_idle_caption": "timer neběží",
 	"timer_stopped_at": "zastaveno v {time}",

@@ -262,7 +262,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Assert the modality rather than inheriting it from the ported `Modal`: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` on its heading, focus moved in on open and Tab confined, `document.body` at `overflow: hidden` and the page root `inert` while open, and a scrim activation that does **nothing** — a write dialog holds unsaved input (Requirements 14.20–14.24). The same clause applies to `SessionDialog` and to every confirmation dialog
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.15, 6.16, 6.19, 7.3, 14.15, 14.20, 14.21, 14.22, 14.23, 14.24_
 
-  - [ ] 5.5 Implement activity create, edit and delete actions
+  - [x] 5.5 Implement activity create, edit and delete actions
     - Form actions **in `src/routes/day/[date]/+page.server.ts` itself**, using `superValidate` with the shared Zod schemas and returning message keys rather than prose. Create no `src/modules/day/actions.ts`: only `+page.server.ts` and `+server.ts` may import `lib/server/**`, and the boundary test enforces exactly that
     - Each action validates, then calls the matching `src/lib/server/services/` function `001` declares — `createActivity`, `patchActivity`, `deleteActivity`, `createSession`, `patchSession`, `deleteSession` — and maps a thrown `ApiError` to its message key. **Write no orchestration here:** the transaction, the clipping, the re-clipping, the `Idempotency-Key` and the `Preview_Token` check all live in the service, which is the same function `routes/api/**` calls
     - The day page offers the action that opens the dialog for a new entry — the desktop button and the mobile `Fab`
@@ -347,7 +347,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/modules/timer/components/day-gauge.test.ts`: a day inside the window draws no arc past `trackEnd`; a day ending at 03:00 draws one and labels it; a 24-hour day emits a `<circle>` and still leaves the gap empty of `<line>` and `<text>`; the control sits at the centre coordinates; an open session draws in the accent while a closed one does not; the gauge carries `role="img"` with a summarising label and its arcs are `aria-hidden`
     - _Requirements: 16.5, 16.9, 16.10, 16.11, 16.12, 16.13, 16.19_
 
-  - [ ] 6.7 Build `TimerControl` and the timer page
+  - [x] 6.7 Build `TimerControl` and the timer page
     - A single start action when no `Open_Session` exists and a single stop action when one does, both form actions with `use:enhance` applying the change optimistically and rolling back with the reason on failure; reachable by tab and activated by both Enter and Space
     - The page lives at the root path `/`, so opening the application lands on the timer
     - Lay the page out in the artboard's order: hero figure above the circle, its caption, the `Day_Gauge` with the control at its exact centre, the three figures, the `Quick_Log` pill, the `Project_Legend`

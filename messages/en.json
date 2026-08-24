@@ -35,6 +35,7 @@
 	"auth_session_expired": "Your session expired, please log in again",
 	"timer_start": "Start the timer",
 	"timer_stop": "Stop the timer",
+	"timer_stop_discarded": "Too short to keep — nothing was saved.",
 	"timer_running_since": "running since {time}",
 	"timer_idle_caption": "timer is not running",
 	"timer_stopped_at": "stopped at {time}",

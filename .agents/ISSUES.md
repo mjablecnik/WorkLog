@@ -889,3 +889,51 @@ and marked accordingly.
 - Next: If usage ever grows enough for this to matter (unlikely for a single-user
   app), rewrite `aggregates.ts`'s three functions as SQL window functions /
   aggregates, keeping the same exported signatures so no caller needs to change.
+
+## [MEDIUM] ActivityDialog mounted on the timer page 404'd on save
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — extracted the day page's
+  `createActivity`/`patchActivity`/`deleteActivity` action logic (types, helpers,
+  `activityErrorFailure`, and the three action functions) verbatim into
+  `src/lib/server/services/activity-form-actions.ts`, and both
+  `src/routes/day/[date]/+page.server.ts` and `src/routes/+page.server.ts` now import
+  and re-export the same three functions under the same action names.
+- What: `ActivityDialog.svelte`'s hidden wire-forms post to the fixed relative action
+  names `?/createActivity`/`?/patchActivity`/`?/deleteActivity`. Task 6.7's timer page
+  mounts the same dialog (Requirement 6.18's Quick_Log "no project" fallback), but a
+  SvelteKit form action resolves relative to whichever route rendered the form — with
+  only the day page defining those actions, a save attempted from the dialog opened
+  on `/` would 404. The task 6.7 agent found and documented this gap in a "KNOWN GAP"
+  code comment rather than working around it, since the day page's own action logic
+  was under concurrent development in the same wave (task 5.5).
+- Impact: Requirement 6.18's fallback ("open the dialog instead" when Quick_Log has
+  no project to log against) would open correctly but fail to save from the timer
+  page — the exact scenario a project-less new user hits first.
+- Tried: n/a — straightforward extraction once task 5.5's action logic had settled;
+  verified via `bun run check` (0 errors/warnings) and the full non-DB test suite
+  (293 passing) after wiring both routes to the shared module.
+
+## [LOW] ActivityDialog's own validation-failure test picked the wrong `<form>`
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `tests/modules/day/components/activity-dialog.test.ts`'s
+  "keeps the typed input and shows an inline error after a validation failure" test
+  now selects `form.activity-dialog` specifically rather than a bare `form`.
+- What: The test predates task 5.5's real submission wiring, written when
+  `ActivityDialog` rendered exactly one `<form>`. Task 5.5 added two more hidden
+  `use:enhance` wire-forms (`submitFormEl`, `deleteFormEl`) as siblings after the
+  visible dialog form. `baseElement.querySelector('form')` — unchanged since before
+  5.5 — became ambiguous and, empirically, matched the hidden `submitFormEl` wire-form
+  instead of the visible one. Dispatching `submit` on it triggered a REAL
+  `use:enhance` submission (to a non-existent `?/createActivity` handler in the test's
+  jsdom environment) that never resolved, rather than exercising the visible form's
+  own client-side Zod validation gate the test intends to cover.
+- Impact: Test-only — caught immediately by `bun run test` as a failing assertion
+  (`fields_invalid_timestamp` text never rendered, because the wrong form's `onsubmit`
+  handler, which contains the validation gate, never ran). No production code path is
+  affected; the dialog's real validation-then-submit gate (`handleSubmit` in
+  `ActivityDialog.svelte`) was never broken.
+- Tried: confirmed by dumping the rendered DOM at failure — the hidden wire-form's
+  inputs (`projectId`, `description`, `startedAt`, `endedAt`, …) were visible in the
+  `screen.debug()` output where the visible dialog's own fields should have been.

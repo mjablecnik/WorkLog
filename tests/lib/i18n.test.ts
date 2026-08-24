@@ -51,16 +51,16 @@ describe('cs.json / en.json key parity', () => {
 	});
 
 	it('carry the same key count in both files', () => {
-		// Observed at 254 (excluding $schema) as of the projects-page task, which added
-		// projects_recolor, projects_colour_option and projects_row_actions. Earlier
-		// snapshots of this count (249, 250, 251) are stale by construction — every task
-		// that legitimately extends the catalogue bumps it again. What this test actually
-		// pins is that cs/en agree, which the count-equality assertion below already
-		// covers regardless of the literal number; the literal is a tripwire for an
-		// ACCIDENTAL catalogue change, not a ceiling, and is expected to need updating
-		// whenever a future task adds a key on purpose.
+		// Observed at 255 (excluding $schema) as of the timer-page task, which added
+		// timer_stop_discarded (the sub-minimum-interval "nothing saved" toast). Earlier
+		// snapshots of this count (249-254) are stale by construction — every task that
+		// legitimately extends the catalogue bumps it again. What this test actually pins
+		// is that cs/en agree, which the count-equality assertion below already covers
+		// regardless of the literal number; the literal is a tripwire for an ACCIDENTAL
+		// catalogue change, not a ceiling, and is expected to need updating whenever a
+		// future task adds a key on purpose.
 		expect(csKeys.size).toBe(enKeys.size);
-		expect(csKeys.size).toBe(254);
+		expect(csKeys.size).toBe(255);
 	});
 });
 

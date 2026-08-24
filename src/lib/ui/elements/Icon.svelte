@@ -29,7 +29,9 @@
 		| 'projects'
 		| 'stats'
 		| 'archive'
-		| 'more';
+		| 'more'
+		| 'timer-start'
+		| 'timer-stop';
 
 	type IconDef = {
 		/** Always `0 0 24 24` for the extracted set — kept explicit per icon in case a future
@@ -41,6 +43,10 @@
 		paths: string[];
 		circles?: { cx: number; cy: number; r: number }[];
 		rects?: { x: number; y: number; width: number; height: number; rx?: number }[];
+		/** `timer-start`/`timer-stop` only — the Timer_Control's pictograms are drawn
+		 * `fill="currentColor"` with no stroke in every artboard (`Main.dc.html`/
+		 * `GaugeNormal.dc.html`), unlike the rest of this stroke-based set. */
+		filled?: boolean;
 	};
 
 	const ICONS: Record<IconName, IconDef> = {
@@ -200,6 +206,22 @@
 				{ cx: 19, cy: 12, r: 1.2 }
 			],
 			paths: []
+		},
+		// verbatim — GaugeNormal.dc.html Timer_Control (idle/start state, task 6.7)
+		'timer-start': {
+			viewBox: '0 0 24 24',
+			strokeWidth: 0,
+			filled: true,
+			paths: ['M8 5.5v13l11-6.5z']
+		},
+		// verbatim — Main.dc.html / TimerLight.dc.html / TimerMobile.dc.html Timer_Control
+		// (running/stop state, task 6.7)
+		'timer-stop': {
+			viewBox: '0 0 24 24',
+			strokeWidth: 0,
+			filled: true,
+			paths: [],
+			rects: [{ x: 5, y: 5, width: 14, height: 14, rx: 2.5 }]
 		}
 	};
 </script>
@@ -222,8 +244,8 @@
 		width={size}
 		height={size}
 		viewBox={def.viewBox}
-		fill="none"
-		stroke={color ?? 'currentColor'}
+		fill={def.filled ? (color ?? 'currentColor') : 'none'}
+		stroke={def.filled ? 'none' : (color ?? 'currentColor')}
 		stroke-width={def.strokeWidth}
 		stroke-linecap="round"
 		stroke-linejoin="round"
