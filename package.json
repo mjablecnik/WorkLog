@@ -8,9 +8,9 @@
 		"bun": ">=1.2.15"
 	},
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
-		"preview": "vite preview",
+		"dev": "./scripts/run-vite.sh dev",
+		"build": "./scripts/run-vite.sh build",
+		"preview": "./scripts/run-vite.sh preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"messages:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

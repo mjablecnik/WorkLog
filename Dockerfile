@@ -19,6 +19,14 @@ COPY project.inlang ./project.inlang
 COPY messages ./messages
 COPY static ./static
 COPY src ./src
+# scripts/run-vite.sh is what `bun run build` (below) execs into — see its own header
+# comment for why: Bun's automatic .env loading corrupts any `$`-bearing value (the
+# argon2id WORKLOG_PASSPHRASE_HASH), so `build`/`dev`/`preview` route through a script
+# that exports .env itself instead of letting Bun parse it. This build only ever uses
+# the placeholder ENV values set below, never .env, but the script is what the "build"
+# script in package.json now names, so it has to be present for `bun run build` to
+# resolve at all.
+COPY scripts ./scripts
 
 # Placeholder values so build-time environment validation (core/config.ts) passes —
 # none of these are ever served; the real ones come from Fly secrets/[env] at runtime.
