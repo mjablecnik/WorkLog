@@ -3,7 +3,7 @@ import { mockEvent, bodyOf } from './helpers';
 import { POST as startPost } from '../../src/routes/api/sessions/start/+server';
 import { POST as stopPost } from '../../src/routes/api/sessions/stop/+server';
 import { GET as currentGet } from '../../src/routes/api/sessions/current/+server';
-import { GET as sessionsGet, POST as sessionsPost } from '../../src/routes/api/sessions/+server';
+import { POST as sessionsPost } from '../../src/routes/api/sessions/+server';
 import {
 	PATCH as sessionPatch,
 	DELETE as sessionDelete

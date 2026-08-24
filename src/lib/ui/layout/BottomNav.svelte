@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Icon, { type IconName } from '../elements/Icon.svelte';
 
 	/**
@@ -28,8 +29,10 @@
 
 <nav class="bottom-nav" aria-label={ariaLabel}>
 	{#each items as item (item.href)}
+		<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -- item.href is a plain caller-supplied string, not a route-id literal; resolve() needs an escape hatch here -->
+		{@const resolvedHref = resolve(item.href as any)}
 		<a
-			href={item.href}
+			href={resolvedHref}
 			class="bottom-nav__tab"
 			class:bottom-nav__tab--current={item.current}
 			aria-current={item.current ? 'page' : undefined}

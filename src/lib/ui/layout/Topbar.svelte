@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { resolve } from '$app/paths';
 
 	/**
 	 * Rewritten, not just token-ported (design.md "Application Shell"): the template's
@@ -35,7 +36,9 @@
 <header class="topbar">
 	<div class="topbar__left">
 		{#if brandHref}
-			<a href={brandHref} class="topbar__brand">{brand}</a>
+			<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -- brandHref is a plain caller-supplied string, not a route-id literal; resolve() needs an escape hatch here -->
+			{@const resolvedBrandHref = resolve(brandHref as any)}
+			<a href={resolvedBrandHref} class="topbar__brand">{brand}</a>
 		{:else}
 			<span class="topbar__brand">{brand}</span>
 		{/if}
@@ -45,9 +48,11 @@
 		<nav class="topbar__nav" aria-label={brand}>
 			<ul class="topbar__nav-list">
 				{#each navItems as item (item.href)}
+					<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -- item.href is a plain caller-supplied string, not a route-id literal; resolve() needs an escape hatch here -->
+					{@const resolvedItemHref = resolve(item.href as any)}
 					<li>
 						<a
-							href={item.href}
+							href={resolvedItemHref}
 							class="topbar__nav-item"
 							class:topbar__nav-item--current={item.current}
 							aria-current={item.current ? 'page' : undefined}

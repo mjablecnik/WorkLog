@@ -126,7 +126,6 @@ describe('fieldMessageKeyFor', () => {
 	});
 
 	it('falls back to fields_invalid for anything else', () => {
-		const schema = z.object({}).strict();
 		// unrecognized_keys with an unusual path exercises the default branch too, but a
 		// clean way to hit `default` directly is a custom issue at an unrelated path.
 		const custom = z

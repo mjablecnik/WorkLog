@@ -119,6 +119,10 @@
 	/** At most one break follows any given block index (`layOutDay` emits one break
 	 * per gap between two adjacent sessions), so a lookup map is exact, not a filter. */
 	const breakAfterBlock = $derived.by(() => {
+		// A plain Map, not SvelteMap: built once per recompute and never mutated after
+		// being returned, so there is no post-construction `.set()`/`.delete()` for
+		// Svelte's reactivity to need to observe.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const map = new Map<number, DayLayout['breaks'][number]>();
 		for (const brk of layout.breaks) map.set(brk.after, brk);
 		return map;

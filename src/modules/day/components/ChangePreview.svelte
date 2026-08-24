@@ -53,6 +53,9 @@
 		untrackedPolicy,
 		onPolicyChange,
 		timeZone,
+		// This default IS the value rendered/bound before the $effect below ever runs
+		// (SSR and first paint).
+		// eslint-disable-next-line no-useless-assignment
 		confirmDisabled = $bindable(false)
 	}: Props = $props();
 

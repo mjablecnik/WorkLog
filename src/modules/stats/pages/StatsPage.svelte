@@ -51,6 +51,7 @@
 	 */
 	import { navigating } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import type { DaySummary } from '$lib/contracts/responses';
 	import * as m from '$lib/paraglide/messages';
 	import { getCurrentLocale } from '$lib/core/i18n';
@@ -127,13 +128,9 @@
 		{ value: 'month', label: m.stats_range_month }
 	];
 
-	function rangeHref(range: StatsRangeKind): string {
-		return `/stats?range=${range}`;
-	}
-
 	function handleRangeClick(event: MouseEvent, range: StatsRangeKind): void {
 		event.preventDefault();
-		void goto(rangeHref(range), { keepFocus: true });
+		void goto(resolve(`/stats?range=${range}`), { keepFocus: true });
 	}
 
 	/** True exactly while an in-flight navigation is heading to this same route with a
@@ -144,7 +141,7 @@
 	);
 
 	function handleDayActivate(date: string): void {
-		void goto(`/day/${date}`);
+		void goto(resolve(`/day/${date}`));
 	}
 </script>
 
@@ -161,7 +158,7 @@
 				{#each RANGE_OPTIONS as opt (opt.value)}
 					{@const active = opt.value === selectedRange}
 					<a
-						href={rangeHref(opt.value)}
+						href={resolve(`/stats?range=${opt.value}`)}
 						role="radio"
 						aria-checked={active}
 						class="stats-page__range-item"

@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import { withTx } from '../../../src/lib/server/store/tx';
 import { beginBrowserSession } from '../../../src/lib/server/store/auth-sessions';
-import {
-	hashSessionToken,
-	mintSessionToken,
-	SESSION_COOKIE
-} from '../../../src/lib/server/core/auth';
+import { mintSessionToken, SESSION_COOKIE } from '../../../src/lib/server/core/auth';
 import { getConfig } from '../../../src/lib/server/core/config';
 import { authenticate, handleAuth, handleCors } from '../../../src/hooks.server';
 

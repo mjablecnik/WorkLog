@@ -252,8 +252,8 @@
 	{#if open && density === 'mobile'}
 		<div use:portal bind:this={portalEl}>
 			<!-- The scrim is a click target only — Escape (handled on the window
-			     above) is its keyboard equivalent, exactly like Modal.svelte. -->
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			     above) is its keyboard equivalent, exactly like Modal.svelte. `role="presentation"`
+			     already exempts this element from the click/key-events a11y rule. -->
 			<div
 				class="settings-menu__scrim"
 				onclick={handleScrimActivate}

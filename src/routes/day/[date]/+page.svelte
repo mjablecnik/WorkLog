@@ -17,7 +17,6 @@
 	 * density here, corrected only on the next navigation (exactly as `availablePx`
 	 * already documents for itself) rather than live on an in-place resize.
 	 */
-	import { untrack } from 'svelte';
 	import { enhance, applyAction } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
@@ -55,14 +54,11 @@
 	// Activity_Dialog wiring (Requirements 6.1, 6.14; the timeline's activation
 	// callbacks). `projectsList` is a local copy so `onProjectCreated` (an inline
 	// Project creation inside the Project_Picker) can append to it without a
-	// round trip back through `load`. Seeded via `untrack()` (same pattern as the
-	// root layout's own `density` seed) — the initializer is deliberately a
-	// one-time snapshot, kept in sync afterward by the `$effect` below rather than
-	// by reactively re-reading `data.projects` here.
-	let projectsList = $state(untrack(() => data.projects));
-	$effect(() => {
-		projectsList = data.projects;
-	});
+	// round trip back through `load`. A writable `$derived`: reading it tracks
+	// `data.projects` as usual, but `onProjectCreated` below may still reassign it
+	// locally — that local override lasts until `data.projects` itself changes again,
+	// at which point it resets to the fresh derived value.
+	let projectsList = $derived(data.projects);
 
 	let activityDialogOpen = $state(false);
 	let activityDialogMode = $state<'create' | 'edit'>('create');

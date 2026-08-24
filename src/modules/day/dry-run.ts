@@ -24,6 +24,7 @@
  * session bounds, and `anchor.at`.
  */
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { page } from '$app/state';
 import type { ActivityEntry, ActivitySegment, Interval, WorkSession } from '$lib/contracts/models';
 import type { ActivityResponse, SessionChangePreview } from '$lib/contracts/responses';
@@ -274,7 +275,7 @@ async function runDryRun<T>(
 	const err = body as WireErrorBody;
 	if (res.status === 401) {
 		const next = `${page.url.pathname}${page.url.search}`;
-		void goto(`/login?next=${encodeURIComponent(next)}&reason=session_expired`);
+		void goto(resolve(`/login?next=${encodeURIComponent(next)}&reason=session_expired`));
 	}
 	return {
 		ok: false,

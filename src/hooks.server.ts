@@ -27,15 +27,13 @@ import { logger } from '$lib/server/core/logger';
 import {
 	applyBaseSecurityHeaders,
 	resolveRenderTheme,
-	substitutePagePlaceholders,
-	type Theme
+	substitutePagePlaceholders
 } from '$lib/server/core/security-headers';
 import { createDayResolver } from '$lib/server/domain/logical-day';
 import { checkLoginLimit, checkRequestLimit, sweepRateLimits } from '$lib/server/core/rate-limit';
 import {
 	clientAddress,
 	hashSessionToken,
-	safeRedirectTarget,
 	secretsMatch,
 	SESSION_COOKIE
 } from '$lib/server/core/auth';

@@ -372,7 +372,6 @@ describe('ActivityDialog', () => {
 		expect(grid).toBeTruthy();
 		expect(changePreview).toBeTruthy();
 		const relation = grid.compareDocumentPosition(changePreview);
-		// eslint-disable-next-line no-bitwise
 		expect(Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
 	});
 

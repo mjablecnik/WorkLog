@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Icon, { type IconName } from '../elements/Icon.svelte';
 
 	/**
@@ -24,7 +25,9 @@
 </script>
 
 {#if href}
-	<a {href} class="fab" aria-label={label} aria-disabled={disabled}>
+	<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -- href is a plain caller-supplied string, not a route-id literal; resolve() needs an escape hatch here -->
+	{@const resolvedHref = resolve(href as any)}
+	<a href={resolvedHref} class="fab" aria-label={label} aria-disabled={disabled}>
 		<Icon name={icon} size={22} />
 	</a>
 {:else}

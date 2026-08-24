@@ -15,9 +15,24 @@
 	 * more failures.
 	 */
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages';
 
-	const nextPath = $derived(page.url.searchParams.get('next') || '/');
+	/**
+	 * Same validation as the server's `safeRedirectTarget`
+	 * (`src/lib/server/core/auth.ts`), duplicated here rather than imported: that
+	 * module is server-only and cannot be pulled into client code. `next` is a
+	 * runtime, user-supplied query parameter, never a compile-time route literal, so
+	 * it cannot be passed through `resolve()` — it is validated here instead
+	 * (same-origin relative path only) precisely so it is safe to use unresolved.
+	 */
+	function safeNextPath(raw: string | null): string {
+		if (raw === null) return '/';
+		if (raw.startsWith('/') && !raw.startsWith('//') && !raw.startsWith('/\\')) return raw;
+		return '/';
+	}
+
+	const nextPath = $derived(safeNextPath(page.url.searchParams.get('next')));
 </script>
 
 <svelte:head>
@@ -29,7 +44,9 @@
 		<h1 class="page-shell__heading">{m.offline_title()}</h1>
 		<p class="page-shell__body">{m.offline_body()}</p>
 		<div class="page-shell__actions">
-			<a href="/" class="page-shell__primary">{m.error_page_home()}</a>
+			<a href={resolve('/')} class="page-shell__primary">{m.error_page_home()}</a>
+			<!-- nextPath is runtime-validated (see safeNextPath above), not a compile-time route literal. -->
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 			<a href={nextPath} class="page-shell__ghost">{m.common_retry()}</a>
 		</div>
 	</div>

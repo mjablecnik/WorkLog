@@ -58,7 +58,6 @@ function log(level: LogLevel, message: string, fields: Record<string, unknown> =
 		message,
 		...(redact(fields) as Record<string, unknown>)
 	};
-	// eslint-disable-next-line no-console
 	console.log(JSON.stringify(line));
 }
 

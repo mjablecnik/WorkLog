@@ -10,6 +10,7 @@
 	 * status, stack) — Requirement 1.10 asks only for a link back to the timer page,
 	 * and the security standard forbids leaking internals to the page anyway.
 	 */
+	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages';
 </script>
 
@@ -21,7 +22,7 @@
 	<div class="page-shell__card">
 		<h1 class="page-shell__heading">{m.error_page_title()}</h1>
 		<p class="page-shell__body">{m.error_page_body()}</p>
-		<a href="/" class="page-shell__primary">{m.error_page_home()}</a>
+		<a href={resolve('/')} class="page-shell__primary">{m.error_page_home()}</a>
 	</div>
 </div>
 

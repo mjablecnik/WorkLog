@@ -11,6 +11,7 @@
 	 * `unsafe-inline` for `style-src`, so a per-instance dynamic value can only be
 	 * expressed as a class (or attribute selector), never as a style attribute.
 	 */
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars -- exists only to derive Radius via typeof
 	const RADII = [2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 20, 9999] as const;
 	type Radius = (typeof RADII)[number];
 

@@ -176,10 +176,7 @@
 	// (see `+page.server.ts`), both imported from the shared
 	// `$lib/server/services/activity-form-actions.ts` module `day/[date]/+page.server.ts`
 	// also imports, so the dialog behaves identically whichever route mounted it.
-	let projectsList = $state(untrack(() => data.projects));
-	$effect(() => {
-		projectsList = data.projects;
-	});
+	let projectsList = $derived(data.projects);
 
 	let activityDialogOpen = $state(false);
 	let activityDialogPrefill = $state<{ projectId?: string } | undefined>(undefined);

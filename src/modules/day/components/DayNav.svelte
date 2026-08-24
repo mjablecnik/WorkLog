@@ -46,6 +46,7 @@
 	 * unsupported `aria-label` prop.
 	 */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import * as m from '$lib/paraglide/messages';
 	import { formatDayLabel } from '$lib/viz/format';
 	import Icon from '$lib/ui/elements/Icon.svelte';
@@ -87,12 +88,12 @@
 	const label = $derived(formatDayLabel(date, locale, today, 'relative'));
 
 	function goPrev(): void {
-		void goto(`/day/${prevDate}`);
+		void goto(resolve(`/day/${prevDate}`));
 	}
 
 	function goNext(): void {
 		if (isToday) return;
-		void goto(`/day/${nextDate}`);
+		void goto(resolve(`/day/${nextDate}`));
 	}
 
 	/** Fired by real DOM bubbling from the invisible `DatePicker`'s native input --
@@ -101,7 +102,7 @@
 		const target = event.target as HTMLElement;
 		if (target.id !== PICKER_ID) return;
 		const value = (target as HTMLInputElement).value;
-		if (DATE_RE.test(value) && value !== date) void goto(`/day/${value}`);
+		if (DATE_RE.test(value) && value !== date) void goto(resolve(`/day/${value}`));
 	}
 </script>
 

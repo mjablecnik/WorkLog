@@ -24,10 +24,7 @@ import {
 import { GET as coverageGet } from '../../../../src/routes/api/coverage/+server';
 import { GET as daysGet } from '../../../../src/routes/api/days/+server';
 import { GET as dayGet } from '../../../../src/routes/api/days/[date]/+server';
-import {
-	DELETE as activityDelete,
-	PATCH as activityPatch
-} from '../../../../src/routes/api/activities/[id]/+server';
+import { DELETE as activityDelete } from '../../../../src/routes/api/activities/[id]/+server';
 import { POST as activitiesPost } from '../../../../src/routes/api/activities/+server';
 
 const BASE = 'http://localhost';

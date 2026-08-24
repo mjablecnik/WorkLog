@@ -91,7 +91,7 @@ describe('tx', () => {
 	});
 
 	it('withReadTx does not take the exclusive lock', async () => {
-		let sawLockDuringWrite = false;
+		let sawLockDuringWrite: boolean;
 		const writeP = withTx(async () => {
 			await new Promise((r) => setTimeout(r, 200));
 		});
@@ -103,7 +103,7 @@ describe('tx', () => {
 		await writeP;
 		expect(sawLockDuringWrite).toBe(true);
 
-		let sawLockDuringRead = false;
+		let sawLockDuringRead: boolean;
 		const readP = withReadTx(async () => {
 			await new Promise((r) => setTimeout(r, 200));
 		});

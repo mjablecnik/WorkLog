@@ -533,7 +533,6 @@
 
 {#if sheetOpen}
 	<div use:sheetPortal bind:this={sheetPortalEl}>
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="project-row__sheet-scrim" onclick={handleSheetScrimActivate} role="presentation"
 		></div>
 		<div
