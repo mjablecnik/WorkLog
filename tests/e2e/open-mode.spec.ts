@@ -5,15 +5,18 @@
  * result — a single segment running from the `Placement_Anchor` (an `Open_Session`'s
  * own start, when nothing has been described yet) to the moment of submission.
  *
- * `Quick_Log`'s own hidden form never attaches a `Preview_Token` (`QuickLog.svelte`:
- * only `projectId`/`date`), so it is unaffected by the STALE_PREVIEW bug documented
- * in `.agents/ISSUES.md` and is driven through the real UI end to end.
- * `ActivityDialog`'s `Open_Mode` create IS affected (its hidden wire form always
- * attaches the token once a preview resolves, same as every other mode) — its half
- * of the comparison is therefore performed via the same `Open_Mode` request
- * `ActivityDialog` would send (`projectId` + `date`, no start/end/duration), issued
- * directly against the API without a token, exactly like every other 11.x spec's
- * workaround for this bug.
+ * Both halves are now driven through the real UI end to end. `Quick_Log`'s own
+ * hidden form never attaches a `Preview_Token` (`QuickLog.svelte`: only
+ * `projectId`/`date`), so it was always unaffected by the STALE_PREVIEW bug formerly
+ * documented in `.agents/ISSUES.md` ("Every write that carries a Preview_Token always
+ * answers STALE_PREVIEW"). `ActivityDialog`'s `Open_Mode` create WAS affected (its
+ * hidden wire form always attaches the token once a preview resolves, same as every
+ * other mode) — that bug is fixed (see `src/lib/server/services/sessions.ts`'s
+ * `finishWrite`/`src/lib/server/services/activities.ts`'s `create`/`patchActivity`:
+ * the `Preview_Token` handed back to the client now reuses the pre-mutation
+ * fingerprint instead of recomputing one after the write), so this half now clicks
+ * through the same dialog Quick_Log is being compared against, instead of issuing
+ * the equivalent request directly against the API.
  */
 import { test, expect, login, createProject, createSessionViaApi, createActivityViaApi, findProjectId } from './fixtures';
 
@@ -77,23 +80,44 @@ test('Quick_Log and Activity_Dialog Open_Mode both log since the running session
 	const secondStartedAt = new Date();
 	await page.waitForTimeout(65000);
 
-	const projectId = await findProjectId(page, PROJECT_NAME);
-	const today = secondStartedAt.toISOString().slice(0, 10);
-	const res = await page.request.post('/api/activities', {
-		data: { projectId, date: today, description: '', dryRun: false }
-	});
-	expect(res.ok(), await res.text()).toBeTruthy();
+	// Quick_Log's own "Otevřít dialog" fallback link opens ActivityDialog
+	// prefilled with the same suggested project; switch to its Open_Mode
+	// ("Od posledního") and save through the real dialog end to end.
+	await page.getByRole('button', { name: 'Otevřít dialog' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Přidat úkol' });
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('radio', { name: 'Od posledního' }).click();
+	await page.waitForTimeout(700);
+	await dialog.getByRole('button', { name: 'Uložit úkol', exact: true }).click();
+	const confirmButton = dialog.getByRole('button', { name: 'Potvrdit a uložit' });
+	if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+		await confirmButton.click();
+	}
+	await expect(dialog).toBeHidden();
 	const openModeSubmittedAt = new Date();
-	const body = (await res.json()) as {
-		entry: { segments: { startedAt: string; endedAt: string }[] };
+
+	// No direct POST response to read from anymore (the write now goes through
+	// the real dialog) — verified via the day's stored data instead, matching
+	// it back to this write by how close its segment's start is to the second
+	// session's own start (the seed entry and the Quick_Log entry both predate
+	// it by design, so proximity alone disambiguates).
+	const today = secondStartedAt.toISOString().slice(0, 10);
+	const dayRes2 = await page.request.get(`/api/days/${today}`);
+	const dayBody2 = (await dayRes2.json()) as {
+		entries: { segments: { startedAt: string; endedAt: string }[] }[];
 	};
+	const openModeEntry = dayBody2.entries.find(
+		(e) =>
+			e.segments.length === 1 &&
+			Math.abs(new Date(e.segments[0].startedAt).getTime() - secondStartedAt.getTime()) < 10000
+	);
+	expect(openModeEntry).toBeDefined();
 
 	// Both produce exactly one segment, starting at their session's own start and
 	// ending at (approximately) the moment of submission — the same interval
 	// shape through both entry points.
-	expect(body.entry.segments).toHaveLength(1);
-	const openModeStart = new Date(body.entry.segments[0].startedAt);
-	const openModeEnd = new Date(body.entry.segments[0].endedAt);
+	const openModeStart = new Date(openModeEntry!.segments[0].startedAt);
+	const openModeEnd = new Date(openModeEntry!.segments[0].endedAt);
 	expect(Math.abs(openModeStart.getTime() - secondStartedAt.getTime())).toBeLessThan(5000);
 	expect(Math.abs(openModeEnd.getTime() - openModeSubmittedAt.getTime())).toBeLessThan(5000);
 

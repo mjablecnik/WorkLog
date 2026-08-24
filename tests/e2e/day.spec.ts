@@ -5,24 +5,19 @@
  * them, then an `Activity_Entry` that spans the break, and assert the
  * `Clipping`/rendering result on the real `Day_Timeline`.
  *
- * KNOWN BUG (see .agents/ISSUES.md, "Every CREATE that carries a Preview_Token
- * always answers STALE_PREVIEW"): creating a Work_Session or an Activity_Entry
- * through SessionDialog/ActivityDialog's own confirm step is currently broken —
- * every such create is rejected, deterministically, regardless of timing.
- * Confirmed independently of this suite with immediate `curl` round trips against
- * a real database. Setup data below is therefore seeded through the same public
- * REST API real scripts use (`createSessionViaApi`/`createActivityViaApi` in
- * `fixtures.ts`, both omitting `previewToken` — the one request shape the bug does
- * not affect), never through the broken dialog confirm step. What IS exercised
- * through the real UI is the thing this task is actually about: the `Day_Timeline`
- * rendering the reconciliation result (blocks, the break marker, part counters,
- * totals) — unaffected by the create-confirm bug, and it's what Requirements 4.1,
- * 4.6, 7.2 are actually asking to be verified.
+ * Setup data below is seeded through the same public REST API real scripts use
+ * (`createSessionViaApi`/`createActivityViaApi` in `fixtures.ts`) rather than
+ * through `SessionDialog`/`ActivityDialog`'s own confirm step — this remains a
+ * deliberate choice for fast, deterministic setup data, not a workaround: the
+ * STALE_PREVIEW bug this file used to route around (see .agents/ISSUES.md, now
+ * fixed) is unrelated to what this task is actually about. What IS exercised
+ * through the real UI is that thing: the `Day_Timeline` rendering the
+ * reconciliation result (blocks, the break marker, part counters, totals) —
+ * Requirements 4.1, 4.6, 7.2's actual ask.
  *
  * The one literal `Timer_Control` start/stop cycle in the first test IS exercised
  * for real (the task brief's own wording) — that path never attaches a
- * `Preview_Token` at all (no `Change_Preview` step exists for it), so it is
- * unaffected by the bug and genuinely works.
+ * `Preview_Token` at all (no `Change_Preview` step exists for it).
  */
 import { test, expect, login, createProject, createSessionViaApi, createActivityViaApi, findProjectId } from './fixtures';
 

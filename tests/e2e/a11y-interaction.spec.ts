@@ -28,16 +28,14 @@ async function tabUntil(
 test('a keyboard-only walk reaches a timeline block, opens the dialog, and submits an edit', async ({
 	page
 }) => {
-	// KNOWN BUG (see .agents/ISSUES.md, "Every write that carries a
-	// Preview_Token always answers STALE_PREVIEW"): this also affects
-	// `patchActivity`, including a metadata-only edit whose interval never
-	// changes — the Save button becomes enabled once its own Dry_Run resolves
-	// (unaffected), but the confirm submit that follows carries the same
-	// always-mismatched token and is rejected, so the dialog stays open rather
-	// than closing. The keyboard walk itself — reaching the block, opening the
-	// dialog, filling a field, reaching and activating Save, all via keyboard
-	// with no pointer interaction — is real; only the write's outcome is
-	// substituted for the documented reason.
+	// This edit used to be rejected by the STALE_PREVIEW bug formerly documented
+	// in .agents/ISSUES.md ("Every write that carries a Preview_Token always
+	// answers STALE_PREVIEW"; fixed in `src/lib/server/services/activities.ts`).
+	// A metadata-only edit needs no reclip, so `ActivityDialog`'s Save submits
+	// directly (no "Potvrdit a uložit" confirm screen) — that direct submit is
+	// exactly the shape the bug used to reject unconditionally, so this is also
+	// the regression test for it, driven entirely by keyboard with no pointer
+	// interaction anywhere in the test.
 	await login(page);
 	await createProject(page, 'Focus');
 	const projectId = await findProjectId(page, 'Focus');
@@ -90,28 +88,20 @@ test('a keyboard-only walk reaches a timeline block, opens the dialog, and submi
 	);
 	await page.keyboard.press('Enter');
 
-	// Documents the bug rather than silently working around it (same pattern as
-	// conflict.spec.ts/preview.spec.ts): the dialog stays open, rejected.
-	await expect(dialog).toBeVisible();
-	await expect(page.getByText('Mezitím se něco změnilo')).toBeVisible();
+	// The edit saves and the dialog closes — the direct-submit round trip the
+	// STALE_PREVIEW bug used to reject unconditionally.
+	await expect(dialog).toBeHidden();
+	await page.reload();
+	await expect(page.getByText('Updated via keyboard')).toBeVisible();
 });
 
-test('focus rings currently do not render at all (see ISSUES.md — app.css is never imported)', async ({
-	page
-}) => {
-	// KNOWN BUG (see .agents/ISSUES.md, "src/app.css is never imported — the
-	// entire design-token/Tailwind system never reaches the running
-	// application"): every CSS custom property this app's styling depends on —
-	// `--bg`, `--accent`, `--focus-gap`, all of it — is undefined in the real
-	// build, confirmed via `getComputedStyle` returning `""` for `--bg` on
-	// `<html>` and a real screenshot rendering plain black-on-white with no
-	// theme applied anywhere. `:focus-visible { box-shadow: 0 0 0 2px
-	// var(--focus-gap), 0 0 0 4px var(--accent); }` has no fallback on either
-	// `var()`, so with both undefined the whole declaration is invalid and
-	// computes to `none` — this is a direct symptom of that root cause, not a
-	// separate defect, and this test documents the CURRENT (broken) state as a
-	// regression test rather than asserting the requirement's happy path,
-	// which cannot pass until `app.css` is wired in.
+test('a keyboard-focused control shows a visible focus ring', async ({ page }) => {
+	// Formerly documented the CURRENT (broken) state as a regression test — see
+	// .agents/ISSUES.md, "src/app.css is never imported" (now RESOLVED,
+	// 2026-08-24-0659: `src/routes/+layout.svelte` imports it). Flipped to
+	// assert the requirement's actual intent now that the design tokens
+	// `:focus-visible`'s box-shadow depends on (`--focus-gap`, `--accent`)
+	// reach the real page.
 	await login(page);
 	await page.goto('/');
 
@@ -133,11 +123,8 @@ test('focus rings currently do not render at all (see ISSUES.md — app.css is n
 	await expect(chip).toBeFocused();
 	const focusedBoxShadow = await chip.evaluate((el) => getComputedStyle(el).boxShadow);
 
-	// Currently identical (both "none") — once app.css is wired in, this
-	// assertion is expected to start failing, at which point it should be
-	// flipped to `.not.toBe('none')` per the requirement's actual intent.
-	expect(focusedBoxShadow).toBe(unfocusedBoxShadow);
-	expect(focusedBoxShadow).toBe('none');
+	expect(focusedBoxShadow).not.toBe(unfocusedBoxShadow);
+	expect(focusedBoxShadow).not.toBe('none');
 });
 
 test('a success toast is announced through the live region; the elapsed readout is not', async ({
@@ -169,16 +156,17 @@ test('a success toast is announced through the live region; the elapsed readout 
 test('no element carries an active transform transition under prefers-reduced-motion: reduce', async ({
 	page
 }) => {
-	// CAVEAT (see .agents/ISSUES.md, "src/app.css is never imported"): this
-	// assertion currently passes, but not fully for the reason it's checking.
-	// `--dur-hover` (the animation's own duration) is also an undefined custom
-	// property in the real build, which makes `animation: settings-menu-in
-	// var(--dur-hover) ...` an invalid declaration that never applies at all —
-	// so `animationName` reads 'none' regardless of `prefers-reduced-motion`,
-	// not because theme.css's reduced-motion override (also unreachable, same
-	// root cause) actually suppressed a real animation. Left as a real
-	// assertion rather than removed — once app.css is wired in, this needs a
-	// second look to confirm it still passes for the RIGHT reason.
+	// Now that .agents/ISSUES.md's "src/app.css is never imported" is RESOLVED
+	// (2026-08-24-0659) and the real design tokens reach the page, this needed
+	// a second look — and the original assertion was checking the wrong thing.
+	// `theme.css`'s reduced-motion block does not set `animation-name: none`;
+	// it uses the standard technique of collapsing every animation's DURATION
+	// to near-zero instead (`*, *::before, *::after { animation-duration:
+	// 0.01ms !important; animation-iteration-count: 1 !important; }`), which
+	// still reports the keyframe's own name via `animationName` — that is not
+	// a bug, just a different (and more broadly compatible) way of expressing
+	// "no visible motion." Asserting on `animationDuration` instead is what
+	// actually verifies the entrance keyframe cannot be seen running.
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await login(page);
 	await page.goto('/');
@@ -191,8 +179,18 @@ test('no element carries an active transform transition under prefers-reduced-mo
 	await expect(panel).toBeVisible();
 
 	const transitionProperty = await panel.evaluate((el) => getComputedStyle(el).transitionProperty);
-	const animationName = await panel.evaluate((el) => getComputedStyle(el).animationName);
+	const animationDurationMs = await panel.evaluate((el) => {
+		// getComputedStyle normalizes the unit itself (Chromium reports seconds,
+		// e.g. "1e-05s", for the "0.01ms" theme.css actually declares) — parse
+		// numerically rather than comparing the raw string.
+		const raw = getComputedStyle(el).animationDuration;
+		const seconds = parseFloat(raw);
+		return raw.endsWith('ms') ? seconds : seconds * 1000;
+	});
 	const hasTransformTransition = transitionProperty.includes('transform');
 	expect(hasTransformTransition, `transition-property: ${transitionProperty}`).toBe(false);
-	expect(animationName, 'the entrance keyframe animation should not still be active').toBe('none');
+	expect(
+		animationDurationMs,
+		'the entrance keyframe animation should collapse to near-zero'
+	).toBeLessThanOrEqual(0.01);
 });

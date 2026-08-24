@@ -1,15 +1,15 @@
 /**
  * Task 11.2 (Requirements 8.4, 9.1, 9.5, 9.7, 9.11, 10.3, 10.5, 15.5) — the
  * gap-filling E2E scenario: clicking an uncovered stretch opens `ActivityDialog`
- * prefilled with exactly that range.
+ * prefilled with exactly that range, and saving it through the dialog's own Save
+ * button fills the gap.
  *
- * KNOWN BUG (see .agents/ISSUES.md, "Every write that carries a Preview_Token
- * always answers STALE_PREVIEW"): the dialog's own Save button cannot currently
- * complete a create (confirmed via `curl` and via `day.spec.ts`/`preview.spec.ts`,
- * independent of this file). The prefill-from-click assertion is fully real UI;
- * the actual write that would follow "save" is applied via the API instead (the
- * same substitution every 11.x spec makes for this bug), so the "uncovered
- * reaches zero" outcome can still be verified against the real, re-rendered page.
+ * The dialog's Save button used to be unable to complete a create at all (see
+ * .agents/ISSUES.md's formerly-open "Every write that carries a Preview_Token
+ * always answers STALE_PREVIEW"; fixed in `src/lib/server/services/sessions.ts`/
+ * `activities.ts` — the returned `previewToken` now reuses the same pre-mutation
+ * fingerprint the confirming write compares against). The whole scenario,
+ * including the save, is now driven through the real UI end to end.
  */
 import { test, expect, login, createProject, createSessionViaApi, createActivityViaApi, findProjectId } from './fixtures';
 
@@ -36,13 +36,19 @@ test('clicking an uncovered stretch opens the dialog prefilled with exactly that
 	await expect(dialog.getByLabel('od')).toHaveValue('10:00');
 	await expect(dialog.getByLabel('do')).toHaveValue('12:00');
 
-	await dialog.getByRole('button', { name: 'Zavřít dialog' }).click();
+	// Select a project and save through the dialog's own Save button — the
+	// prefilled range is used exactly as shown, filling the gap end to end
+	// through the real UI (including the confirm step, if the write's own
+	// Dry_Run decides one is needed).
+	await dialog.getByLabel('projekt').click();
+	await dialog.getByRole('option', { name: PROJECT_NAME }).click();
+	await page.waitForTimeout(700);
+	await dialog.getByRole('button', { name: 'Uložit úkol', exact: true }).click();
+	const confirmButton = dialog.getByRole('button', { name: 'Potvrdit a uložit' });
+	if (await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+		await confirmButton.click();
+	}
 	await expect(dialog).toBeHidden();
-
-	// The write the dialog's own Save button cannot currently complete (see the
-	// module doc comment) applied via the API instead, filling exactly the
-	// prefilled range.
-	await createActivityViaApi(page, projectId, `${DAY}T09:00:00.000Z`, `${DAY}T11:00:00.000Z`, 'Filled in');
 
 	await page.reload();
 	await expect(page.getByText('Celý den je popsaný.')).toBeVisible();
