@@ -27,7 +27,9 @@
 		| 'timer'
 		| 'day'
 		| 'projects'
-		| 'stats';
+		| 'stats'
+		| 'archive'
+		| 'more';
 
 	type IconDef = {
 		/** Always `0 0 24 24` for the extracted set — kept explicit per icon in case a future
@@ -176,6 +178,28 @@
 			viewBox: '0 0 24 24',
 			strokeWidth: 1.8,
 			paths: ['M4 20V10M10 20V4M16 20v-7M22 20H2']
+		},
+		// verbatim — Projects.dc.html row action (the archive/unarchive control)
+		archive: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			rects: [{ x: 3, y: 4, width: 18, height: 4, rx: 1 }],
+			paths: ['M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4']
+		},
+		// FALLBACK — no mobile artboard exists for Projects (design.md's "Statistics and
+		// Projects, Mobile" section is a written contract, not a drawing), so the row's
+		// single 32 px overflow button that opens the settings-sheet-style action sheet
+		// (tasks.md 7.1) has no artboard geometry to pull from. Own geometry, same
+		// round-cap / 1.8 stroke convention as the rest of the extracted set.
+		more: {
+			viewBox: '0 0 24 24',
+			strokeWidth: 1.8,
+			circles: [
+				{ cx: 5, cy: 12, r: 1.2 },
+				{ cx: 12, cy: 12, r: 1.2 },
+				{ cx: 19, cy: 12, r: 1.2 }
+			],
+			paths: []
 		}
 	};
 </script>
