@@ -113,3 +113,575 @@
 		U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
 		U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
+
+/**
+ * ============================================================================
+ * Design_Tokens — task 1.4
+ * Transcribed verbatim from `.kiro/specs/002-worklog-ui/design.md`, section
+ * "Design_Tokens" (itself transcribed from `.design/DESIGN.md` §§ 1–4). Every
+ * value below is drawn and measured, not derived — do not "simplify" a number
+ * to something nearby, and do not copy one theme's dim/faint pair onto the
+ * other (they measure to different contrast ratios on purpose, see below).
+ *
+ * `src/lib/theme/palette.css` (project-colour slots) and
+ * `src/lib/theme/timeline-heights.css` (`.tl-h-*` block-height ladder) are
+ * separate, *generated* files owned by task 1.5 — they do not exist yet and
+ * are intentionally not stubbed here.
+ * ============================================================================
+ */
+
+/* ----------------------------------------------------------------------------
+ * Motion tokens — theme-independent. Exactly two curves, three durations;
+ * nothing outside design.md's "What animates, exhaustively" table transitions.
+ * -------------------------------------------------------------------------- */
+:root {
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-exit: cubic-bezier(0.4, 0, 1, 1);
+	--dur-hover: 200ms;
+	--dur-panel: 300ms;
+	--dur-shimmer: 1.2s;
+
+	/* Default focus-gap ground: the page background. A dialog, panel or
+	   Segment_Block overrides this locally to --dialog / --panel / its own
+	   --pj-tint — that override is each component's job, not this file's. */
+	--focus-gap: var(--bg);
+
+	/* Halo alpha for accent-filled controls (Timer_Control, FAB, primary
+	   pill), per the interaction-state rule: "active drops any halo to
+	   0.06 alpha". The resting halo alpha itself is drawn per-control in the
+	   artboards (Timer_Control and FAB both rest at 0.09) — these two
+	   unitless numbers let a component compose its own halo colour
+	   (`rgba(var(--accent-rgb), var(--halo-resting-alpha))` or equivalent)
+	   without re-deriving the active state by hand. */
+	--halo-resting-alpha: 0.09;
+	--halo-active-alpha: 0.06;
+}
+
+/* ----------------------------------------------------------------------------
+ * Theme: dark — "Midnight" (default render theme; also the :root fallback so
+ * anything rendered before `data-theme` is known — e.g. a component test that
+ * mounts without the attribute — still resolves sane colours).
+ * -------------------------------------------------------------------------- */
+:root,
+[data-theme='dark'] {
+	/* --- Design_Tokens: Theme: dark ---------------------------------------- */
+	--bg: #0f1319;
+	--text: #e6eaf2;
+	/* dark dim/faint were RAISED after measurement: faint at 0.50 → 4.63:1 on
+	   --bg, clearing the 4.5:1 floor Requirement 14.10 sets; a lower value
+	   (0.38) measured 3.38:1 and failed. Dim moved up with it so the two
+	   levels stay visually distinct instead of collapsing together. */
+	--text-dim: rgba(230, 234, 242, 0.62); /* 6.44:1 on #0F1319 */
+	--text-faint: rgba(230, 234, 242, 0.5); /* 4.63:1 on #0F1319 */
+	--accent: #d18a6a;
+	--accent-hover: #e2a88d;
+	--ink-on-accent: #1a0f0a;
+	--panel: rgba(255, 255, 255, 0.043);
+	--dialog: #171b22;
+	--scrim: rgba(9, 11, 15, 0.72);
+	--field: rgba(255, 255, 255, 0.05);
+	--field-active-bg: rgba(209, 138, 106, 0.1);
+	--field-active-ring: inset 0 0 0 1px rgba(209, 138, 106, 0.4);
+	--divider: rgba(255, 255, 255, 0.05);
+	--destructive: #e06a5e; /* own token, never derived from a Palette_Slot; 5.67:1 on --bg */
+	--rail: rgba(230, 234, 242, 0.3);
+	--arc-closed: rgba(230, 234, 242, 0.34);
+	--groove-outer: rgba(255, 255, 255, 0.055);
+	--groove-inner: rgba(255, 255, 255, 0.045);
+	--dial-hour: rgba(230, 234, 242, 0.14);
+	--dial-3h: rgba(230, 234, 242, 0.24);
+	--dial-6h: rgba(230, 234, 242, 0.3);
+	--dial-numeral: rgba(230, 234, 242, 0.17);
+	--uncovered-dash: rgba(209, 138, 106, 0.65);
+
+	/* --- Surface Tokens ----------------------------------------------------- */
+	--chip: rgba(255, 255, 255, 0.07);
+	--menu-border: rgba(255, 255, 255, 0.06);
+	--menu-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+	--dialog-shadow: 0 28px 70px rgba(0, 0, 0, 0.6);
+	--grabber: rgba(255, 255, 255, 0.14);
+	--group: rgba(255, 255, 255, 0.04);
+	--segment-active: rgba(209, 138, 106, 0.16);
+	--footer: rgba(255, 255, 255, 0.02);
+	--row: rgba(255, 255, 255, 0.035);
+	--track: rgba(255, 255, 255, 0.05);
+	--meter-track: rgba(255, 255, 255, 0.07);
+	--hairline: rgba(255, 255, 255, 0.14);
+
+	/* --- Interaction states: derived hover/active surface variants ---------
+	   Rule (design.md "Interaction States"): hover = resting alpha + 0.03,
+	   active/pressed = resting alpha + 0.06. Arithmetic shown per line; these
+	   are the surfaces components actually put a pointer over (chip buttons,
+	   panels/rows acting as click targets, fields, segmented-control groups).
+	   Accent-filled controls do NOT use these — they swap to --accent-hover
+	   and drop their halo to --halo-active-alpha instead (see above). */
+	--chip-hover: rgba(255, 255, 255, 0.1); /* 0.07 + 0.03 */
+	--chip-active: rgba(255, 255, 255, 0.13); /* 0.07 + 0.06 */
+	--panel-hover: rgba(255, 255, 255, 0.073); /* 0.043 + 0.03 */
+	--panel-active: rgba(255, 255, 255, 0.103); /* 0.043 + 0.06 */
+	--field-hover: rgba(255, 255, 255, 0.08); /* 0.05 + 0.03 */
+	--field-active: rgba(255, 255, 255, 0.11); /* 0.05 + 0.06 */
+	--group-hover: rgba(255, 255, 255, 0.07); /* 0.04 + 0.03 */
+	--group-active: rgba(255, 255, 255, 0.1); /* 0.04 + 0.06 */
+	--row-hover: rgba(255, 255, 255, 0.065); /* 0.035 + 0.03 */
+	--row-active: rgba(255, 255, 255, 0.095); /* 0.035 + 0.06 */
+}
+
+/* ----------------------------------------------------------------------------
+ * Theme: light — "Daylight"
+ * -------------------------------------------------------------------------- */
+[data-theme='light'] {
+	/* --- Design_Tokens: Theme: light ---------------------------------------- */
+	--bg: #f3eee6;
+	--text: #2b2420;
+	/* light dim/faint were also raised after measurement (started at 4.17:1 /
+	   2.99:1); do not copy the dark pair's numbers here, they measure
+	   differently against this theme's ground. */
+	--text-dim: rgba(43, 36, 32, 0.78); /* 6.84:1 on #F3EEE6, 7.18:1 on --dialog */
+	--text-faint: rgba(43, 36, 32, 0.66); /* 4.69:1 on #F3EEE6, 4.85:1 on --dialog */
+	--accent: #a5522e; /* 5.12:1 on --dialog */
+	--accent-hover: #8a4724;
+	--ink-on-accent: #fbf7f1;
+	--panel: rgba(0, 0, 0, 0.045);
+	--dialog: #fbf7f1;
+	--scrim: rgba(43, 36, 32, 0.38);
+	--field: rgba(0, 0, 0, 0.05);
+	--field-active-bg: rgba(165, 82, 46, 0.1);
+	--field-active-ring: inset 0 0 0 1px rgba(165, 82, 46, 0.45);
+	--divider: rgba(0, 0, 0, 0.07);
+	--destructive: #a8321f; /* own token, never derived from a Palette_Slot; 6.26:1 on --dialog */
+	--rail: rgba(43, 36, 32, 0.32);
+	--arc-closed: rgba(43, 36, 32, 0.34);
+	--groove-outer: rgba(0, 0, 0, 0.07);
+	--groove-inner: rgba(0, 0, 0, 0.055);
+	--dial-hour: rgba(43, 36, 32, 0.18);
+	--dial-3h: rgba(43, 36, 32, 0.28);
+	--dial-6h: rgba(43, 36, 32, 0.34);
+	--dial-numeral: rgba(43, 36, 32, 0.24);
+	--uncovered-dash: rgba(165, 82, 46, 0.75);
+
+	/* --- Surface Tokens ------------------------------------------------------
+	   First five rows confirmed live by SettingsLight: chip, menu-border,
+	   menu-shadow, group, segment-active — the menu's divider reuses --divider
+	   itself. --grabber has no light drawing (no light mobile-sheet artboard
+	   exists) but is still binding as written, following the same ladder. */
+	--chip: rgba(0, 0, 0, 0.06);
+	--menu-border: rgba(0, 0, 0, 0.08);
+	--menu-shadow: 0 18px 44px rgba(43, 36, 32, 0.18);
+	--dialog-shadow: 0 28px 70px rgba(43, 36, 32, 0.22);
+	--grabber: rgba(0, 0, 0, 0.16);
+	--group: rgba(0, 0, 0, 0.04);
+	--segment-active: rgba(165, 82, 46, 0.14); /* the darker light accent needs less of itself than dark's 0.16 */
+	--footer: rgba(0, 0, 0, 0.025);
+	--row: rgba(0, 0, 0, 0.035);
+	--track: rgba(0, 0, 0, 0.055);
+	--meter-track: rgba(0, 0, 0, 0.09);
+	--hairline: rgba(0, 0, 0, 0.2);
+
+	/* --- Interaction states: derived hover/active surface variants (+0.03 / +0.06) --- */
+	--chip-hover: rgba(0, 0, 0, 0.09); /* 0.06 + 0.03 */
+	--chip-active: rgba(0, 0, 0, 0.12); /* 0.06 + 0.06 */
+	--panel-hover: rgba(0, 0, 0, 0.075); /* 0.045 + 0.03 */
+	--panel-active: rgba(0, 0, 0, 0.105); /* 0.045 + 0.06 */
+	--field-hover: rgba(0, 0, 0, 0.08); /* 0.05 + 0.03 */
+	--field-active: rgba(0, 0, 0, 0.11); /* 0.05 + 0.06 */
+	--group-hover: rgba(0, 0, 0, 0.07); /* 0.04 + 0.03 */
+	--group-active: rgba(0, 0, 0, 0.1); /* 0.04 + 0.06 */
+	--row-hover: rgba(0, 0, 0, 0.065); /* 0.035 + 0.03 */
+	--row-active: rgba(0, 0, 0, 0.095); /* 0.035 + 0.06 */
+}
+
+/* ----------------------------------------------------------------------------
+ * Interaction states — generic rules
+ *
+ * Surface alpha deltas live as the `-hover`/`-active` token pairs above (one
+ * pair per theme, since a literal alpha cannot be "raised" generically).
+ * What CAN be expressed generically is applied here:
+ *   - disabled: opacity 0.4, no pointer, no hover/active — one rule for any
+ *     element marked `aria-disabled="true"` or carrying `[disabled]`.
+ *   - the text-brightens-one-level-on-hover rule (faint → dim → text): a
+ *     component pairs its resting ink class with a `-hover`/`.is-hover`
+ *     variant to promote to the next level below.
+ *   - the focus ring.
+ * -------------------------------------------------------------------------- */
+[aria-disabled='true'],
+:disabled,
+.is-disabled {
+	opacity: 0.4;
+	pointer-events: none;
+	cursor: not-allowed;
+	transition: none;
+}
+
+.ink-faint {
+	color: var(--text-faint);
+	transition: color var(--dur-hover) var(--ease-standard);
+}
+.ink-faint:hover,
+.ink-faint.is-hover {
+	color: var(--text-dim);
+}
+
+.ink-dim {
+	color: var(--text-dim);
+	transition: color var(--dur-hover) var(--ease-standard);
+}
+.ink-dim:hover,
+.ink-dim.is-hover {
+	color: var(--text);
+}
+
+/* Focus ring — `--focus-gap` defaults to `--bg` at :root; a dialog, panel or
+   Segment_Block overrides it locally (`--dialog` / `--panel` / its own
+   `--pj-tint`) so the ring stays visible against a tinted or elevated
+   ground. Never animated — a focus ring appears in the same frame it should. */
+:focus-visible {
+	outline: none;
+	box-shadow:
+		0 0 0 2px var(--focus-gap),
+		0 0 0 4px var(--accent);
+}
+
+/* ----------------------------------------------------------------------------
+ * ::selection
+ * -------------------------------------------------------------------------- */
+::selection {
+	background: var(--accent);
+	color: var(--ink-on-accent);
+}
+
+/* ----------------------------------------------------------------------------
+ * 44×44 minimum activation area
+ *
+ * Opt-in helper: the element keeps the drawn size the design gives it (chip
+ * 30, icon buttons 32, day controls / segmented items 34, dialog buttons 42,
+ * …) while a transparent, centred `::after` guarantees at least a 44×44
+ * hit area. `MIN_BLOCK_PX` (36 desktop / 26 mobile Segment_Block heights) is
+ * the one explicit, documented exception to this rule and does NOT use it.
+ * -------------------------------------------------------------------------- */
+.tap-target {
+	position: relative;
+}
+.tap-target::after {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 100%;
+	height: 100%;
+	min-width: 44px;
+	min-height: 44px;
+	transform: translate(-50%, -50%);
+}
+
+/* ----------------------------------------------------------------------------
+ * Base document styling — Inter Tight, the resolved theme ground/ink, and the
+ * antialiasing the design specifies. Everything else (layout, components)
+ * is later tasks' work.
+ * -------------------------------------------------------------------------- */
+html {
+	font-family:
+		'Inter Tight',
+		system-ui,
+		sans-serif;
+	-webkit-font-smoothing: antialiased;
+}
+body {
+	background: var(--bg);
+	color: var(--text);
+}
+
+/* ----------------------------------------------------------------------------
+ * Typography — the full type scale, each class carrying its own line-height
+ * from design.md's line-height table (the layout budget, `layOutDay`, counts
+ * it — see BLOCK_HEAD_PX/BLOCK_HEAD_PAD_PX in timeline-geometry.ts, a later
+ * task). Mobile-first: base rules below are the mobile numbers, overridden at
+ * the single 768px breakpoint where the design gives a distinct desktop size.
+ *
+ * `font-variant-numeric: tabular-nums` is the default on every numeric-heavy
+ * role (hero, KPI, timer figure, times/legend/gauge-numeral readouts) and is
+ * also available standalone as `.tabular` for anything else that needs it.
+ *
+ * Two sizing decisions the design's table leaves implicit, resolved here:
+ *   - "Times, legend, gauge numerals … mobile 10.5–11": gauge numerals are
+ *     SVG text sized in viewBox units by gauge-geometry.ts (a later task,
+ *     11.2/9.9 CSS px per design.md's own worked example) and are therefore
+ *     NOT produced by this class; `.text-times` covers times/legend only,
+ *     and takes the 11px end of the range.
+ *   - Font weight for non-primary button text and for `.text-nav`/`.text-prose`
+ *     is not stated in the design's table; left at the browser default (400)
+ *     rather than invented. Only weights the table actually states are set.
+ * -------------------------------------------------------------------------- */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.text-hero {
+	font-size: 56px;
+	font-weight: 300;
+	letter-spacing: -0.035em;
+	line-height: 1;
+	font-variant-numeric: tabular-nums;
+}
+.text-kpi {
+	font-size: 30px;
+	font-weight: 300;
+	letter-spacing: -0.03em;
+	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
+}
+.text-timer-figure {
+	font-size: 19px;
+	font-weight: 300;
+	letter-spacing: -0.02em;
+	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
+}
+.text-heading {
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.3;
+}
+.text-dialog-heading {
+	font-size: 17px;
+	font-weight: 500;
+	line-height: 1.3;
+}
+.text-brand {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+}
+.text-summary-value {
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.3;
+}
+.text-nav {
+	font-size: 14px;
+	line-height: 1.4;
+}
+.text-project-name {
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+.text-button {
+	font-size: 13.5px;
+	line-height: 1.4;
+}
+.text-button-primary {
+	font-weight: 600;
+}
+.text-block-head {
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.4;
+}
+.text-prose {
+	font-size: 12.5px;
+	line-height: 1.55;
+}
+.text-times {
+	font-size: 11px;
+	line-height: 1.35;
+	font-variant-numeric: tabular-nums;
+}
+.text-break-short {
+	font-size: 10.5px;
+	font-weight: 400;
+	color: var(--text-faint);
+	line-height: 1.35;
+}
+.text-break-long {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--text-dim);
+	line-height: 1.35;
+}
+.lbl {
+	font-size: 10px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--text-faint);
+	line-height: 1.35;
+}
+
+@media (min-width: 768px) {
+	.text-hero {
+		font-size: 68px;
+	}
+	.text-timer-figure {
+		font-size: 26px;
+	}
+	.text-heading {
+		font-size: 20px;
+	}
+	.text-project-name {
+		font-size: 14px;
+	}
+	.text-block-head {
+		font-size: 13px;
+	}
+	.text-times {
+		font-size: 12px;
+	}
+	.text-break-short {
+		font-size: 11.5px;
+	}
+	.text-break-long {
+		font-size: 12px;
+	}
+	.lbl {
+		font-size: 11px;
+	}
+}
+
+/* ----------------------------------------------------------------------------
+ * Radii — the list is closed: a radius outside this ladder is a defect.
+ * -------------------------------------------------------------------------- */
+:root {
+	--radius-2: 2px; /* legend swatch */
+	--radius-3: 3px; /* mobile rail, preview tick */
+	--radius-4: 4px; /* rail */
+	--radius-5: 5px; /* bar */
+	--radius-7: 7px; /* leftover control */
+	--radius-8: 8px; /* Orphan_Panel action */
+	--radius-9: 9px; /* icon box, segment control item, mobile block, Orphan_Panel row */
+	--radius-10: 10px; /* block */
+	--radius-11: 11px; /* field, swatch, inner panel */
+	--radius-12: 12px; /* segment control group */
+	--radius-14: 14px; /* panel */
+	--radius-20: 20px; /* dialog */
+	--radius-9999: 9999px; /* pills, round buttons */
+	--radius-full: var(--radius-9999);
+
+	/* ------------------------------------------------------------------------
+	 * Heights
+	 * ---------------------------------------------------------------------- */
+	--h-field: 44px;
+	--h-dialog-button: 42px;
+	--h-segment-item: 36px;
+	--h-quick-log-pill: 50px;
+	--h-header: 56px; /* mobile top bar; design gives a 56–60 range, components pick within it */
+	--h-header-desktop: 84px; /* 88px on the day page specifically — that route's own override */
+	--h-bottom-nav: 66px; /* design gives a 66–68 range */
+	--h-fab: 54px;
+	--h-rhythm-strip: 22px;
+	--h-meter: 4px;
+	--h-breakdown-bar: 8px;
+
+	/* Start/stop button — a ratio (≤ 0.31 of the gauge box), not a fixed
+	   distance; these are its mobile-first drawn sizes at 300/340 viewBox. */
+	--timer-control-size: 98px;
+	--timer-control-icon: 40px;
+	--timer-control-halo: 11px; /* 0 0 0 11px rgba(accent, 0.09); ~11% of the control's diameter */
+
+	/* ------------------------------------------------------------------------
+	 * Widths
+	 * ---------------------------------------------------------------------- */
+	--w-day-side-col: 290px;
+	--w-projects-content-max: 940px;
+	--w-session-rail: 6px; /* mobile */
+	--w-segment-border: 3px;
+
+	/* ------------------------------------------------------------------------
+	 * 4/8/12/16/24/32/48/64 fallback scale — for new surfaces the artboards do
+	 * not cover ONLY. Every dimension named above already has an explicit
+	 * design value and must use that token, never this scale.
+	 * ---------------------------------------------------------------------- */
+	--space-4: 4px;
+	--space-8: 8px;
+	--space-12: 12px;
+	--space-16: 16px;
+	--space-24: 24px;
+	--space-32: 32px;
+	--space-48: 48px;
+	--space-64: 64px;
+}
+
+@media (min-width: 768px) {
+	:root {
+		--h-header: 84px;
+		--h-bottom-nav: 68px;
+		--w-session-rail: 8px;
+		--timer-control-size: 104px;
+		--timer-control-icon: 42px;
+		--timer-control-halo: 12px;
+	}
+}
+
+/* ----------------------------------------------------------------------------
+ * prefers-reduced-motion
+ *
+ * Every transform-/opacity-based transition collapses to 0s with no
+ * transform; the skeleton shimmer freezes to a flat --panel fill; gauge arcs
+ * render unswept; meter/bar widths jump instantly; the FAB/Timer_Control
+ * press-scale is dropped. The --dur-hover colour transitions (hover, active,
+ * focus) are deliberately NOT touched here — they signal state, not motion.
+ *
+ * Selectors/classes other code is expected to check:
+ *   - `.skeleton` — the shimmer sweep; this block flattens its background to
+ *     `var(--panel)` and removes the animation.
+ *   - `[data-gauge-arc]` (or equivalent, set by DayGauge/gauge-geometry, a
+ *     later task) — this block sets `--gauge-sweep-duration: 0s` as the hook;
+ *     the component reads it to skip the stroke-dashoffset sweep and render
+ *     the arc at its final length immediately.
+ *   - `.meter-fill`, `.bar-fill` — width transitions removed.
+ *   - `.fab`, `.timer-control` — press `scale()` transform removed.
+ * -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
+
+	.skeleton {
+		animation: none !important;
+		background: var(--panel) !important;
+	}
+
+	:root {
+		--gauge-sweep-duration: 0s;
+	}
+	[data-gauge-arc] {
+		transition: none !important;
+	}
+
+	.meter-fill,
+	.bar-fill {
+		transition: none !important;
+	}
+
+	.fab,
+	.timer-control {
+		transition:
+			background-color var(--dur-hover) var(--ease-standard),
+			color var(--dur-hover) var(--ease-standard),
+			border-color var(--dur-hover) var(--ease-standard),
+			box-shadow var(--dur-hover) var(--ease-standard) !important;
+	}
+	.fab:active,
+	.timer-control:active {
+		transform: none !important;
+	}
+
+	[class*='translate'],
+	[class*='scale'] {
+		transform: none !important;
+	}
+
+	/* Entrances/exits (dialogs, menus, toasts) become instant state changes:
+	   opacity/transform transitions collapse to 0s everywhere except the
+	   colour-signalling hover/active/focus rules above. */
+	.dialog-panel,
+	.settings-sheet,
+	.settings-menu,
+	.toast {
+		transition: none !important;
+		animation: none !important;
+	}
+}
+

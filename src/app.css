@@ -1,0 +1,93 @@
+/**
+ * src/app.css — Tailwind 4 entry point.
+ *
+ * Per design.md ("Design_Tokens" intro and "Components and Interfaces"), most
+ * components in this project use scoped <style> blocks reading the raw CSS
+ * custom properties declared in `./lib/theme/theme.css` directly
+ * (`var(--accent)`, `var(--panel)`, …) — that remains the PRIMARY styling
+ * mechanism throughout Worklog_UI. Tailwind's utility classes are a secondary
+ * convenience layer, useful for quick layout work and anywhere a utility
+ * reads faster than a scoped rule; they are not meant to replace the token
+ * system, only resolve to the same values as it via the @theme mapping below.
+ *
+ * This file therefore does not attempt to mirror every token exhaustively —
+ * only colors, the closed radius ladder, and the height/width constants most
+ * likely to see Tailwind utility use (`bg-accent`, `rounded-panel`, `h-field`,
+ * …). Anything not mapped here is still reachable as `var(--token)`.
+ */
+
+@import 'tailwindcss';
+@import './lib/theme/theme.css';
+
+@theme {
+	/* -------------------------------------------------------------------
+	 * Colors — resolve through the theme's custom properties so a
+	 * Tailwind utility (bg-accent, text-dim, border-divider, …) always
+	 * matches the same value a scoped <style> block gets from var(--token).
+	 * These are intentionally NOT theme-specific here: the underlying
+	 * --token custom property already flips value on [data-theme], so the
+	 * Tailwind-generated utility flips with it automatically.
+	 * ------------------------------------------------------------------- */
+	--color-bg: var(--bg);
+	--color-text: var(--text);
+	--color-text-dim: var(--text-dim);
+	--color-text-faint: var(--text-faint);
+	--color-accent: var(--accent);
+	--color-accent-hover: var(--accent-hover);
+	--color-ink-on-accent: var(--ink-on-accent);
+	--color-panel: var(--panel);
+	--color-dialog: var(--dialog);
+	--color-scrim: var(--scrim);
+	--color-field: var(--field);
+	--color-divider: var(--divider);
+	--color-destructive: var(--destructive);
+	--color-rail: var(--rail);
+	--color-chip: var(--chip);
+	--color-group: var(--group);
+	--color-segment-active: var(--segment-active);
+	--color-footer: var(--footer);
+	--color-row: var(--row);
+	--color-track: var(--track);
+	--color-meter-track: var(--meter-track);
+	--color-hairline: var(--hairline);
+
+	/* -------------------------------------------------------------------
+	 * Radii — the closed ladder from design.md's "Radii, Heights, Widths".
+	 * Tailwind's @theme key for a given utility (`rounded-2`) must be named
+	 * `--radius-2`, which is the exact name theme.css already uses for the
+	 * raw token — referencing it as `var(--radius-2)` here would be a
+	 * self-referencing (circular, therefore invalid) custom property. Radii
+	 * never vary by theme, so the literal is duplicated here on purpose
+	 * instead; theme.css's `--radius-*` custom properties remain the source
+	 * a scoped <style> block reads from directly.
+	 * ------------------------------------------------------------------- */
+	--radius-2: 2px;
+	--radius-3: 3px;
+	--radius-4: 4px;
+	--radius-5: 5px;
+	--radius-7: 7px;
+	--radius-8: 8px;
+	--radius-9: 9px;
+	--radius-10: 10px;
+	--radius-11: 11px;
+	--radius-12: 12px;
+	--radius-14: 14px;
+	--radius-20: 20px;
+	--radius-full: 9999px;
+
+	/* -------------------------------------------------------------------
+	 * Height / width constants likely to see utility use.
+	 * ------------------------------------------------------------------- */
+	--spacing-field: var(--h-field);
+	--spacing-dialog-button: var(--h-dialog-button);
+	--spacing-segment-item: var(--h-segment-item);
+	--spacing-fab: var(--h-fab);
+	--spacing-day-side-col: var(--w-day-side-col);
+	--spacing-projects-content-max: var(--w-projects-content-max);
+
+	/* -------------------------------------------------------------------
+	 * Fonts
+	 * ------------------------------------------------------------------- */
+	--font-sans:
+		'Inter Tight', system-ui, sans-serif;
+}
