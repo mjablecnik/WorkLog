@@ -364,7 +364,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Restore the plain title when the timer stops
     - _Requirements: 3.11_
 
-  - [ ] 6.9 Write component tests for the timer
+  - [x] 6.9 Write component tests for the timer
     - `tests/modules/timer/components/timer-control.test.ts`: start shown when idle and stop when running; the elapsed readout advances; `sync()` overrides a drifted local count; a failed action restores the previous state and shows the reason; Enter and Space both activate; the three figures render in order with the uncovered one in the accent
     - _Requirements: 3.1, 3.2, 3.3, 3.7, 3.10, 3.13, 3.15_
 
