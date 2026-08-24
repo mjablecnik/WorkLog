@@ -176,9 +176,9 @@
 			],
 			"match": {
 				"entries=0, entriesPlural=*": "Žádný záznam to neovlivní.",
-				"entries=*, entriesPlural=one": "Jeden záznam přijde o čas.",
-				"entries=*, entriesPlural=few": "{entries} záznamy přijdou o čas.",
-				"entries=*, entriesPlural=other": "{entries} záznamů přijde o čas."
+				"entries=*, entriesPlural=one": "O čas přijde jeden záznam.",
+				"entries=*, entriesPlural=few": "O čas přijdou {entries} záznamy.",
+				"entries=*, entriesPlural=other": "O čas přijde {entries} záznamů."
 			}
 		}
 	],

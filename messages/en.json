@@ -174,8 +174,8 @@
 			],
 			"match": {
 				"entries=0, entriesPlural=*": "No entry is affected.",
-				"entries=*, entriesPlural=one": "One entry loses time.",
-				"entries=*, entriesPlural=other": "{entries} entries lose time."
+				"entries=*, entriesPlural=one": "Time is lost for one entry.",
+				"entries=*, entriesPlural=other": "Time is lost for {entries} entries."
 			}
 		}
 	],
