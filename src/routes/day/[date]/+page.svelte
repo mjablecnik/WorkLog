@@ -244,6 +244,7 @@
 				{timeZone}
 				{locale}
 				date={data.date}
+				dayBounds={data.bounds}
 				onActivityActivate={openEditActivity}
 				onUncoveredActivate={(range) => openCreateActivity(range)}
 				onSessionActivate={handleSessionActivate}

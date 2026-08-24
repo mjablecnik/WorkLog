@@ -386,6 +386,71 @@ describe('a stale open session', () => {
 	});
 });
 
+// --- 7b. `continues` against a real (non-UTC-midnight) Logical_Day boundary --------
+
+describe('continues, against an explicit dayBounds', () => {
+	// DAY_START_HOUR=3 in production, so a Logical_Day's real boundary is never UTC
+	// midnight — .agents/ISSUES.md, "timeline-geometry.ts's `continues` flag uses a
+	// UTC-midnight approximation". `dayBounds` here mirrors what `dayResolver.bounds(date)`
+	// would return for a day starting at 03:00: [dt(0,3), dt(1,3)).
+	const dayBounds: Interval = { start: dt(0, 3, 0), end: dt(1, 3, 0) };
+
+	it('is false for an open session on the still-current day, even though it started before UTC midnight of "now"', () => {
+		// Started the previous UTC calendar date (dt(-1, 22) = 22:00 the day before the
+		// reference day), but that is still WITHIN the Logical_Day [dt(0,3), dt(1,3))
+		// this dayBounds describes, and "now" has not reached the day's own end yet — the
+		// UTC-midnight approximation would have flagged this session `continues: true`
+		// (different UTC calendar date), which is wrong for a 03:00 day start.
+		const session = mkSession(dt(-1, 22, 0), null);
+		const entry = mkEntry([{ start: session.startedAt, end: dt(0, 4, 0) }]);
+		const now = dt(0, 6, 0); // well inside [dt(0,3), dt(1,3))
+
+		const layout = layOutDay(
+			[session],
+			[entry],
+			[],
+			1000,
+			'desktop',
+			now,
+			MAX_OPEN_SESSION_HOURS,
+			dayBounds
+		);
+
+		expect(layout.blocks[0].running).toBe(true);
+		expect(layout.blocks[0].continues).toBe(false);
+	});
+
+	it('is true once "now" has passed the real boundary end, viewing a past day the session has run past', () => {
+		const session = mkSession(dt(-1, 22, 0), null);
+		const entry = mkEntry([{ start: session.startedAt, end: dt(0, 4, 0) }]);
+		const now = dt(2, 6, 0); // well past dayBounds.end (dt(1, 3, 0))
+
+		const layout = layOutDay(
+			[session],
+			[entry],
+			[],
+			1000,
+			'desktop',
+			now,
+			MAX_OPEN_SESSION_HOURS,
+			dayBounds
+		);
+
+		expect(layout.blocks[0].running).toBe(true);
+		expect(layout.blocks[0].continues).toBe(true);
+	});
+
+	it('falls back to the UTC-calendar-date approximation when dayBounds is omitted', () => {
+		const session = mkSession(dt(-1, 22, 0), null);
+		const entry = mkEntry([{ start: session.startedAt, end: dt(0, 4, 0) }]);
+		const now = dt(0, 6, 0); // different UTC calendar date from the session's start
+
+		const layout = layOutDay([session], [entry], [], 1000, 'desktop', now, MAX_OPEN_SESSION_HOURS);
+
+		expect(layout.blocks[0].continues).toBe(true);
+	});
+});
+
 // --- 8. 08:00–03:00 day with a four-hour evening break fits the available height ---
 
 describe('a day of 08:00–03:00 with a four-hour evening break', () => {

@@ -104,6 +104,7 @@ type DayTimelineProps = {
 	timeZone: string;
 	locale: string;
 	date: string;
+	dayBounds: Interval;
 	onActivityActivate: (entryId: string) => void;
 	onSessionActivate: (sessionId: string) => void;
 	onSessionEdgeActivate: (sessionId: string, edge: 'start' | 'end') => void;
@@ -123,6 +124,7 @@ function renderTimeline(overrides: Partial<DayTimelineProps> = {}) {
 			timeZone: TZ,
 			locale: '',
 			date: DATE,
+			dayBounds: { start: dt(0), end: dt(24) },
 			onActivityActivate: vi.fn(),
 			onSessionActivate: vi.fn(),
 			onSessionEdgeActivate: vi.fn(),

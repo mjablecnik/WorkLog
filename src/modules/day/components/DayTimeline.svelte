@@ -40,6 +40,14 @@
 		locale: string;
 		/** The Logical_Day being shown, for `aria_timeline({date})`. */
 		date: string;
+		/**
+		 * The real Logical_Day boundary being displayed (`DayResponse.bounds` — see
+		 * `+page.server.ts`), passed straight through to `layOutDay` so its `continues`
+		 * flag can compare against the actual boundary instead of approximating with UTC
+		 * midnight. See .agents/ISSUES.md, "timeline-geometry.ts's `continues` flag uses
+		 * a UTC-midnight approximation".
+		 */
+		dayBounds: Interval;
 		onActivityActivate: (entryId: string) => void;
 		onSessionActivate: (sessionId: string) => void;
 		onSessionEdgeActivate: (sessionId: string, edge: 'start' | 'end') => void;
@@ -57,6 +65,7 @@
 		timeZone,
 		locale,
 		date,
+		dayBounds,
 		onActivityActivate,
 		onSessionActivate,
 		onSessionEdgeActivate,
@@ -112,7 +121,16 @@
 
 	const layout = $derived<DayLayout>(
 		sessions.length > 0
-			? layOutDay(sessions, entries, uncovered, availablePx, density, now, maxOpenSessionHours)
+			? layOutDay(
+					sessions,
+					entries,
+					uncovered,
+					availablePx,
+					density,
+					now,
+					maxOpenSessionHours,
+					dayBounds
+				)
 			: { blocks: [], breaks: [] }
 	);
 

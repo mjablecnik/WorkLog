@@ -114,7 +114,18 @@ export function layOutDay(
 	availablePx: number,
 	density: Density,
 	now: Date,
-	maxOpenSessionHours: number
+	maxOpenSessionHours: number,
+	/**
+	 * The real Logical_Day boundary being displayed (`DAY_START_HOUR` plus the
+	 * configured time zone, as `dayResolver.bounds(date)` already computes it — the
+	 * same value the day page's `load` function returns as `DayResponse.bounds`).
+	 * Optional so every existing unit test that has no day-bounds handy keeps
+	 * working: when omitted, `continues` falls back to the UTC-calendar-date
+	 * approximation this function used before a caller could supply the real
+	 * boundary. See the `continues` computation below and .agents/ISSUES.md,
+	 * "timeline-geometry.ts's `continues` flag uses a UTC-midnight approximation".
+	 */
+	dayBounds?: Interval
 ): DayLayout {
 	if (sessions.length === 0) {
 		return { blocks: [], breaks: [] };
@@ -139,26 +150,29 @@ export function layOutDay(
 		}
 
 		// `continues` (Requirement 4.17) means the session runs past the displayed
-		// Logical_Day. `layOutDay` is given no day boundary (no DAY_START_HOUR, no time
-		// zone) and no explicit "which day is this" marker — the function only ever sees
-		// the sessions, entries and uncovered stretches a caller already scoped to one
-		// day, plus `now`. `capped` excludes `continues` by design (a session that
-		// stopped counting inside the day it started in does not reach the next one), so
-		// only an open, non-stale session can qualify. For that remaining case the best
-		// signal available here is a UTC calendar-date comparison between the session's
-		// start and `now`: a running session whose start and "now" fall on the same UTC
-		// calendar date is being drawn on its own still-current day (not continuing past
-		// it); one that started on an earlier UTC date and is still open — "a timer
-		// started yesterday evening and still going", design.md's own example — is being
-		// viewed on a past day it has run past. This is an approximation of the real
-		// Logical_Day boundary (which uses DAY_START_HOUR and a configured time zone, not
-		// UTC midnight) and should be reconciled once the day-page load function (a later
-		// task) is written and can pass the real boundary instead.
-		const sameUtcCalendarDate =
-			session.startedAt.getUTCFullYear() === now.getUTCFullYear() &&
-			session.startedAt.getUTCMonth() === now.getUTCMonth() &&
-			session.startedAt.getUTCDate() === now.getUTCDate();
-		const continues = running && !capped && !sameUtcCalendarDate;
+		// Logical_Day. `capped` excludes `continues` by design (a session that stopped
+		// counting inside the day it started in does not reach the next one), so only an
+		// open, non-stale session can qualify.
+		//
+		// When the caller supplies `dayBounds` (the day page's load function has it —
+		// `dayResolver.bounds(date)`, the same DAY_START_HOUR/time-zone-aware boundary
+		// `DayResponse.bounds` carries), the real answer is simply whether `now` — an
+		// open session's implied end — has passed that boundary's end: viewing a past
+		// day whose own boundary has already elapsed while the session is still running
+		// ("a timer started yesterday evening and still going", design.md's own example)
+		// puts `now` past `dayBounds.end`; viewing the still-current day never does,
+		// since that day's own end has not arrived yet either.
+		//
+		// Without `dayBounds` (existing unit tests that predate this parameter), fall
+		// back to the previous UTC-calendar-date approximation.
+		const continues =
+			running &&
+			!capped &&
+			(dayBounds !== undefined
+				? now.getTime() > dayBounds.end.getTime()
+				: session.startedAt.getUTCFullYear() !== now.getUTCFullYear() ||
+					session.startedAt.getUTCMonth() !== now.getUTCMonth() ||
+					session.startedAt.getUTCDate() !== now.getUTCDate());
 
 		return { startMs, endMs, running, capped, continues };
 	});
