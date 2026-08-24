@@ -475,7 +475,12 @@ export async function createActivity(
 			finalResult.segments
 		);
 
-		const previewToken = await currentFingerprint(tx, fingerprintWindow);
+		// Reuse the pre-mutation fingerprint computed above for `assertFreshPreview`
+		// rather than re-fingerprinting after the write: a Dry_Run's returned token must
+		// describe the state that must NOT change before confirm time, not this write's
+		// own (possibly rolled-back) result. See the preview-token trap in
+		// .agents/ISSUES.md.
+		const previewToken = previousToken;
 		const unplacedMinutes = mode === 'duration' ? Math.ceil(finalResult.unplacedMs / 60_000) : 0;
 
 		const response: ActivityResponse & { dryRun: boolean } = {
@@ -580,7 +585,8 @@ export async function patchActivity(
 				description: args.description,
 				projectId: args.projectId
 			});
-			const previewToken = await currentFingerprint(tx, fingerprintWindow);
+			// Reuse the pre-mutation fingerprint — see the note in the non-meta branch below.
+			const previewToken = previousToken;
 			return {
 				entry: updated,
 				discarded: [],
@@ -638,7 +644,9 @@ export async function patchActivity(
 		const window: Interval =
 			kind === 'duration' ? (dayBounds as Interval) : (requested as Interval);
 		const fingerprintWindow =
-			kind === 'duration' ? (dayBounds as Interval) : spanBounds(dayResolver, window.start, window.end);
+			kind === 'duration'
+				? (dayBounds as Interval)
+				: spanBounds(dayResolver, window.start, window.end);
 		const previousToken = await currentFingerprint(tx, fingerprintWindow);
 		assertFreshPreview(previousToken, args.previewToken);
 
@@ -751,7 +759,12 @@ export async function patchActivity(
 		await activitiesStore.replaceSegments(tx, args.id, finalResult.segments);
 
 		const refetched = await activitiesStore.getEntry(tx, args.id);
-		const previewToken = await currentFingerprint(tx, fingerprintWindow);
+		// Reuse the pre-mutation fingerprint computed above for `assertFreshPreview`
+		// rather than re-fingerprinting after the write: a Dry_Run's returned token must
+		// describe the state that must NOT change before confirm time, not this write's
+		// own (possibly rolled-back) result. See the preview-token trap in
+		// .agents/ISSUES.md.
+		const previewToken = previousToken;
 		const unplacedMinutes = kind === 'duration' ? Math.ceil(finalResult.unplacedMs / 60_000) : 0;
 
 		return {
@@ -812,8 +825,8 @@ export async function deleteActivity(
 		await activitiesStore.deleteEntry(tx, args.id);
 
 		if (args.dryRun) {
-			const previewToken = await currentFingerprint(tx, fingerprintWindow);
-			return { entry: existing, dryRun: true, previewToken };
+			// Reuse the pre-mutation fingerprint — see the note in create/patchActivity.
+			return { entry: existing, dryRun: true, previewToken: previousToken };
 		}
 		return null;
 	};

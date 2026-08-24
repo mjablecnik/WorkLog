@@ -85,6 +85,13 @@ function toConflictDetail(session: WorkSession, now: Date) {
  * report the consequence — before/after per entry, the total time removed from
  * existing entries, and the Uncovered_Time that simply vanished because it belonged
  * to no entry at all.
+ *
+ * `previousToken` is the fingerprint every caller already computed BEFORE mutating,
+ * over this same `affected` window, to run `assertFreshPreview`. It is reused here as
+ * the `previewToken` handed back to the client instead of re-fingerprinting the window
+ * after the mutation: a Dry_Run's token must describe the state that must NOT change
+ * before confirm time, not this write's own (soon to be rolled back, for a Dry_Run)
+ * result — see the preview-token trap in .agents/ISSUES.md.
  */
 async function finishWrite(
 	tx: Tx,
@@ -94,7 +101,8 @@ async function finishWrite(
 	afterWindow: Interval[],
 	trackedBefore: Interval[],
 	session: WorkSession | null,
-	discarded: boolean
+	discarded: boolean,
+	previousToken: string
 ): Promise<{ writeResponse: SessionWriteResponse; preview: SessionChangePreview }> {
 	const affected = normalize([...beforeWindow, ...afterWindow]);
 
@@ -112,8 +120,6 @@ async function finishWrite(
 	const lostUncovered = subtract(removedTrackedRange, coveredBefore);
 	const lostUncoveredSeconds = Math.round(total(lostUncovered) / 1000);
 
-	const previewToken = await currentFingerprint(tx, affected);
-
 	return {
 		writeResponse: { session, discarded },
 		preview: {
@@ -123,7 +129,7 @@ async function finishWrite(
 			lostUncoveredSeconds,
 			lostUncovered,
 			dryRun: true,
-			previewToken
+			previewToken: previousToken
 		}
 	};
 }
@@ -177,7 +183,8 @@ export async function startSession(
 			afterWindow,
 			[],
 			session,
-			false
+			false,
+			previousToken
 		);
 	});
 }
@@ -215,7 +222,8 @@ export async function stopSession(
 				[],
 				trackedBefore,
 				null,
-				true
+				true,
+				previousToken
 			);
 		}
 
@@ -253,7 +261,8 @@ export async function stopSession(
 			afterWindow,
 			trackedBefore,
 			session,
-			false
+			false,
+			previousToken
 		);
 	});
 }
@@ -285,7 +294,8 @@ export async function createSession(
 			afterWindow,
 			[],
 			session,
-			false
+			false,
+			previousToken
 		);
 	});
 }
@@ -345,7 +355,8 @@ export async function patchSession(
 			afterWindow,
 			trackedBefore,
 			session,
-			false
+			false,
+			previousToken
 		);
 	});
 }
@@ -381,7 +392,8 @@ export async function deleteSession(
 			[],
 			trackedBefore,
 			null,
-			false
+			false,
+			previousToken
 		);
 	});
 }
