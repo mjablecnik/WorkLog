@@ -102,7 +102,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Two rules that hold for **every** message, not only those three: a countable noun always goes through a plural form, and **no verb ever follows a number** — Czech verb agreement would then depend on the count as well. Write noun phrases (`Nejdelší nepřerušený úsek: …`), never `Nejdelší úsek trval …`
     - _Requirements: 13.1, 13.3, 13.4, 13.5, 13.6, 13.9, 13.10, 13.12, 13.13, 13.14_
 
-  - [ ] 1.10 Build the application shell
+  - [x] 1.10 Build the application shell
     - `src/routes/+layout.svelte` renders the shell and calls `initLocale()` in `onMount`; `src/routes/+layout.server.ts` loads the current session state so the `Running_Indicator` can appear where it belongs
     - Desktop top bar: `grid-template-columns: 1fr auto 1fr`, height 84, brand left, navigation centred with the four targets, and at the right — `gap: 14` — the `Running_Indicator` (6 pixel accent dot plus elapsed in 13 px tabular figures, internal `gap: 8`) followed by the `Settings_Menu` chip
     - Mobile top bar 56–60: brand, `Running_Indicator` at 12 px, `Settings_Menu` chip
@@ -139,7 +139,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Feed the same schema to `superValidate` on the server and to the superforms client adapter, so browser and server validation cannot drift
     - _Requirements: 6.10_
 
-  - [ ] 1.14 Write tests for the palette, formatting, themes and i18n
+  - [x] 1.14 Write tests for the palette, formatting, themes and i18n
     - `tests/lib/viz/palette.test.ts`: eight slots; both theme values match the design table exactly; `projectSlotClass(8)` wraps to `pj-0`; no slot equals the destructive token in either theme
     - `tests/lib/viz/format.test.ts`: durations in both locales — zero, under a minute, over a day, the mobile short form; `formatDayLabel` says today for the current `Logical_Day`; a time renders in the server zone rather than the device zone
     - `tests/lib/theme/theme.test.ts`: both themes define the same token set with no missing key; dim and faint are 0.62 / 0.50 dark and 0.78 / 0.66 light, and neither pair equals the other; `resolveTheme('system')` follows `prefers-color-scheme` and falls back to `dark`, while `light` and `dark` ignore it
@@ -190,7 +190,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Follow the design's element tree exactly: a `<section>` per block, the head's button beside the rail rather than around it, the rail a container of three sibling buttons (two 12 pixel edges and the middle), the segments an `<ol>` of `<li>` each holding one button, and the `Break_Marker` a `role="separator"` with a label. **A button inside a button is invalid HTML** and is what the naive nesting would produce
     - _Requirements: 4.1, 4.4, 4.5, 4.6, 4.7, 4.18, 4.19, 4.20, 4.21, 4.22, 4.24, 4.25, 7.1, 7.2, 10.2, 10.7, 11.9, 11.11, 14.3, 14.11, 17.11_
 
-  - [ ] 3.5 Build `DayTimeline` and wire the activation handlers
+  - [x] 3.5 Build `DayTimeline` and wire the activation handlers
     - Render the blocks and `Break_Marker` rows in chronological DOM order from `layOutDay`; every block is a `<button>` with an `aria-label` carrying its times, project, description and part counter
     - Props carry `density`, not `orientation` — the timeline is vertical at every width and differs only in density; there is no `compact` variant and no `bounds` prop
     - An `Open_Session` is drawn continuing to now and marked as running; a `Stale_Session` block additionally states that the timer is running but no longer counting; a session continuing past the day is marked as continuing and its true end is named in the head
@@ -247,7 +247,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/modules/day/components/change-preview.test.ts`: a two-segment split states the part count; discarded time is shown with its duration; unplaced minutes are shown; a session change lists each affected entry with before and after; the headline total is the sum of `removedSeconds` and `lostUncoveredSeconds` with both parts shown, while the record count counts only entries; an emptied entry is described in prose; a lost uncovered stretch appears as its own row marked as uncovered; a rejection disables confirm and shows the reason; the loading state disables confirm; changing the policy triggers a new preview
     - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.12_
 
-  - [ ] 5.4 Build `ActivityDialog`
+  - [x] 5.4 Build `ActivityDialog`
     - A segmented control switches between **three** modes — `Explicit_Mode`, `Duration_Mode` and `Open_Mode` — all first class, matching the `AddTask` artboard's `Přesně od–do` / `Jen délka` / `Od posledního`
     - `Explicit_Mode` requires start and end; `Duration_Mode` requires a duration and leaves the start optional; `Open_Mode` offers neither an end nor a duration and submits with the project alone
     - In `Duration_Mode` and `Open_Mode` without a start, show the `anchor` the **successful** `Dry_Run` response carries, labelled as an inference rather than an input — never computed in the browser and never read out of an error payload
@@ -343,7 +343,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Write geometry into SVG presentation attributes, never into a `style` attribute
     - _Requirements: 16.2, 16.3, 16.4, 16.5, 16.6, 16.7, 16.8, 16.9, 16.10, 16.11, 16.12, 16.13, 16.14, 16.15, 16.16, 16.19_
 
-  - [ ]* 6.6 Write a component test for `DayGauge`
+  - [x]* 6.6 Write a component test for `DayGauge`
     - `tests/modules/timer/components/day-gauge.test.ts`: a day inside the window draws no arc past `trackEnd`; a day ending at 03:00 draws one and labels it; a 24-hour day emits a `<circle>` and still leaves the gap empty of `<line>` and `<text>`; the control sits at the centre coordinates; an open session draws in the accent while a closed one does not; the gauge carries `role="img"` with a summarising label and its arcs are `aria-hidden`
     - _Requirements: 16.5, 16.9, 16.10, 16.11, 16.12, 16.13, 16.19_
 
@@ -359,7 +359,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - A start refused for an existing or overlapping session explains which session is in the way
     - _Requirements: 1.8, 1.9, 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.13, 3.14, 3.15, 3.16, 3.17, 3.19, 3.20, 10.6, 11.9, 16.13, 16.14_
 
-  - [ ] 6.8 Implement the tab title
+  - [x] 6.8 Implement the tab title
     - While an `Open_Session` exists, write the running elapsed time into `document.title` from the same store that feeds the on-screen readout, so the two cannot disagree
     - Restore the plain title when the timer stops
     - _Requirements: 3.11_
@@ -390,7 +390,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - With no projects at all the picker offers creating the first one instead of an empty list
     - _Requirements: 6.8, 11.6, 11.9, 11.12, 11.13, 14.11_
 
-  - [ ] 7.3 Write component tests for `ProjectPicker`
+  - [x] 7.3 Write component tests for `ProjectPicker`
     - `tests/modules/projects/components/project-picker.test.ts`: filtering by substring; archived projects absent; inline creation inserts and selects without closing the dialog; full keyboard navigation; every option names the project as text
     - _Requirements: 6.8, 11.6, 14.5, 14.11_
 
@@ -434,7 +434,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Below 768 pixels the label gutter is 40, the total gutter 46 and the strip 18 tall, and the axis carries **three** labels rather than five — the rule stays even divisions of the span, only the count drops, because five do not fit. Breakdown and rhythm panel stack at `1fr`
     - _Requirements: 12.6, 12.7, 12.8, 12.9, 12.10, 12.11, 12.13, 12.17, 12.18, 13.12, 14.25_
 
-  - [ ] 8.4 Write component tests for the statistics
+  - [x] 8.4 Write component tests for the statistics
     - `tests/modules/stats/components/stats.test.ts`: the breakdown sorts descending, folds an eighth project into Other, and draws each bar to its share of the total rather than of the largest; the `KPI_Row` shows overtime with its share; `DayRhythm` places a 21:00–03:00 session in the right part of the strip, marks today, renders an empty day as a dash, and takes its axis from a `dayStartHour` of 4 as readily as 3; activating a strip navigates; the empty range shows the empty state; the window suggestion appears only when it differs by more than 30 minutes
     - `intervalsIncluded: false` renders no strip while leaving every other panel populated and raising no error — one assertion, since the interface's widest range is a month and the flag cannot be false through the UI today
     - An uncovered interval renders hatched and a covered one does not; the observation sentence picks the first matching template and is omitted when none matches

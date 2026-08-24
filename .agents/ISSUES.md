@@ -1,5 +1,40 @@
 # Issues
 
+## [LOW] WorkBlock rendered no head-to-body gap
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `gap: 8px`/`6px` added to `.wb`/`.wb--mobile`
+  in `src/modules/day/components/WorkBlock.svelte`.
+- What: found by the task 3.5 (`DayTimeline`) agent — `timeline-geometry.ts`'s
+  `HEAD_GAP_PX` (8px desktop, 6px mobile, "head to segment column") is budgeted into
+  `layOutDay`'s fixed-row calculation from the start, but `WorkBlock.svelte`'s `.wb`
+  rule set no matching `gap`/margin, so the space was never actually rendered.
+- Impact: the DOM's real height for every block undershot what the layout algorithm
+  budgeted for it by 6-8px, which Property 2's own budget accounting assumed was
+  there — cosmetic (a slightly tighter head-to-rail spacing than intended) rather
+  than a correctness break, since the layout algorithm still fit within
+  `availablePx` either way.
+
+## [LOW] ProjectPicker could reopen its dropdown right after closing it
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — a `suppressFocusOpen` flag added to
+  `src/modules/projects/components/ProjectPicker.svelte`, consumed by a new
+  `handleInputFocus` now bound to the input's `onfocus` in place of `openDropdown`
+  directly.
+- What: found by the task 7.3 (`ProjectPicker` tests) agent — `selectProject` and
+  `handleCreate` both called `closeDropdown()` followed by `inputEl?.focus()`, and the
+  input's `onfocus` was bound directly to `openDropdown`. In the ordinary mouse flow
+  this was masked because the option row's `onmousedown` already calls
+  `preventDefault()`, keeping the input's real DOM focus intact through the click, so
+  the subsequent `.focus()` was a same-element no-op firing nothing — but any OTHER
+  selection path (a future keyboard shortcut, assistive tech, a programmatic call)
+  would fire a genuine `focus` event and reopen the dropdown immediately after it was
+  told to close, with the query cleared.
+- Impact: none currently reachable through the built UI (the masking held), but a
+  latent trap for the next caller that selects a project without the input already
+  focused.
+
 ## [LOW] modal-scroll-lock class had no CSS rule
 - Run: 2026-08-24-0659
 - Phase: impl
