@@ -43,7 +43,26 @@ test.beforeAll(async ({ browser }: { browser: Browser }) => {
 	}
 });
 
+/**
+ * Called from two separate tests below (the axe sweep's "day" page, and the
+ * no-horizontal-scroll sweep's "day" page), each in its own fresh browser
+ * context but sharing the same database — `resetDb()` now runs exactly once
+ * for the whole run (`global-setup.ts`), not once per file/test, so a second
+ * real call with this same hardcoded interval would collide with the first
+ * (409 SESSION_OVERLAP) rather than silently getting a clean slate.
+ *
+ * Guarded by asking the server whether the day is already seeded (`GET
+ * /api/days/2024-01-21`), not by an in-memory flag: a module-level boolean
+ * here turned out NOT to reliably survive between this file's own separate
+ * `test.describe` blocks in practice (confirmed live — a guard flag set by
+ * the dark-theme describe block's own call was not seen by the light-theme
+ * one's), so this checks the actual source of truth instead of assuming
+ * anything about which JS state does or does not persist across tests.
+ */
 async function seedADay(page: Page): Promise<void> {
+	const existing = await page.request.get('/api/days/2024-01-21');
+	const body = (await existing.json()) as { sessions: unknown[] };
+	if (body.sessions.length > 0) return;
 	await createProject(page, 'Focus');
 	const projectId = await findProjectId(page, 'Focus');
 	await createSessionViaApi(page, '2024-01-21T08:00:00.000Z', '2024-01-21T11:00:00.000Z');

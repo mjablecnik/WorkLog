@@ -9,6 +9,10 @@ const testDatabaseUrl =
 
 export default defineConfig({
 	testDir: 'tests/e2e',
+	// Runs `resetDb()` exactly once for the whole run — see that file's own doc
+	// comment for why this replaced a worker-scoped fixture that turned out to
+	// re-truncate the database (and every login session in it) on every test file.
+	globalSetup: './tests/e2e/global-setup.ts',
 	workers: 1,
 	fullyParallel: false,
 	retries: 0,
