@@ -206,10 +206,23 @@ describe('day and coverage routes', () => {
 	});
 
 	it('quickLog on the current Logical_Day runs from the last segment end to now', async () => {
-		const projectId = await createProject('Quicklog Today');
+		const config = getConfig();
+		const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
 		const today = new Date();
-		// Kept within a few minutes of `now` so the activity cannot land on the previous
-		// Logical_Day even when the test runs close to DAY_START_HOUR.
+		const todayDate = dayResolver.dateOf(today);
+		const bounds = dayResolver.bounds(todayDate);
+
+		// This test pins timestamps 15 minutes before `now`, so it cannot safely run
+		// within 15 minutes of DAY_START_HOUR in either direction — right at that instant
+		// the activity below could land on the adjacent Logical_Day, which is a real
+		// property of the boundary, not a bug in the route. Skip rather than flake.
+		const SAFETY_MARGIN_MS = 15 * 60_000;
+		const tooCloseToBoundary =
+			today.getTime() - bounds.start.getTime() < SAFETY_MARGIN_MS ||
+			bounds.end.getTime() - today.getTime() < SAFETY_MARGIN_MS;
+		if (tooCloseToBoundary) return;
+
+		const projectId = await createProject('Quicklog Today');
 		const start = new Date(today.getTime() - 10 * 60_000).toISOString();
 		const end = new Date(today.getTime() - 5 * 60_000).toISOString();
 		await createSession(
@@ -223,9 +236,6 @@ describe('day and coverage routes', () => {
 				body: { projectId, description: 'earlier today', startedAt: start, endedAt: end }
 			})
 		);
-		const config = getConfig();
-		const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
-		const todayDate = dayResolver.dateOf(today);
 		const day = await bodyOf(
 			await dayGet(mockEvent({ url: `${BASE}/api/days/${todayDate}`, params: { date: todayDate } }))
 		);
