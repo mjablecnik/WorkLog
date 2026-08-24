@@ -1,9 +1,32 @@
 <!doctype html>
 <html lang="%lang%" data-theme="%theme%">
 	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		%sveltekit.head%
+		<script nonce="%sveltekit.nonce%">
+			// The one flash Requirement 17.9 permits: %theme% above is already correct
+			// except for a first-ever visit (no cookies at all) or a stale
+			// worklog_theme_resolved, both only possible while the preference is
+			// 'system'. This runs once, before hydration, and corrects that one case —
+			// see design.md § 10 "The one flash the interface permits".
+			(function () {
+				var cookie = '; ' + document.cookie;
+				var parts = cookie.split('; worklog_theme=');
+				var preference = parts.length === 2 ? parts.pop().split(';').shift() : 'system';
+				if (preference === 'light' || preference === 'dark') return;
+
+				var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				var resolved = prefersDark ? 'dark' : 'light';
+				if (!prefersDark && document.documentElement.getAttribute('data-theme') === 'dark') {
+					document.documentElement.setAttribute('data-theme', 'light');
+				}
+				document.cookie =
+					'worklog_theme_resolved=' + resolved + '; path=/; max-age=31536000; samesite=lax';
+			})();
+		</script>
 	</head>
-	<body>
-		%sveltekit.body%
+	<body data-sveltekit-preload-data="hover">
+		<div class="contents">%sveltekit.body%</div>
 	</body>
 </html>
