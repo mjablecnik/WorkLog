@@ -12,8 +12,18 @@ cd "${PROJECT_ROOT}"
 CONTAINER_NAME="worklog-e2e-postgres"
 DB_PORT="${WORKLOG_E2E_DB_PORT:-55432}"
 export TEST_DATABASE_URL="postgres://worklog:worklog@localhost:${DB_PORT}/worklog_test"
-export DATABASE_URL="${TEST_DATABASE_URL}"
 export APP_ENV="test"
+
+# DATABASE_URL is deliberately NOT exported here, even though the running app must
+# end up pointed at the same database TEST_DATABASE_URL names. `playwright.config.ts`'s
+# `webServer.env` already does that — explicitly, for the spawned app process alone —
+# so nothing in this script's own shell needs `DATABASE_URL` except the one-off
+# `migrate.sh` call below, which gets it passed inline instead. Exporting it here used
+# to make it ambient in THIS process too, which `tests/e2e/global-setup.ts` (via
+# `tests/setup/db.ts`) then inherits: that file's safety check refuses to run whenever
+# `TEST_DATABASE_URL === DATABASE_URL`, specifically to catch a real
+# production/test mixup — and this script was tripping its own check with two
+# variables it had made byte-identical on purpose. See .agents/ISSUES.md.
 
 # loadConfig() (src/lib/server/core/config.ts) refuses to start without a real
 # WORKLOG_API_TOKEN (>= 32 chars) and a real argon2id WORKLOG_PASSPHRASE_HASH — on a
@@ -67,10 +77,12 @@ done
 # statement is CREATE EXTENSION IF NOT EXISTS btree_gist, so migrate.sh is enough.
 echo "test-e2e.sh: migrating"
 # "e2e" rather than "local": migrate.sh sources ".env.<environment>" when that file
-# exists and otherwise leaves the already-exported DATABASE_URL alone. No .env.e2e
-# is ever created, so this always uses the ephemeral database exported above —
-# never a developer's own .env, which points at a different database entirely.
-"${SCRIPT_DIR}/migrate.sh" e2e
+# exists and otherwise leaves an already-set DATABASE_URL alone. No .env.e2e is ever
+# created, so this always uses the ephemeral database named by TEST_DATABASE_URL above
+# — never a developer's own .env, which points at a different database entirely.
+# Passed inline, scoped to this one command, rather than exported into the whole
+# script — see the note above DATABASE_URL's absence from the exports at the top.
+DATABASE_URL="${TEST_DATABASE_URL}" "${SCRIPT_DIR}/migrate.sh" e2e
 
 echo "test-e2e.sh: running Playwright"
 bunx playwright test
