@@ -117,7 +117,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Render every user-supplied value through Svelte's escaping; never `{@html}` a `Project` name or an `Activity_Entry` description
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.25, 14.16, 14.17_
 
-  - [ ] 1.11 Build the login and logout pages
+  - [x] 1.11 Build the login and logout pages
     - `src/routes/login/+page.svelte` — the page half only; `001` owns `login/+page.server.ts`. One password input **named `passphrase`**, a hidden **`next`** field seeded from the `next` query parameter — both declared by `001`'s `loginSchema`, which is `.strict()` and would reject any other field — and `errors_login_failed` as the one generic message on failure, for a wrong and for an empty passphrase alike
     - After success the page navigates to the carried path, or to the timer page when there was none
     - `src/routes/logout/+page.svelte` — the page half only; `001` owns `logout/+page.server.ts`. Posts the logout action reached from the `Settings_Menu` and lands on login with no authenticated view state left
@@ -200,18 +200,18 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Measure the column height and pass it as `availablePx`, recomputing on resize; when the layout exceeds it the column scrolls rather than compressing a block below the floor. The mobile artboard's `overflow: hidden` is a drawing convenience, not the contract
     - _Requirements: 4.8, 4.9, 4.10, 4.11, 4.12, 4.13, 4.14, 4.15, 4.16, 4.17, 4.23, 14.5_
 
-  - [ ] 3.6 Write component tests for `DayTimeline`
+  - [x] 3.6 Write component tests for `DayTimeline`
     - `tests/modules/day/components/day-timeline.test.ts`: one block per session and per segment; uncovered stretches marked; blocks in chronological DOM order; every block has an accessible name containing its times; an entry split into two segments shows the part counter on both parts and links them on hover; a running session is marked; a block at the floor renders one line; a mobile block never renders a description; a session touching the `Evening_Hour` is marked `noční`; the empty day shows the empty state
     - _Requirements: 4.1, 4.5, 4.6, 4.7, 4.8, 4.14, 4.15, 4.16, 4.21, 4.24, 7.1, 7.2_
 
-  - [ ] 3.7 Build the day page and its navigation
+  - [x] 3.7 Build the day page and its navigation
     - `src/routes/day/[date]/+page.server.ts` loads the day from the store; `+page.svelte` renders `DayPage`
     - The heading line carries the date, the day's first and last tracked instant and its total `Tracked_Time`
     - `DayNav` offers previous and next day controls and a date picker, disables next on the current `Logical_Day` and draws it at reduced opacity, and labels the current day as today; on desktop the controls sit left of the date in the heading line, on mobile they are the 44 pixel date row
     - An invalid date in the URL renders the error page
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
 
-  - [ ] 3.8 Build the day summary panels
+  - [x] 3.8 Build the day summary panels
     - `DaySummaryPanels` renders the 290 pixel side column on desktop and moves below the timeline on mobile
     - *souhrn dne*: `Tracked_Time`, `Covered_Time` and `Uncovered_Time` as label-value rows with the uncovered value in the accent, a 4 pixel meter on `--meter-track` showing the described share, that share as a sentence, and a statement that the day is fully described when there is no `Uncovered_Time` left
     - *tvar dne*: the number of `Work_Block` groups, the longest uninterrupted `Work_Session`, and the `Tracked_Time` after the `Evening_Hour`
@@ -286,7 +286,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Every boundary change therefore passes through a field and a `Change_Preview`
     - _Requirements: 8.7, 8.8_
 
-  - [ ] 5.8 Build the `Quick_Log` control
+  - [x] 5.8 Build the `Quick_Log` control
     - The 50 pixel pill on the timer page posts in `Open_Mode` with only the `projectId` — the server resolves the start from the `Placement_Anchor` and the end from now
     - Take `projectId`, `projectName`, `colorIndex` **and** the interval from `DayResponse.quickLog`, all resolved by the server; name the project and the interval on the pill. Never call `/api/activities` to work out a recent project, and never derive the interval
     - WHEN `quickLog` is `null` — nothing to log, or no project exists at all — the pill posts nothing: with no project it opens the `Activity_Dialog` in `Open_Mode` focused on the `Project_Picker`, and otherwise it is disabled with the reason shown
@@ -294,7 +294,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Offer opening the full `Activity_Dialog` instead — the same `Open_Mode` request with a description and a project picker attached — and surface `NOTHING_TO_LOG` and `NO_PLACEMENT_ANCHOR` as plain explanations
     - _Requirements: 6.12, 6.13, 6.17, 6.18_
 
-  - [ ] 5.9 Write component tests for `ActivityDialog`
+  - [x] 5.9 Write component tests for `ActivityDialog`
     - `tests/modules/day/components/activity-dialog.test.ts`: the mode switch offers three modes and changes the required fields; `Duration_Mode` with no start shows the inferred anchor; `Open_Mode` offers neither end nor duration; prefill from a gap fills both times exactly; defaults come from the most recent entry; a validation failure keeps the typed input; the preview renders under the form; Escape closes and returns focus to the opener
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.9, 6.10, 6.11, 6.15_
 
@@ -369,7 +369,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 3.1, 3.2, 3.3, 3.7, 3.10, 3.13, 3.15_
 
 - [ ] 7. Projects
-  - [ ] 7.1 Build the projects page
+  - [x] 7.1 Build the projects page
     - List every `Project` with its total `Covered_Time` over the last thirty `Logical_Day` values — summed in `src/routes/projects/+page.server.ts` from the store's day summaries over that range, not from a second endpoint — its swatch beside the name in a 32 pixel tinted icon box, and a share bar; content max 940
     - Draw each row's bar as that project's **share of the range's total** `Covered_Time`, the same quantity the statistics breakdown uses, not relative to the largest project as the artboard drew it
     - Drop the artboard's `naposledy dnes 01:30` line: no criterion asks for it, and no endpoint exposes a per-project last-used timestamp. The one cross-day "most recent" answer the server gives is `DayResponse.quickLog.project`, which is about the write the pill would make, not about the row

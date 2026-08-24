@@ -1,5 +1,48 @@
 # Issues
 
+## [MEDIUM] Modal's focusable-element query didn't exclude hidden inputs
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `FOCUSABLE_SELECTOR` in
+  `src/lib/ui/overlays/Modal.svelte` now excludes `input[type="hidden"]`.
+- What: found by the task 5.9 (`ActivityDialog` tests) agent — `ActivityDialog`
+  places a hidden mirror `<input type="hidden" name="mode">` first in its form's DOM
+  order (for a future native submission, task 5.5). `Modal.svelte`'s
+  `defaultFocusTarget()` — used whenever a caller opens a dialog without an explicit
+  `initialFocusEl` — picked that hidden input as "the first focusable control" and
+  called `.focus()` on it, which is a silent no-op per the HTML spec (a hidden input
+  is never a focusable area), so focus never actually moved into the dialog at all on
+  that path.
+- Impact: Requirement 14.21 ("focus moves into it... otherwise to its first focusable
+  control") was silently broken for `ActivityDialog`'s default create flow (no
+  prefill, no recentEntry) — a keyboard/screen-reader user opening the dialog that
+  way would have focus stranded outside it. Every OTHER dialog built on `Modal` was
+  equally at risk the moment it placed a hidden field early in its DOM order, even
+  though none currently does, which is why the fix went into `Modal.svelte` itself
+  rather than working around it in `ActivityDialog.svelte` alone.
+- Tried: confirmed via jsdom's own `isFocusableAreaElement` implementation, and
+  reproduced directly against the built component.
+
+## [LOW] No FAB-content mechanism exists between the shell and pages
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `Shell.svelte` (task 1.10) declares a `fab` snippet slot, but the root
+  `+layout.svelte` never passes a snippet into it, and no context/prop path exists
+  for a page to supply one. Found by the task 3.7 (day page) agent while trying to
+  wire the mobile FAB's two-item sheet (Přidat úkol / Přidat úsek timeru per
+  Requirement 1.5).
+- Impact: on mobile, no page currently has a way to populate the floating action
+  button the shell already renders space for — the day page's mobile create actions
+  have no FAB entry point yet.
+- Tried: nothing — the day-page agent correctly declined to invent a parallel FAB
+  outside the shell's own system rather than build a second one that would need
+  reconciling later.
+- Next: whoever revisits `+layout.svelte`/`Shell.svelte` needs to add a real
+  mechanism (SvelteKit's page-data-driven snippet passthrough, or a shared context
+  store a page can push a snippet into) before any page's mobile FAB can actually
+  render content.
+
 ## [LOW] WorkBlock rendered no head-to-body gap
 - Run: 2026-08-24-0659
 - Phase: impl
