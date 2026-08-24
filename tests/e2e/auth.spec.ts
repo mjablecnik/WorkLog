@@ -14,20 +14,11 @@ import {
 	E2E_PASSPHRASE
 } from './fixtures';
 
-test('logging out via the API lands on the login page (see ISSUES.md for the broken UI control)', async ({
-	page
-}) => {
-	// KNOWN BUG (see .agents/ISSUES.md, "Logging out does nothing — the form is
-	// removed from the DOM before its own submit completes"): SettingsMenu's
-	// logout form sets `open = false` synchronously in its own `onsubmit`
-	// handler, which unmounts the form mid-submit and cancels the native POST —
-	// confirmed live via the browser's own "Form submission canceled because
-	// the form is not connected" console warning. Clicking "Odhlásit se"
-	// currently does nothing at all, so the actual logout below goes through
-	// the same `POST /logout` action the (non-functional) button would submit,
-	// to verify the session-ending behaviour this task is actually about
-	// (landing on login, no authenticated view state left) independently of
-	// that broken control.
+test('logging out via a direct POST /logout lands on the login page', async ({ page }) => {
+	// Exercises the `/logout` action directly, independent of the UI control that
+	// submits to it (that path is covered separately below) — isolates the
+	// session-ending behaviour this task is actually about (landing on login, no
+	// authenticated view state left) from whatever the Settings_Menu button does.
 	await login(page);
 	await page.goto('/');
 	const res = await page.request.post('/logout', {
@@ -40,15 +31,28 @@ test('logging out via the API lands on the login page (see ISSUES.md for the bro
 	await expect(page.getByRole('button', { name: 'Odemknout' })).toBeVisible();
 });
 
-test('clicking "Odhlásit se" currently does nothing (see ISSUES.md)', async ({ page }) => {
+test('clicking "Odhlásit se" ends the session and lands on the login page', async ({ page }) => {
+	// Formerly documented as "does nothing" (see .agents/ISSUES.md, "Logging out
+	// does nothing — the form is removed from the DOM before its own submit
+	// completes"): SettingsMenu's logout form used to set `open = false`
+	// synchronously in its own `onsubmit` handler, unmounting the form mid-submit
+	// and cancelling the native POST. Fixed by deferring that to a macrotask
+	// (`handleLogoutSubmit()` in SettingsMenu.svelte) so the browser's own submit
+	// dispatch completes first — verified live (this test, run in isolation,
+	// confirmed the button now genuinely navigates to /login instead of silently
+	// doing nothing).
 	await login(page);
 	await page.goto('/');
 	await page.getByRole('button', { name: 'Otevřít nastavení' }).click();
 	await page.getByRole('button', { name: 'Odhlásit se' }).click();
-	await page.waitForTimeout(1500);
-	// Still on the timer page — the click did not navigate anywhere.
-	expect(page.url()).not.toContain('/login');
-	await expect(page.getByRole('button', { name: 'Spustit timer' })).toBeVisible();
+	await page.waitForURL(/\/login/);
+	await expect(page.getByRole('button', { name: 'Odemknout' })).toBeVisible();
+
+	// The session actually ended server-side, not merely a client-side
+	// navigation: a fresh request for a protected page still redirects to
+	// /login rather than rendering it from a lingering cookie.
+	await page.goto('/');
+	await page.waitForURL(/\/login/);
 });
 
 test('a plain navigation redirect (no session) shows no session-expired message', async ({
