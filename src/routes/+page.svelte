@@ -290,6 +290,8 @@
 </svelte:head>
 
 <div class="timer-page timer-page--{density}">
+	<h1 class="sr-only">{m.nav_timer()}</h1>
+
 	{#if stale && openSession !== null}
 		<div class="stale-notice">
 			<div class="stale-notice__header">
@@ -374,6 +376,22 @@
 />
 
 <style>
+	/* A real level-one heading for the page (axe `page-has-heading-one`; found
+	 * live, task 11's E2E pass — this page had none). The hero readout itself is
+	 * a ticking figure, not a title, so this is a visually-hidden sibling naming
+	 * the page instead of promoting the hero to <h1>. */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	.timer-page {
 		display: flex;
 		flex-direction: column;

@@ -201,6 +201,8 @@
 </svelte:head>
 
 <div class="day-page day-page--{density}">
+	<h1 class="sr-only">{dateLabel}</h1>
+
 	{#if density === 'desktop'}
 		<div class="day-page__heading">
 			<div class="day-page__heading-left">
@@ -312,6 +314,22 @@
 <style>
 	.day-page__wire-form {
 		display: none;
+	}
+
+	/* A real level-one heading for the page (axe `page-has-heading-one`; found
+	 * live, task 11's E2E pass — this page had none, and the visible date heading
+	 * only renders in the desktop branch below, so this is unconditional rather
+	 * than promoting that span). */
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.day-page {
