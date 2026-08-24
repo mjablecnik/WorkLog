@@ -64,7 +64,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Distinguish a primary action from `Uncovered_Time` by shape: a filled accent pill or circle against a dashed accent outline on a 6 % accent fill
     - _Requirements: 11.9, 17.11, 17.12, 17.13, 17.14_
 
-  - [ ] 1.6 Replace the `src/app.html` scaffold `001` task 1.1 created with the server-substituted placeholders
+  - [x] 1.6 Replace the `src/app.html` scaffold `001` task 1.1 created with the server-substituted placeholders
     - Create `src/app.html` with `<html lang="%lang%" data-theme="%theme%">` plus `%sveltekit.head%`, `%sveltekit.body%` and `%sveltekit.nonce%`
     - **`002` writes the placeholders; `001` substitutes `%lang%` and `%theme%`** in its `transformPageChunk`, from the language and `Theme` its hook resolved out of the cookies. `%sveltekit.nonce%`, `%sveltekit.head%` and `%sveltekit.body%` are filled by SvelteKit itself — `kit.csp` stamps the nonce, and `001` must not inject it. Neither half does the `%lang%`/`%theme%` pair alone
     - `001` picks `%theme%` from `worklog_theme`, and only when that says `system` from `worklog_theme_resolved`; with neither it renders `DEFAULT_RENDER_THEME` (`dark`)
@@ -79,7 +79,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Writing `data-theme` on `<html>` is the only way a theme is applied
     - _Requirements: 17.4, 17.5, 17.6, 17.7, 17.10_
 
-  - [ ] 1.8 Build the `Settings_Menu`
+  - [x] 1.8 Build the `Settings_Menu`
     - `src/lib/ui/layout/SettingsMenu.svelte` — one component for both presentations, taking `density`
     - The trigger is a round gear chip at the right end of the top bar: 30 pixels desktop, 32 mobile, on `rgba(255,255,255,0.07)`, holding a 16 pixel gear at `stroke-width: 1.7` in `--text`. It replaces the `CS` label the artboards used to carry
     - Desktop: a 268 pixel menu anchored under the chip at the page's right padding — `--dialog`, radius 14, `1px solid rgba(255,255,255,0.06)`, `0 18px 44px rgba(0,0,0,0.55)`, `padding: 16`, `gap: 16`
@@ -179,7 +179,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The premise must name all four terms: two segments in two sessions at `availablePx = 72` satisfies `MIN_BLOCK_PX × 2` and is still impossible, because two heads and a marker have to go somewhere — a generator built on the shorter premise fails on its first case for a reason that is not a defect
     - **Validates: Requirements 4.3, 4.20, 4.23, 14.3**
 
-  - [ ] 3.4 Build `WorkBlock`, `SegmentBlock` and `BreakMarker`
+  - [x] 3.4 Build `WorkBlock`, `SegmentBlock` and `BreakMarker`
     - `WorkBlock` renders the head — start, end and total duration, `13/500` tabular beside `4 h 30 min v kuse` at 12 faint — then a row holding the `Session_Rail` (8 pixels desktop, 6 mobile, radius 4, spanning the segment column) and the segment column with a 4 pixel gap
     - `SegmentBlock` renders one `Segment_Block` per `Activity_Segment`: radius 10 (mobile 9) with `--pj-tint` background and a 3 pixel `--pj` left border applied through the `pj-<n>` class, never an inline style, and carries project name → description → times. The description appears only where `showsDescription` is true — 60 pixels and above, desktop only; **mobile never draws one**. At `MIN_BLOCK_PX` the name and times share a single row
     - The head is 29 pixels tall (24 mobile) and adds `· noční` when any part of its session falls at or after the `Evening_Hour` of its `Logical_Day`
@@ -243,7 +243,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The body is `aria-live="polite"` and carries `aria-busy` while the `Dry_Run` is in flight, so the debounced intermediate renders are not announced and the settled outcome is announced once (Requirement 15.14)
     - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.16, 15.14_
 
-  - [ ] 5.3 Write component tests for `ChangePreview`
+  - [x] 5.3 Write component tests for `ChangePreview`
     - `tests/modules/day/components/change-preview.test.ts`: a two-segment split states the part count; discarded time is shown with its duration; unplaced minutes are shown; a session change lists each affected entry with before and after; the headline total is the sum of `removedSeconds` and `lostUncoveredSeconds` with both parts shown, while the record count counts only entries; an emptied entry is described in prose; a lost uncovered stretch appears as its own row marked as uncovered; a rejection disables confirm and shows the reason; the loading state disables confirm; changing the policy triggers a new preview
     - _Requirements: 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 9.12_
 
@@ -324,7 +324,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - **Property 3: The gap is never graduated** — for any window the server can report and any coverage up to a full 24 hours, `graduations()` returns only marks inside `[trackStart, trackEnd]`; tagged `Feature: worklog-ui, Property 3: Bare gap`
     - **Validates: Requirements 16.1, 16.2, 16.9, 16.12, 16.18**
 
-  - [ ] 6.5 Build `DayGauge`
+  - [x] 6.5 Build `DayGauge`
     - Box 340 × 340 (mobile 300), `viewBox="-22 -22 364 364"`, centre 160/160, outer radius 138 at stroke 10, inner radius 118 at stroke 6; the `Gauge_Track` grooves cover the `Gauge_Window` only
     - Closed `Work_Session` arcs in `--arc-closed`, the `Open_Session` in `--accent`, inner arcs in their slot colour, `Uncovered_Time` dashed `3 6` with a round cap at the reduced accent opacity
     - Graduations from r = 146 outward — hourly to 150, three-hourly to 154, six-hourly to 156 — with the lengths, widths and inks of the design table; numerals in `--dial-numeral` at **tick end plus 12**, so r = 166 at the three-hourly marks and r = 168 at the six-hourly ones
@@ -382,7 +382,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Below 768 pixels follow the design's *Statistics and Projects, Mobile* section: content padding 16 with no 940 cap, the row on two lines inside `padding: 12px 14px`, a 28 px icon box, and the three row actions behind one 32 px overflow button opening the settings-sheet treatment. Assert no horizontal overflow at 320
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.7, 11.8, 11.9, 11.10, 11.11, 11.13, 11.14, 14.25, 15.10_
 
-  - [ ] 7.2 Build the `Project_Picker`
+  - [x] 7.2 Build the `Project_Picker`
     - `ProjectPicker.svelte` is a combobox over non-archived projects with substring search and keyboard navigation
     - A "create <typed name>" row when nothing matches, posting to `/api/projects` and inserting the result without closing the surrounding dialog
     - Each option shows its swatch next to the name, never the swatch alone
@@ -408,7 +408,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Offer the server's `suggestedWindow` when it differs from the configured `Gauge_Window` by more than 30 minutes at either end — as the two values to put in the server's `.env` and restart with, never as a control the interface can apply, because the window has no write endpoint
     - _Requirements: 12.1, 12.14, 12.15, 12.16, 12.19, 12.20_
 
-  - [ ] 8.2 Build `KpiRow`, `CoverageMeter` and `ProjectBreakdown`
+  - [x] 8.2 Build `KpiRow`, `CoverageMeter` and `ProjectBreakdown`
     - `KpiRow` is four panels built from the summaries alone, so it renders whether or not the intervals came back: `Tracked_Time`, `Covered_Time`, the described share as a percentage over a 4 pixel `CoverageMeter`, and the range's `Overtime` with its share of `Tracked_Time` beneath it — the artboard's fourth card carried the `Evening_Hour` figure, which moves to the rhythm panel
     - `ProjectBreakdown` lists projects descending — swatch, name, duration, share — each over an 8 pixel track filled to that project's **share of the range's total `Covered_Time`**, so the bar and the printed percentage state the same quantity
     - `Uncovered_Time` appears below a divider as a plain accent figure, never as one of the bars
@@ -417,7 +417,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Below 768 pixels the `KPI_Row` is `repeat(2, 1fr)` at `gap: 12` with the figure at 22/300, the range control spans the full width, and a breakdown row wraps to two lines — per the design's *Statistics and Projects, Mobile* section. Assert no horizontal overflow at 320
     - _Requirements: 12.2, 12.3, 12.4, 12.5, 12.12, 12.13, 12.18, 14.25_
 
-  - [ ] 8.3 Build `DayRhythm` and `RhythmPanel`
+  - [x] 8.3 Build `DayRhythm` and `RhythmPanel`
     - `DayRhythm` draws one 22 pixel strip per `Logical_Day` on a shared axis running from the server's `DAY_START_HOUR` back to it — never a hard-coded `03:00` — with three recessive ticks, the day label in a 58 pixel gutter and the day total in a 62 pixel gutter
     - Label the axis from that hour too: both ends at `DAY_START_HOUR` and interior ticks at 25 %, 50 % and 75 % of the span, so a `DAY_START_HOUR` of 5 reads `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. The artboard's `08:00 / 14:00 / 20:00` is a drawing convenience
     - Draw the segments from the fields the response carries: each covered interval as a `<rect>` in the `Palette_Slot` of the `colorIndex` beside its `projectId`, each uncovered interval in the same geometry filled with the hatch `<pattern>` the design defines — a 6 × 6 `userSpaceOnUse` pattern rotated 45°, holding one 3 × 6 accent `<rect>` at `fill-opacity: 0.5`, with **no fill beneath** — so a worked-but-undescribed day is distinguishable at a glance. An SVG pattern, not a CSS gradient: the strip is inline SVG

@@ -1,5 +1,60 @@
 # Issues
 
+## [LOW] modal-scroll-lock class had no CSS rule
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `body.modal-scroll-lock { overflow: hidden; }`
+  added to `src/lib/theme/theme.css`.
+- What: `src/lib/ui/overlays/modal-stack.ts` has toggled a `modal-scroll-lock` class on
+  `<body>` since task 1.3, but no stylesheet anywhere defined that class — found by
+  the task 1.8 (`Settings_Menu`) agent while reusing `modal-stack.ts` for the mobile
+  sheet.
+- Impact: scroll-locking was a silent no-op for every `Modal`-based surface built so
+  far (write dialogs, confirmations, the settings sheet) — the page beneath could
+  still scroll while a modal surface was open, violating Requirement 14.24.
+
+## [LOW] LaidOutSegment carried no interval for an Uncovered_Time stretch
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `timeline-geometry.ts`'s `LaidOutSegment` now
+  carries `interval: Interval` directly, populated from the `RawUnit` clipped bounds
+  `layOutDay` already computed internally but never exposed.
+- What: found by the task 3.4 (`WorkBlock`/`SegmentBlock`/`BreakMarker`) agent —
+  `SegmentBlock` needs an exact start/end for every unit it draws (times, duration
+  text, the exact range `onUncoveredActivate` hands a write action), but for an
+  uncovered stretch (`segment: null`) `LaidOutSegment` carried no time information at
+  all, forcing a caller to re-pair a rendered unit back to the original
+  `uncovered: Interval[]` array by chronological position — fragile, and undocumented
+  anywhere as that caller's responsibility.
+- Impact: none remaining — fixed at the source. Worth noting for whoever reviews
+  `SegmentBlock.svelte`/`WorkBlock.svelte`: their `RenderableSegment`/`RenderableBlock`
+  type aliases pre-date this fix and are now redundant wrappers around the real
+  `LaidOutSegment`/block shape (kept as aliases, not removed, so prop names stay
+  stable) — safe to simplify further in a later cleanup pass but not urgent.
+
+## [LOW] Two page-assembly judgment calls in the statistics components, need a page to confirm
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: (1) `ProjectBreakdown.svelte` and `RhythmPanel.svelte` (tasks 8.2/8.3, built
+  concurrently by different agents who independently converged on the same pattern)
+  both omit their own panel background/padding/heading, deferring that chrome to
+  whichever future task assembles the `1.4fr 1fr` breakdown+rhythm grid section —
+  while `KpiRow`/`CoverageMeter`/`DayRhythm` are self-contained panels. (2)
+  `RhythmPanel` needs `selectObservationTemplate`'s weekday name for template 2's
+  `{weekday}` variable, but `formatDayLabel` (`$lib/viz/format.ts`) has no
+  standalone-weekday form, so `RhythmPanel` carries its own small local weekday-name
+  lookup rather than reusing a shared one.
+- Impact: neither blocks anything — both are internally consistent and documented in
+  the components' own header comments — but the page-assembly task (not yet built)
+  needs to know panel chrome is split across two conventions, and a future consolidation
+  might want `formatDayLabel` extended with a `weekday`-only form instead of a second
+  local implementation.
+- Tried: nothing yet — noted for the task that builds `src/routes/stats/+page.svelte`.
+- Next: when that task lands, confirm the panel-chrome split reads correctly against
+  the artboard's actual `Stats` layout, and decide whether the weekday lookup should
+  move into `format.ts`.
+
 ## [MEDIUM] design.md's Property 1 wording contradicts angleOf's required periodicity
 - Run: 2026-08-24-0659
 - Phase: impl
