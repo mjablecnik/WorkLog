@@ -1,8 +1,8 @@
 # Worklog — Reference
 
 This is the reference document: environment variables, project structure, the full
-REST API, testing and troubleshooting. `README.md` is the quick start; this is where
-you come back to look something up.
+REST API, the browser UI, known limitations, testing and troubleshooting.
+`README.md` is the quick start; this is where you come back to look something up.
 
 ## Environment Variables
 
@@ -45,34 +45,51 @@ are fixed in `src/lib/server/core/config.ts` and `src/lib/contracts/constants.ts
 
 ```
 src/
-├── app.d.ts                # App.Locals: requestId, auth, today, locale, theme
-├── hooks.server.ts         # the Auth_Hook and everything that runs before it
-├── db/schema/               # Drizzle table definitions
+├── app.d.ts                 # App.Locals: requestId, auth, today, locale, theme
+├── hooks.server.ts          # the Auth_Hook and everything that runs before it
+├── db/schema/                # Drizzle table definitions
 ├── lib/
-│   ├── contracts/            # browser-safe: types, response shapes, Zod schemas
-│   └── server/
-│       ├── domain/           # pure — no database, no SvelteKit, no $env
-│       ├── core/              # env validation, auth, errors, logging, rate limiting
-│       ├── store/              # every Drizzle query, one file per aggregate
-│       └── services/           # the one body of every write; routes call these
+│   ├── contracts/             # browser-safe: types, response shapes, Zod schemas
+│   ├── server/
+│   │   ├── domain/             # pure — no database, no SvelteKit, no $env
+│   │   ├── core/                 # env validation, auth, errors, logging, rate limiting
+│   │   ├── store/                 # every Drizzle query, one file per aggregate
+│   │   └── services/               # the one body of every write; routes call these
+│   ├── core/i18n/              # locale resolution/state (cs/en)
+│   ├── theme/                  # theme.css tokens, theme.svelte.ts (light/dark),
+│   │                           #   generated palette.css / timeline-heights.css
+│   ├── ui/                     # generic UI: elements, forms, overlays, layout
+│   │                           #   (Shell, Topbar, BottomNav, Fab, SettingsMenu)
+│   └── paraglide/               # compiled i18n messages — generated, gitignored
+├── modules/                  # feature code, one folder per screen's domain logic
+│   ├── timer/                  # elapsed-time and tab-title reactive state
+│   ├── day/                    # timeline geometry, Dry_Run preview helpers
+│   ├── projects/                # ProjectPicker and related components
+│   └── stats/                   # statistics aggregation and its components
 ├── routes/
-│   ├── api/                  # the REST API — see below
-│   ├── login/, logout/        # server-side auth actions
-│   └── …                      # 002-worklog-ui builds the rest
-migrations/                 # hand-written, sequential SQL — see Migrations below
-scripts/                    # every operational script — see README.md
+│   ├── api/                    # the REST API — see below
+│   ├── login/, logout/          # server-side auth actions
+│   ├── +page.svelte              # the timer page ("/")
+│   ├── day/[date]/                # the day timeline
+│   ├── projects/                  # project management
+│   ├── stats/                     # statistics
+│   └── offline/                   # the offline fallback page
+migrations/                  # hand-written, sequential SQL — see Migrations below
+scripts/                     # every operational script — see README.md
+messages/                    # source i18n strings, {locale}.json — cs.json, en.json
 tests/
-├── lib/server/domain/        # pure unit + property tests, no database
+├── lib/server/domain/         # pure unit + property tests, no database
 ├── lib/server/{core,store,services}/  # database-backed tests
-└── api/                       # route-level tests, calling +server.ts handlers directly
+├── api/                        # route-level tests, calling +server.ts handlers directly
+└── e2e/                         # Playwright specs — see Testing below
 ```
 
 Module boundaries are enforced by `tests/lib/server/imports.test.ts`: `domain` may
 depend on nothing of this project's own but `contracts`; `core` may depend on
 `contracts` alone; `store` may depend on `domain`, `core` and `contracts`; `services`
-may additionally depend on `store`; routes may depend on all of the above. The future
-interface (`002-worklog-ui`) may reach `src/lib/server/` only through `services` or
-`store`, and only from a `+page.server.ts`, a `+server.ts` or a `modules/*/actions.ts`.
+may additionally depend on `store`; routes may depend on all of the above. The
+interface (`002-worklog-ui`) reaches `src/lib/server/` only through `services` or
+`store`, and only from a `+page.server.ts`, a `+server.ts` or a `modules/*` file.
 
 ## API
 
@@ -211,6 +228,66 @@ break. The `Activity_Entry` itself still remembers the original request
 (`requestedStartedAt: 13:00`, `requestedEndedAt: 16:00`) for auditing; only the
 segments follow the timer frame.
 
+## User Interface
+
+Four screens, reached from the same `Topbar` (desktop) / `BottomNav` (mobile) shell:
+
+| Route          | Screen                                                          |
+| -------------- | ---------------------------------------------------------------- |
+| `/`            | Timer — start/stop, the running session, today's `Day_Gauge`     |
+| `/day/[date]`  | Day timeline — every `Work_Session`/`Activity_Segment` for one day |
+| `/projects`    | Project management — create, edit, archive                        |
+| `/stats`       | Statistics — aggregated time by project over a range               |
+
+`/login` and `/logout` are server-side auth actions (not shown in the nav); `/offline`
+is the fallback page shown when the app cannot reach the server.
+
+**Theme and locale.** Light and dark themes, Czech and English locales, both switched
+from `SettingsMenu` (in the shell's top bar / mobile sheet) without a page reload.
+Locale strings live in `messages/{locale}.json` (source) and compile to
+`src/lib/paraglide/` at dev/build time via the Paraglide Vite plugin — nothing to run
+by hand. Layout density (desktop/mobile) is resolved server-side from a
+`worklog_viewport` cookie and corrected client-side on a mismatch.
+
+**Change Preview.** Every session or activity create/edit dialog that can discard
+tracked time or extend a session goes through the same `Dry_Run`/`Preview_Token`
+mechanism the API exposes directly (see `dryRun` above): the dialog previews the
+write, shows its consequences (discarded intervals, extended sessions, uncovered/lost
+time) via the `ChangePreview` component, and only actually saves on a second,
+explicit confirmation.
+
+**Day timeline geometry.** The visual layout of `Work_Block`/`Uncovered_Marker`/
+`Day_Gauge` is generated, not hand-tuned — `bun run generate:css`
+(`scripts/generate-palette-and-heights.ts`) writes `src/lib/theme/palette.css` and
+`src/lib/theme/timeline-heights.css` from the design tokens, and `bun run check` fails
+if the committed files and a fresh generation disagree.
+
+### Known Limitations
+
+Real, currently-open gaps — listed here rather than left for a reader to discover the
+hard way:
+
+- **Logging out does not work.** Clicking "Odhlásit se" in `SettingsMenu` does not end
+  the session. Today a session can only end by expiring (`SESSION_DURATION_HOURS`) or
+  by clearing cookies directly.
+- **No mobile "create" entry point yet.** `Shell.svelte` reserves floating-action-button
+  space on mobile, but no page currently supplies its content — there is no mobile path
+  to open the create-activity/create-session sheet from the FAB itself (the day page's
+  own inline "+" pills still work).
+- **The day timeline's `continues` flag uses a UTC-midnight approximation**, not the
+  configured `Logical_Day` boundary (`TIMEZONE`/`DAY_START_HOUR`) — it can be wrong for
+  a session that runs across midnight UTC without actually crossing the real day
+  boundary, or vice versa.
+- **`SessionDialog`'s quick edit→confirm shortcut** does not weigh one edge case
+  (`lostUncoveredSeconds > 0`) the same way `ChangePreview`'s own three-way check does.
+- **Four icons have no artboard source.** `search`, `sun`, `moon` and `check` in
+  `Icon.svelte` render from a documented fallback geometry rather than a value traced
+  from `.design/artboards/`.
+- A handful of prose-only design surfaces (confirmation dialogs generically, toasts,
+  empty states, skeletons, the login/error/offline pages, the timezone notice, the
+  focus ring) have not had their token values independently re-checked against
+  `.design/DESIGN.md`'s written description.
+
 ## Migrations
 
 Forward-only. `migrations/*.sql` are numbered and applied in order by
@@ -244,9 +321,10 @@ otherwise:
 
 ```bash
 bun run check           # type and Svelte checks
+bun run lint             # eslint
 bun run test            # unit, property and integration tests (needs PostgreSQL)
 bun run test:e2e:local  # Playwright, via scripts/test-e2e.sh (ephemeral PostgreSQL)
-bun run test:all        # check + test + test:e2e:local — the gate before pushing
+bun run test:all        # check + test + test:e2e:local — the intended gate before pushing
 ```
 
 `bun run test` needs `TEST_DATABASE_URL` set (in `.env`), pointing at a database whose
@@ -254,7 +332,25 @@ name ends in `_test` and which differs from `DATABASE_URL` — the suite truncat
 table in it before each test. It is always run through
 `scripts/run-vitest.sh`, never `bunx vitest` or `vitest` directly (see Troubleshooting).
 
+`bun run test:e2e:local` (`scripts/test-e2e.sh`) currently fails before it opens a
+browser — see the first Troubleshooting entry below. `bun run test` on its own is
+unaffected and is what to run in the meantime.
+
 ## Troubleshooting
+
+**`bun run test:e2e:local` fails immediately with `"TEST_DATABASE_URL must be set,
+must differ from DATABASE_URL and must name a database ending in _test"`, before any
+Playwright test runs.** `scripts/test-e2e.sh` deliberately sets `DATABASE_URL` to the
+exact same string as `TEST_DATABASE_URL` ("point the app's own `DATABASE_URL` at the
+test database too"), but `tests/setup/db.ts` — imported by
+`tests/e2e/global-setup.ts`, which every Playwright run executes once before any spec
+— refuses to run its truncation helper whenever the two are equal. The two files'
+safety rules contradict each other; this is not a per-machine or per-environment
+issue, and not specific to any sandbox — it reproduces from a plain
+`bun -e "import gs from './tests/e2e/global-setup.ts'; await gs();"` with the two
+variables set equal, no Docker or Playwright involved. There is no workaround short of
+changing one of the two files (out of scope for documentation to fix); tracked in
+`.agents/ISSUES.md`.
 
 **`bun run test` (or anything importing both `postgres` and `zod` in one process)
 silently produces `zod is not a constructor` or a similarly nonsensical error deep

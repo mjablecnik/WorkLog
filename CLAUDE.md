@@ -2,9 +2,11 @@
 
 Worklog reconciles two independent streams of data — a start/stop timer and
 after-the-fact activity logging — against each other, so a day's history shows when
-work actually happened rather than one unbroken block. See `README.md` for the pitch
-and `DOCS.md` for the reference (environment variables, the full REST API, testing,
-troubleshooting).
+work actually happened rather than one unbroken block. A SvelteKit UI (timer, day
+timeline, projects, statistics) sits on top of the REST API, in light/dark themes and
+cs/en locales. See `README.md` for the pitch and `DOCS.md` for the reference
+(environment variables, the full REST API, the UI's structure, known limitations,
+testing, troubleshooting).
 
 ## Specs
 
@@ -70,6 +72,41 @@ Property 22 checks after a random sequence of operations: every stored
 `Activity_Segment`, no matter what got created, patched or deleted along the way,
 lies entirely within `Tracked_Time` as the database then holds it.
 
+## The interface
+
+Four screens (`/` timer, `/day/[date]` day timeline, `/projects`, `/stats`) inside a
+shared `Shell`/`Topbar`/`BottomNav`, plus `/login`, `/logout` and `/offline`.
+`modules/<feature>/` holds feature-specific logic and components; `lib/ui/` holds
+generic building blocks (`Modal`, `Fab`, `SettingsMenu`, form elements); `lib/theme/`
+and `lib/core/i18n/` hold the theme (light/dark) and locale (cs/en) state.
+
+Every dialog that can discard tracked time or extend a session — session and activity
+create/edit alike — goes through the same `Dry_Run`/`Preview_Token` mechanism the API
+exposes directly: preview the write via `ChangePreview`, then confirm explicitly.
+Reuse that pattern for any new write with a visible consequence rather than inventing
+a second one.
+
+`src/lib/theme/palette.css` and `src/lib/theme/timeline-heights.css` are **generated**
+(`bun run generate:css`, called by `bun run check`) from tokens elsewhere — never hand-edit
+either file; `check` fails the build if a fresh generation would differ from what is
+committed.
+
+## Known gaps (see `DOCS.md`'s Known Limitations for the full list)
+
+- **The E2E harness is currently broken before it starts.** `scripts/test-e2e.sh` sets
+  `DATABASE_URL` and `TEST_DATABASE_URL` to the identical string; `tests/setup/db.ts`
+  (imported by every Playwright run via `tests/e2e/global-setup.ts`) refuses to run
+  its truncation helper when the two are equal, and throws immediately — before any
+  spec, before any browser opens. This is not sandbox-specific; it reproduces on a
+  plain `bun` invocation of `global-setup.ts` with no Docker or Playwright involved.
+  `bun run test` (no `e2e`) is unaffected. Don't spend time re-diagnosing this from
+  scratch — see `DOCS.md`'s Troubleshooting and `.agents/ISSUES.md`.
+- **Logging out does not work.** Clicking "Odhlásit se" in `SettingsMenu` does not end
+  the session client-side; a session only ends by expiring or by clearing cookies
+  directly.
+- **No mobile FAB entry point.** `Shell.svelte` reserves floating-action-button space
+  on mobile; no page currently supplies content for it.
+
 ## Commands
 
 ```bash
@@ -79,10 +116,12 @@ cp .env.example .env       # then fill it in
 
 bun run dev                 # development server
 bun run check                # type and Svelte checks
-bun run test                  # unit, property and integration tests (needs PostgreSQL)
-bun run test:e2e:local         # Playwright, via scripts/test-e2e.sh
-bun run test:all                # check + test + test:e2e:local — the gate before pushing
-bun run build                    # production build
+bun run lint                  # eslint
+bun run format                 # prettier --write
+bun run test                    # unit, property and integration tests (needs PostgreSQL)
+bun run test:e2e:local           # Playwright, via scripts/test-e2e.sh — currently broken, see "Known gaps"
+bun run test:all                  # check + test + test:e2e:local — intended gate before pushing
+bun run build                      # production build
 
 ./scripts/start-docker.sh   # build and run the production image locally
 ./scripts/stop-docker.sh

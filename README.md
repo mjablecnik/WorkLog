@@ -94,18 +94,28 @@ Migrations are forward-only: a mistake is corrected by a new migration, never by
 ## Testing
 
 ```bash
-bun run test           # unit + property + integration
-bun run test:e2e:local # Playwright against an ephemeral database
-bun run test:all       # the gate before pushing
+bun run check           # type and Svelte checks
+bun run lint             # eslint
+bun run test            # unit + property + integration
+bun run test:e2e:local  # Playwright against an ephemeral database
+bun run test:all        # check + test + test:e2e:local
 ```
 
 Integration tests need PostgreSQL. `scripts/test-e2e.sh` starts one, migrates it, runs the suite and tears it down.
 
+> [!WARNING]
+> `test:e2e:local` (and therefore `test:all`) currently fails immediately, before
+> any browser opens — `scripts/test-e2e.sh` points `DATABASE_URL` and
+> `TEST_DATABASE_URL` at the exact same connection string, which
+> `tests/setup/db.ts`'s own safety check refuses to run against. See
+> [`DOCS.md`](DOCS.md#troubleshooting). `bun run test` (no `e2e`) is unaffected
+> and is the suite to run until this is fixed.
+
 ## Documentation
 
 [`DOCS.md`](DOCS.md) is the reference: every environment variable, the full REST API
-with `dryRun`/`Idempotency-Key` examples, the project structure, testing and
-troubleshooting.
+with `dryRun`/`Idempotency-Key` examples, the browser UI's structure, the project
+layout, known limitations, testing and troubleshooting.
 
 Beyond that, everything needed to build this is written down. Read it in this order:
 
