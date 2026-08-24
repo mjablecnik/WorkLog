@@ -78,3 +78,77 @@
   fallback format (never claiming to be `$argon2id$`) for the Node test runtime only,
   dispatched by the hash's own prefix in `verify`.
 - Source: impl, 2026-08-23T23:07Z
+
+## `with { type: 'json' }` fixes Node but breaks Bun's named JSON exports
+- Project: worklog
+- Problem: `config.ts`'s `import { version as packageVersion } from
+  '../../../../package.json'` (a bare JSON import, no attribute) built and ran fine
+  under Bun/Vite (`bun run dev`/`build`/`preview`), but Playwright's own test-file
+  loading executes this file's import chain under plain Node.js, which throws
+  `TypeError: ... needs an import attribute of "type: json"` for a bare JSON import
+  without `with { type: 'json' }`. Adding the attribute fixed Node — but then broke
+  Bun: with the attribute present, Bun switches to strict (spec-conformant)
+  JSON-module semantics, where a JSON module only ever has a `default` export, never
+  a named export synthesized per top-level property — the exact same `import {
+  version } from ...` (now with the attribute) throws `does not provide an export
+  named 'version'` under Bun.
+- Solution: `import packageJson from '...package.json' with { type: 'json' };
+  const packageVersion = packageJson.version;` — import the default and read the
+  property off it. Satisfies both runtimes' strict semantics at once.
+- Source: build, 2026-08-24T16:15Z
+
+## Playwright's worker-scoped `auto` fixture re-runs per TEST FILE, not once per run
+- Project: worklog
+- Problem: `tests/e2e/fixtures.ts` reset the E2E database via a `scope: 'worker',
+  auto: true` fixture, on the documented assumption that `workers: 1` in
+  `playwright.config.ts` means one worker for the WHOLE run, so the reset (and the
+  `auth_sessions` truncation it does) would happen exactly once. In practice,
+  confirmed live via `console.error` tracing an actual run, Playwright starts a
+  fresh worker per TEST FILE even at `workers: 1` — the fixture re-ran at the start
+  of every file, silently invalidating every login session a previous file's tests
+  had established. Combined with this suite's one-`login()`-call-per-test style,
+  that forced at least one real `/login` form submission per file regardless of any
+  client-side session cache, and with ten spec files that alone exceeds
+  `LOGIN_ATTEMPT_LIMIT` (5 per 15 minutes) well before a full run finishes — the
+  "~24 logins vs ~5-6 threshold" rate-limit trip this project's own docs already
+  flagged as a known issue.
+- Solution: move the reset to Playwright's `globalSetup` (`tests/e2e/global-setup.ts`,
+  wired via `playwright.config.ts`'s `globalSetup` option) — a hook that genuinely
+  runs once, in its own short-lived process, before any worker starts. Paired with a
+  file-based session cache in `fixtures.ts`'s `login()` (cookies written to
+  `os.tmpdir()`, keyed by theme/locale, replayed via `context.addCookies()` and
+  re-validated by navigating and checking for a redirect back to `/login`), this
+  cut a full-suite run's real login count from ~24 down to ~6-7. A caveat this
+  surfaced: with the database no longer reset between files, any spec that seeds
+  fixture data with a hardcoded date and assumes a fresh table (e.g. calling the
+  same seed helper from two different tests in one file) can now collide with
+  itself — `tests/e2e/a11y.spec.ts`'s `seedADay()` needed a real "does this already
+  exist" check (`GET /api/days/{date}`) rather than an in-memory guard, since even
+  an in-memory boolean turned out not to reliably survive between that file's own
+  separate `test.describe` blocks in practice.
+- Source: build, 2026-08-24T17:00Z
+
+## eslint.config.js never actually parsed .svelte or TypeScript files
+- Project: worklog
+- Problem: `bun run lint` reported 0 errors from the moment this project was
+  scaffolded, but that was because `eslint.config.js` never wired in a TypeScript
+  parser at all — plain `espree` (ESLint's default JS parser) was parsing every
+  `.svelte`/`.ts` file, and silently choked on the first TypeScript-only syntax it
+  hit (`<script lang="ts">`, a type annotation, a rune macro in a `.svelte.ts`
+  file), throwing a parse error for that file that `eslint-plugin-svelte`'s config
+  swallowed rather than surfaced as a lint error. The scaffold never included
+  `@typescript-eslint/parser` or `svelte-eslint-parser`'s TS wiring at all — this
+  had been broken since the project's very first commit (`git log --oneline --
+  eslint.config.js` shows exactly one, the scaffold commit).
+- Solution: add `@typescript-eslint/parser` + `@typescript-eslint/eslint-plugin`
+  as devDependencies, and give `eslint.config.js` two new `files` blocks —
+  `**/*.{js,ts}` and `**/*.svelte` — each setting `languageOptions.parser`
+  (`tsParser` directly for `.ts`, `svelteParser` with `parserOptions.parser:
+  tsParser` for `.svelte`) and `@typescript-eslint/no-unused-vars` with
+  `varsIgnorePattern: '^_'` to match this codebase's existing underscore
+  convention for intentionally-unused parameters. Once parsing actually worked,
+  it surfaced ~37 real, previously-invisible lint errors across the codebase
+  (unused imports, `svelte/no-navigation-without-resolve` needing `resolve()`
+  from `$app/paths`, a Svelte-5-runes anti-pattern `$state`+`$effect` mirror that
+  should be a writable `$derived`, and more) — all fixed the same phase.
+- Source: build, 2026-08-24T15:30Z

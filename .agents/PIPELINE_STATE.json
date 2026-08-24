@@ -6,8 +6,8 @@
   "phases": {
     "impl":   { "status": "failed", "start_sha": "8c525662a4728fffaeb2f73f91e0b406ab72ade2", "end_sha": "2eb675d6b3a62d58f4edb93633f20e76fdbd2525",
                 "issues_opened": 27, "finished_at": "2026-08-24T13:12:56Z" },
-    "build":  { "status": "pending", "start_sha": null, "end_sha": null,
-                "issues_opened": 0, "finished_at": null },
+    "build":  { "status": "done", "start_sha": "3f46f5ecc09ea214553fdf7663a5b142085f7d0c", "end_sha": "4b95e1f9f85812cee5f4984c255aa2b962be5840",
+                "issues_opened": 5, "finished_at": "2026-08-24T17:10:00Z" },
     "cases":  { "status": "pending", "start_sha": null, "end_sha": null,
                 "issues_opened": 0, "finished_at": null },
     "verify": { "status": "pending", "start_sha": null, "end_sha": null,

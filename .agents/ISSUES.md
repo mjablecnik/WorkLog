@@ -1,5 +1,123 @@
 # Issues
 
+## [MEDIUM] Three real WCAG color-contrast violations, newly visible now that app.css applies
+- Run: 2026-08-24-0659
+- Phase: build
+- Status: OPEN
+- What: with the design-token/Tailwind system now actually reaching the page
+  (`.agents/ISSUES.md`'s "src/app.css is never imported" — RESOLVED this same run),
+  `tests/e2e/a11y.spec.ts`'s axe sweep surfaces three genuine `color-contrast`
+  violations that were structurally impossible to detect before (no colors were
+  ever actually computed): the day page's `Work_Block`/timeline text in both
+  themes, and the light theme's `/stats` page range selector's active pill
+  (`.stats-page__range-item--active`, `fgColor #a5522e` on `bgColor #e0cec2`,
+  ratio 3.58 against the required 4.5:1). Confirmed live via a real Playwright +
+  axe-core run against the built preview server.
+- Impact: fails `tests/e2e/a11y.spec.ts`'s axe assertions for the day page (both
+  themes) and the light-theme statistics page; real accessibility defects for a
+  user relying on WCAG AA contrast.
+- Tried: not attempted — a color/token fix is a design decision (which color
+  moves, and by how much) outside this phase's repair-only remit.
+- Next: pick new token values for the affected elements' foreground/background
+  pair(s) that clear 4.5:1, re-run `tests/e2e/a11y.spec.ts`'s axe sweep to
+  confirm, and check whether the same token pairing appears elsewhere.
+
+## [LOW] Horizontal overflow at 320px on the timer and day pages
+- Run: 2026-08-24-0659
+- Phase: build
+- Status: OPEN
+- What: `tests/e2e/a11y.spec.ts`'s "no horizontal scroll at 320px" sweep fails
+  for `/` (`scrollWidth` 330 vs `clientWidth` 320) and `/day/2024-01-21`
+  (`scrollWidth` 362 vs 320). Not investigated further — no root cause identified
+  yet, only the two failing pages and the overflow amounts.
+- Impact: real content overflow at the 320px viewport width Requirement 14.1
+  targets, on the two most-used pages.
+- Tried: not attempted this phase — outside the STALE_PREVIEW priority fix and
+  the standard build-phase ladder's remit.
+- Next: reproduce at 320px in a real browser (or via the same Playwright
+  `emulateMedia`/viewport setup this spec uses) and bisect which element(s)
+  exceed the viewport — likely a fixed-width child or an unwrapped long string
+  in a flex/grid row that does not shrink.
+
+## [LOW] "clicking Odhlásit se currently does nothing" now ends up on /login instead of staying put
+- Run: 2026-08-24-0659
+- Phase: build
+- Status: OPEN
+- What: `tests/e2e/auth.spec.ts`'s test of that name (still documenting the
+  known logout-button bug — `.agents/ISSUES.md`, "Logging out does nothing") now
+  fails a DIFFERENT assertion than before: `expect(page.url()).not.toContain
+  ('/login')` fails because the page IS on `/login` by the time the test checks,
+  even though the button click itself is still believed to do nothing
+  client-side. Confirmed real (not a rate-limit artifact — this run's login
+  budget stayed well under the limit for this test, and the failure is fast,
+  ~4s, not a 30s timeout).
+- Impact: this specific regression-documenting test is unreliable; the actual
+  product bug it documents (the logout button doing nothing) is unconfirmed one
+  way or the other by this run.
+- Tried: not root-caused this phase — noticed only in the final validation pass
+  with no budget left to dig further. One plausible lead, unconfirmed: this test
+  runs after `auth.spec.ts`'s own "logging out via the API" test in the same
+  file, which real-`/logout`s its session; if session-cookie or cache state leaks
+  between these two tests in a way neither author anticipated, that could produce
+  exactly this symptom.
+- Next: run this test in isolation (`playwright test auth.spec.ts -g "does
+  nothing"`) to rule out ordering entirely, then re-inspect what actually
+  happens client-side when "Odhlásit se" is clicked (network tab / console) —
+  this may turn out to be a second real behavior change from the "Logging out
+  does nothing" bug's own fix state, not a test-infra artifact.
+
+## [LOW] Full E2E suite (all ten spec files, one process) still occasionally exceeds the login rate limit
+- Run: 2026-08-24-0659
+- Phase: build
+- Status: OPEN
+- What: even after moving the database reset to run exactly once for the whole
+  run (`tests/e2e/global-setup.ts`, see the MEMORY.md entry) and adding a
+  file-based session cache (`tests/e2e/fixtures.ts`'s `login()`), a handful of
+  tests still need a genuinely fresh real `/login` submission each run — a11y.spec.ts's
+  own per-theme `beforeAll` (2), `auth.spec.ts`'s own logout-invalidation cycle (1-2),
+  and `auth.spec.ts`'s "a wrong passphrase..." test, which by design never uses the
+  shared cache and always submits twice (1 wrong + 1 right). Summed together
+  across one full run this lands right at or just past `LOGIN_ATTEMPT_LIMIT` (5),
+  so `auth.spec.ts`'s wrong-passphrase test intermittently hits `RATE_LIMITED`
+  on its own second (correct) attempt and times out waiting for the redirect.
+  Confirmed this is real budget pressure, not a caching bug: every OTHER test
+  that can reuse a cached session does (verified via the fixed root cause below
+  and by inspecting which tests are fast vs. which show the `Moc pokusů o
+  přihlášení` toast).
+- Impact: a full `bunx playwright test` run (no file filter) is flaky specifically
+  at `auth.spec.ts`'s wrong-passphrase test; every spec file run individually, or
+  in the smaller groups this phase verified explicitly (day/preview/gaps/open-mode/
+  a11y-interaction), passes reliably.
+- Tried: the two structural fixes above (global reset, file-based session cache)
+  eliminated the vast majority of real logins (confirmed: a naive per-test/per-file
+  approach needed ~24, this run needs closer to 6-7) — not enough headroom left
+  to also absorb the wrong-passphrase test's own deliberate 2 real attempts within
+  the same 5-attempt/15-minute budget as everything else in the same process.
+- Next: either give `auth.spec.ts` its own isolated `playwright test` invocation
+  (matching how CI would reasonably shard by file anyway), or move it to run
+  first (before any other file's real logins accumulate) — both keep
+  Requirement 11.13's rate limit exactly as strict as designed rather than
+  loosening it for tests.
+
+## [LOW] locale.spec.ts's scroll-position assertion fails (scrollY reads 0)
+- Run: 2026-08-24-0659
+- Phase: build
+- Status: OPEN
+- What: `tests/e2e/locale.spec.ts`'s "switching to English mid-page changes text
+  with no reload and no lost scroll position" test asserts `scrollY > 0` after
+  scrolling down and switching locale; it reads `0`. Not root-caused — could be
+  the locale switch itself resetting scroll (a real regression the test exists
+  to catch), or the test's own scroll-then-wait timing no longer matching
+  real page height/timing now that `app.css` actually renders real content
+  (different page height than the unstyled layout this test may have been last
+  verified against).
+- Tried: not investigated this phase — found only in the final validation pass.
+- Next: run this spec in isolation with a screenshot/trace to see whether the
+  scroll genuinely resets on locale switch (real bug, Requirement violated) or
+  the test's own scroll amount no longer clears the fold at real (styled) page
+  heights (test needs a larger scroll distance or a real scrollable element
+  target).
+
 ## [MEDIUM] Modal's focusable-element query didn't exclude hidden inputs
 - Run: 2026-08-24-0659
 - Phase: impl
@@ -1121,7 +1239,28 @@ and marked accordingly.
   app; every earlier test of this path is a component test that mocks the server
   response, so it never exercised the real two-request round trip against a real
   database)
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — fixed exactly as this entry's own "Next"
+  section describes. `src/lib/server/services/sessions.ts`'s `finishWrite` now
+  takes the caller's already-computed pre-mutation `previousToken` as a parameter
+  and returns it directly as `previewToken`, instead of re-fingerprinting the
+  (post-mutation, or post-rollback-for-a-Dry_Run) window a second time; all six
+  call sites (`startSession`, `stopSession`'s two branches, `createSession`,
+  `patchSession`, `deleteSession`) updated to pass it through.
+  `src/lib/server/services/activities.ts`'s `createActivity`, `patchActivity`
+  (both its `meta` and full-reclip branches) and `deleteActivity` reuse the same
+  pre-mutation `previousToken` for the returned `previewToken` instead of calling
+  `currentFingerprint` again after the write. Verified two independent ways: (1)
+  raw `curl` dry-run-then-confirm round trips for `POST /api/sessions` (create),
+  `PATCH /api/sessions/{id}`, and `POST /api/activities` (create) against a real
+  database — every confirm now answers 200/201, never 409 STALE_PREVIEW; (2) a
+  real Playwright browser session driving `SessionDialog`'s shorten-then-confirm
+  flow and `ActivityDialog`'s gap-fill save and Open_Mode create through the
+  actual "Potvrdit a uložit"/"Uložit úkol" buttons — `tests/e2e/preview.spec.ts`,
+  `gaps.spec.ts`, `open-mode.spec.ts` and `a11y-interaction.spec.ts`'s
+  keyboard-driven metadata edit all now confirm successfully end to end (all
+  previously either routed around this bug via a direct API call, or explicitly
+  regression-tested the 409, per this entry's own "Workaround used" section —
+  all four rewritten to exercise the real confirm step now that it works).
 - What: `computePreviewToken` (`src/lib/server/core/preview-token.ts`) fingerprints
   every `Work_Session`/`Activity_Segment` overlapping a window, including each
   session's own `updatedAt`. Every write function in
