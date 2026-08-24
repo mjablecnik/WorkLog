@@ -25,7 +25,34 @@ const dryRunFields = {
 	previewToken: z.string().optional()
 };
 
-const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** True for a string that is not just YYYY-MM-DD shaped but names a real date — a
+ *  regex alone accepts "2026-02-30", which `new Date(...)`-style parsing downstream
+ *  would silently roll forward into March rather than reject. */
+function isRealCalendarDate(value: string): boolean {
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+	if (!m) return false;
+	const y = Number(m[1]);
+	const mo = Number(m[2]);
+	const d = Number(m[3]);
+	const date = new Date(Date.UTC(y, mo - 1, d));
+	return (
+		date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d
+	);
+}
+
+const dateString = z
+	.string()
+	.regex(/^\d{4}-\d{2}-\d{2}$/)
+	.refine(isRealCalendarDate, { message: 'must be a real calendar date' });
+
+/**
+ * Every `{id}` path parameter (`/api/projects/{id}`, `/api/sessions/{id}`,
+ * `/api/activities/{id}`) is validated against this before it ever reaches a query —
+ * a malformed value (not a UUID at all) must be a 400 `VALIDATION_ERROR`, never a raw
+ * "invalid input syntax for type uuid" surfacing as a 500 (Requirement 12.3: no
+ * internals leak in an error response).
+ */
+export const idParam = z.uuid();
 
 const untrackedPolicy = z.enum(['clip', 'extend', 'reject']).default('clip');
 
