@@ -12,8 +12,8 @@
                 "issues_opened": 18, "finished_at": "2026-08-24T03:35:00Z" },
     "verify": { "status": "done", "start_sha": "ced402b76599bd74c15497221954d4ebef9624e4", "end_sha": "74cdf318390ecbd5ab58235b9175020ecb1e2f39",
                 "issues_opened": 9, "finished_at": "2026-08-24T04:42:17Z" },
-    "docs":   { "status": "pending", "start_sha": null, "end_sha": null,
-                "issues_opened": 0, "finished_at": null },
+    "docs":   { "status": "done", "start_sha": "6e6693e0fcfc200fae7b494786811623e57cf159", "end_sha": "37c15071998735412d7fdccc156b06f51126dc49",
+                "issues_opened": 0, "finished_at": "2026-08-24T05:15:00Z" },
     "report": { "status": "pending", "start_sha": null, "end_sha": null,
                 "issues_opened": 0, "finished_at": null }
   }
