@@ -267,6 +267,21 @@ Node, and Bun's transpiler has a reproducible bug that corrupts a separately-imp
 only supported way to run the test suite — `package.json`'s `test`/`test:watch`/
 `test:coverage` scripts already call it.
 
+**`bun run dev`/`build`/`preview` fails configuration validation, or a login made
+against a passphrase set through `.env` never succeeds.** Bun's automatic `.env`
+loading — both the implicit kind under `bun run <script>` and the explicit
+`--env-file=` — expands any `$name` sequence it finds in a value against other
+environment variables, unconditionally, and quoting the value does not suppress it.
+`WORKLOG_PASSPHRASE_HASH` is a real argon2id hash (`$argon2id$v=19$m=65536,...`), so
+Bun's own loader silently mangles it before `loadConfig()` ever sees it. `package.json`'s
+`dev`/`build`/`preview` scripts therefore route through `scripts/run-vite.sh`, which
+exports `.env` itself with plain `read` (never re-parsed for expansion) before `exec`ing
+`bun vite`, so Bun's loader never gets to touch the file at all. Confirmed live:
+`bun --env-file=.env -e 'console.log(process.env.WORKLOG_PASSPHRASE_HASH)'` prints a
+mangled hash with the `$argon2id$v=19$m=65536,t=3,p=1$` fragments stripped out. Never
+invoke `vite`/`bunx vite` directly, and never add a new script that does — always go
+through `bun run dev`/`build`/`preview` (or `scripts/run-vite.sh` itself).
+
 **The server answers 503 `SERVICE_UNAVAILABLE` on every route except `/api/health`.**
 The readiness probe failed — either the database is unreachable, a migration in
 `migrations/` has not been applied yet (`./scripts/migrate.sh`), or the stored

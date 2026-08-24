@@ -95,3 +95,8 @@ bun run build                    # production build
 `scripts/run-vitest.sh`, never `vitest`/`bunx vitest` directly — see the
 `bunfig.toml`/PATH-shim entry in `DOCS.md`'s Troubleshooting section before touching
 the test scripts.
+
+Likewise, `dev`/`build`/`preview` always run through `scripts/run-vite.sh`, never
+`vite`/`bunx vite` directly — Bun's own `.env` loader corrupts `WORKLOG_PASSPHRASE_HASH`
+(a `$`-bearing argon2id hash) by expanding it as shell-style variable references; see
+the same Troubleshooting section.
