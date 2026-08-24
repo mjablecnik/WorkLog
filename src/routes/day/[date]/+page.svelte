@@ -209,6 +209,14 @@
 				</div>
 			</div>
 			<div class="day-page__actions">
+				<!-- Design_Contract order (DayCollapsed/DayCollapsedLight artboards): the
+				     ghost "+ úsek" pill sits left, the primary "+ Přidat úkol" pill sits
+				     right, closest to the edge — confirmed via the verify phase's artboard
+				     comparison that this was previously reversed. -->
+				<button type="button" class="day-page__pill day-page__pill--ghost" onclick={handleAddSession}>
+					<Icon name="plus" size={13} />
+					{m.day_add_session()}
+				</button>
 				<button
 					type="button"
 					class="day-page__pill day-page__pill--primary"
@@ -216,10 +224,6 @@
 				>
 					<Icon name="plus" size={13} />
 					{m.day_add_activity()}
-				</button>
-				<button type="button" class="day-page__pill day-page__pill--ghost" onclick={handleAddSession}>
-					<Icon name="plus" size={13} />
-					{m.day_add_session()}
 				</button>
 			</div>
 		</div>
@@ -337,6 +341,19 @@
 		height: 100%;
 		min-height: 0;
 		padding: 24px 48px;
+		/* Requirement 14.1 (no horizontal scroll from 320px up): `density` (and so
+		   `.day-page--desktop`'s fixed 290px side column, row layout and wider
+		   padding above) is resolved server-side from the `worklog_viewport` cookie
+		   and can be briefly wrong — a first-ever visit with no cookie, or a stale
+		   cookie from a previously-visited wider viewport (confirmed live) — until
+		   +layout.svelte's onMount corrects it and the corrected density reaches
+		   this page. Unlike DayGauge's fixed-box overflow, the desktop/mobile
+		   difference here is a DOM/markup branch (`{#if density === 'desktop'}`
+		   above), not something a same-markup max-width alone can reflow — so this
+		   clips rather than reflows during that window, trading a brief visual
+		   clip for guaranteeing no page-level horizontal scroll either way. */
+		max-width: 100vw;
+		overflow-x: hidden;
 	}
 
 	.day-page--mobile {

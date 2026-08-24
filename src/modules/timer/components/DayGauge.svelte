@@ -651,6 +651,14 @@
 	.day-gauge {
 		position: relative;
 		flex-shrink: 0;
+		/* Requirement 14.1 (no horizontal scroll from 320px up): `density` is resolved
+		   server-side from the `worklog_viewport` cookie and can be briefly wrong —
+		   a first-ever visit with no cookie, or (confirmed live) a stale cookie from a
+		   previously-visited wider viewport — until +layout.svelte's onMount corrects
+		   it. Without this, the 340px desktop box overflows any viewport under 340px
+		   during that window. max-width keeps the box from ever exceeding its
+		   container regardless of which density it was given. */
+		max-width: 100%;
 	}
 	.day-gauge--desktop {
 		width: 340px;
@@ -663,6 +671,13 @@
 
 	.day-gauge__svg {
 		display: block;
+		/* Same reasoning as .day-gauge's max-width above — the viewBox is a 1:1
+		   square (364x364), so height:auto reflows proportionally rather than
+		   leaving the SVG's own width/height attributes (boxPx) force an overflow
+		   CSS's max-width alone can't clip without also breaking the circle's
+		   aspect ratio. */
+		max-width: 100%;
+		height: auto;
 	}
 
 	.day-gauge__numeral,

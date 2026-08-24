@@ -170,6 +170,18 @@
 	// Requirement 14.17: measure the real viewport once on mount and rewrite the
 	// `worklog_viewport` cookie only if it differs from what the server assumed —
 	// a returning desktop user with an accurate cookie sees no rewrite at all.
+	//
+	// design.md is explicit that a mismatch does two things, not one: "the client
+	// measures the real viewport, and only if it differs writes the cookie AND LAYS
+	// OUT AGAIN." Writing the cookie alone only affects the *next* navigation —
+	// `+layout.server.ts`'s `resolveViewport()` already ran for this one, off
+	// whatever the cookie held on the way in, so the current page keeps rendering at
+	// the wrong density until something re-runs that load. Confirmed live: a stale
+	// desktop-sized `worklog_viewport` cookie reused at a 320px viewport (exactly
+	// what `tests/e2e/a11y.spec.ts`'s `storageState`-reuse pattern produces) left the
+	// timer page's `DayGauge` rendered at its 340px desktop box on a 320px viewport
+	// — a real, reproducible 10px overflow (Requirement 14.1) — until the missing
+	// `invalidateAll()` below was added.
 	onMount(() => {
 		const measured = `${window.innerWidth}x${window.innerHeight}`;
 		const existing = document.cookie
@@ -178,6 +190,7 @@
 			?.slice('worklog_viewport='.length);
 		if (existing === measured) return;
 		document.cookie = `worklog_viewport=${measured}; path=/; max-age=31536000; samesite=lax`;
+		void invalidateAll();
 	});
 </script>
 
