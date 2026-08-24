@@ -26,7 +26,12 @@ if [[ -f "${ENV_FILE}" ]]; then
 	set -a
 	while IFS='=' read -r KEY VALUE; do
 		[[ -z "${KEY}" || "${KEY}" == \#* ]] && continue
-		export "${KEY}=${VALUE}"
+		# A value already present in the environment wins — see the comment above:
+		# "already a real environment variable by the time Bun's process starts is
+		# never touched by this" is the documented contract, but an unconditional
+		# `export` here broke it for any caller that pre-exports its own value
+		# (e.g. scripts/test-e2e.sh pointing this process at the test database).
+		[[ -z "${!KEY:-}" ]] && export "${KEY}=${VALUE}"
 	done < "${ENV_FILE}"
 	set +a
 fi

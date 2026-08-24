@@ -30,7 +30,9 @@ fi
 set -a
 while IFS='=' read -r KEY VALUE; do
 	[[ -z "${KEY}" || "${KEY}" == \#* ]] && continue
-	export "${KEY}=${VALUE}"
+	# A value already present in the environment wins, matching migrate.sh's
+	# loader — an operator-provided override must not be silently discarded.
+	[[ -z "${!KEY:-}" ]] && export "${KEY}=${VALUE}"
 done < "${ENV_FILE}"
 set +a
 

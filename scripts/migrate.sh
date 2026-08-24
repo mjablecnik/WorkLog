@@ -33,7 +33,11 @@ if [[ -f "${ENV_FILE}" ]]; then
 	set -a
 	while IFS='=' read -r KEY VALUE; do
 		[[ -z "${KEY}" || "${KEY}" == \#* ]] && continue
-		export "${KEY}=${VALUE}"
+		# A value already present in the environment wins — the header comment
+		# above documents DATABASE_URL as readable "directly from the environment
+		# or from .env.<environment>", and an unconditional export here would
+		# silently overwrite a caller's own DATABASE_URL with the file's value.
+		[[ -z "${!KEY:-}" ]] && export "${KEY}=${VALUE}"
 	done < "${ENV_FILE}"
 	set +a
 fi
