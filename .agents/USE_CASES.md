@@ -82,7 +82,11 @@ fixture says otherwise.
 - **FIX-TOUCHING** — FIX-PROJECTS plus three closed sessions on 2026-08-19:
   09:00–11:00, 11:00–12:00 (touching, one block of 3 h) and 14:00–15:00, all `+02:00`.
 - **FIX-WEEK** — FIX-PROJECTS plus one closed session `09:00+02:00 → 17:00+02:00` on
-  each of 2026-08-17, 2026-08-18 and 2026-08-19.
+  each of 2026-08-17, 2026-08-18 and 2026-08-19. **Collides with FIX-TOUCHING** — both
+  claim 2026-08-19 (FIX-WEEK's 09:00–17:00 that day cannot coexist with FIX-TOUCHING's
+  09:00–11:00/11:00–12:00/14:00–15:00 on the same date; seeding both together produces
+  a genuine `SESSION_OVERLAP`). Seed the two fixtures in separate passes — never in the
+  same database at the same time.
 - **FIX-NIGHTOWL** — FIX-PROJECTS plus one closed session
   `22:00+02:00 → 04:00+02:00 (next date)` starting on each of 2026-08-10, 2026-08-11
   and 2026-08-12. No 24-hour-clock window satisfies both the 90 % rule and the
