@@ -305,11 +305,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `total(segments) + unplacedMs === durationMs` must hold on every path, sliver discards included
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 5.10, 5.11, 5.12, 5.13, 5.14, 5.15, 6.13, 6.14, 6.15_
 
-  - [ ] 6.3 Implement `Open_Mode`
+  - [x] 6.3 Implement `Open_Mode`
     - Resolve the start with `resolveAnchor`; the end is now for the current `Logical_Day`, or the end of the `Target_Day`'s last `Work_Session` for a past day — so a morning-after quick log still works
     - Run the `Explicit_Mode` path with the resolved interval; store it as the `Activity_Entry`'s requested interval with `mode` recording that it was inferred
     - Reject with `NOTHING_TO_LOG` when the resolved start is not before the resolved end, and equally when `Clipping` leaves no segment — the same answer the other two modes now give
     - Reject a `Target_Day` in the future with `VALIDATION_ERROR`: a day that has not begun has no `Placement_Anchor` and no end to log up to, which is reachable by calling at 02:00 with today's date under `DAY_START_HOUR=3`
+    - Implemented in `src/lib/server/services/activities.ts` (`resolveCreateWindow`), not in `domain/clipping.ts`: resolving the end against the `Target_Day`'s last `Work_Session` needs a store query, which the pure domain layer may not perform — the domain half (`resolveAnchor`, `clipExplicit`) stays where task 6.2/6.1 put it
     - _Requirements: 6.12, 15.1, 15.2, 15.3, 15.4, 15.5, 15.6, 15.7, 15.8, 15.10_
 
   - [x] 6.4 Write unit tests for `clip`
@@ -438,7 +439,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   to the service and not to the route. `002`'s form actions call the same functions, which is
   the only reason the interface can write without reimplementing reconciliation.
 
-  - [ ] 8.0 Implement the write services in `src/lib/server/services/`
+  - [x] 8.0 Implement the write services in `src/lib/server/services/`
     - `activities.ts` — `createActivity`, `patchActivity`, `deleteActivity`; `sessions.ts` — `startSession`, `stopSession`, `createSession`, `patchSession`, `deleteSession`; `projects.ts` — `createProject`, `patchProject`, `deleteProject`
     - Each takes plain arguments already parsed by a schema, plus `now`, opens its own `withTx`, and returns a shape from `src/lib/contracts/responses.ts`
     - **Never touch a `RequestEvent` and never name an HTTP status.** A service throws `ApiError`; `core/errors.ts` maps it to a status and the envelope. This is what lets a form action call it without inventing a fake request
