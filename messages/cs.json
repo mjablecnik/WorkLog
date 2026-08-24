@@ -260,6 +260,7 @@
 	"stats_rhythm_sub": "každý řádek je jeden logický den, {from} → {to}",
 	"stats_breakdown_label": "podle projektu",
 	"stats_breakdown_uncovered": "Bez popisu",
+	"stats_breakdown_other": "Ostatní",
 	"stats_panel_label": "rytmus období",
 	"stats_days_worked": "Dnů s prací",
 	"stats_average_day": "Průměr na pracovní den",

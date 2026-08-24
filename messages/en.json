@@ -255,6 +255,7 @@
 	"stats_rhythm_sub": "one row per logical day, {from} → {to}",
 	"stats_breakdown_label": "by project",
 	"stats_breakdown_uncovered": "Not described",
+	"stats_breakdown_other": "Other",
 	"stats_panel_label": "rhythm of the range",
 	"stats_days_worked": "Days worked",
 	"stats_average_day": "Average per working day",
