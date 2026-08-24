@@ -30,6 +30,14 @@ export default defineConfig({
 			},
 			{
 				extends: true,
+				// `svelte`'s package.json exports a server-only build under the default
+				// ("node") resolution condition, which throws `lifecycle_function_unavailable`
+				// the moment a `.svelte` component actually mounts. The `browser` condition
+				// picks the client build instead — needed only here, since this is the only
+				// project that renders components (Svelte 5 + Vitest's documented fix).
+				resolve: {
+					conditions: ['browser']
+				},
 				test: {
 					name: 'components',
 					environment: 'jsdom',
