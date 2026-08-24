@@ -133,6 +133,18 @@ export async function updateProject(
 	if (patch.archived !== undefined) set.archivedAt = patch.archived ? new Date() : null;
 	if (patch.colorIndex !== undefined) set.colorIndex = patch.colorIndex;
 
+	// An empty `{}` PATCH passes validation (every field is optional) but Drizzle
+	// rejects `update(...).set({})` outright — treat it as a no-op read rather than
+	// issuing a statement with nothing to set (Requirement — never a 500 for a request
+	// that passed validation).
+	if (Object.keys(set).length === 0) {
+		const [row] = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+		if (row === undefined) {
+			throw apiError('NOT_FOUND', 'That record could not be found.', { resource: 'project', id });
+		}
+		return toProject(row);
+	}
+
 	try {
 		const [row] = await tx.update(projects).set(set).where(eq(projects.id, id)).returning();
 		if (row === undefined) {
@@ -166,8 +178,12 @@ export async function deleteProject(tx: Tx, id: string): Promise<void> {
 		});
 	}
 	try {
-		await tx.delete(projects).where(eq(projects.id, id));
+		const [row] = await tx.delete(projects).where(eq(projects.id, id)).returning();
+		if (row === undefined) {
+			throw apiError('NOT_FOUND', 'That record could not be found.', { resource: 'project', id });
+		}
 	} catch (err) {
+		if (err instanceof ApiError) throw err;
 		const mapped = translateConstraintError(err, 'delete-project');
 		if (mapped !== null) throw mapped;
 		throw err;

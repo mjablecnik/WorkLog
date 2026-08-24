@@ -143,6 +143,19 @@ export async function updateEntryMeta(
 	id: string,
 	patch: { description?: string; projectId?: string }
 ): Promise<ActivityEntry> {
+	// An empty meta PATCH (`{}`, or `{previewToken}`/`{dryRun}` alone) passes validation
+	// but leaves nothing for Drizzle to `.set()` — reread instead of issuing a statement
+	// with no columns, the same no-op the project PATCH route takes for the same shape.
+	if (patch.description === undefined && patch.projectId === undefined) {
+		const [row] = await tx
+			.select()
+			.from(activityEntries)
+			.where(eq(activityEntries.id, id))
+			.limit(1);
+		if (row === undefined) throw new Error(`activity_entry ${id} not found`);
+		const [hydrated] = await hydrate(tx, [row]);
+		return hydrated;
+	}
 	const [row] = await tx
 		.update(activityEntries)
 		.set(patch)
