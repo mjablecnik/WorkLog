@@ -27,6 +27,7 @@
 	import Spinner from '$lib/ui/elements/Spinner.svelte';
 	import EmptyState from '$lib/ui/components/EmptyState.svelte';
 	import ProjectRow from '$modules/projects/components/ProjectRow.svelte';
+	import { addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 
 	interface Props {
 		projects: (Project & { coveredSeconds: number })[];
@@ -50,6 +51,7 @@
 	let creating = $state(false);
 	let createErrors = $state<string[]>([]);
 	let createInputEl: HTMLInputElement | undefined = $state();
+	let createFormEl: HTMLFormElement | undefined = $state();
 
 	const createErrorId = 'projects-page-create-error';
 
@@ -72,7 +74,18 @@
 				createErrors = data?.form?.errors?.name ?? [];
 				return;
 			}
-			await applyAction(result);
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+			// A genuine server/network failure (design.md's Error Handling table: "An
+			// unreachable server says so and offers retry without losing input") — the
+			// typed name stays in the field, `applyAction` (which would otherwise
+			// navigate to `+error.svelte` and lose it) is skipped for this outcome.
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => createFormEl?.requestSubmit()
+			});
 		};
 	}
 </script>
@@ -103,6 +116,7 @@
 				method="POST"
 				action="?/create"
 				class="projects-page__create"
+				bind:this={createFormEl}
 				use:enhance={handleCreateEnhance}
 			>
 				<input

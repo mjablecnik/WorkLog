@@ -16,6 +16,7 @@ import type { Interval, Project } from '$lib/contracts/models';
 import { createProjectSchema, patchProjectSchema, idParam } from '$lib/contracts/schemas';
 import { ApiError } from '$lib/server/core/errors';
 import { createProject, patchProject, deleteProject } from '$lib/server/services/projects';
+import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 import { listProjects } from '$lib/server/store/projects';
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries } from '$lib/server/store/aggregates';
@@ -74,8 +75,7 @@ function projectExistsDetails(err: ApiError): { projectName?: string } {
 	return (err.details as { projectName?: string } | undefined) ?? {};
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const today = locals.today.date;
+async function loadProjectsData(today: string) {
 	const config = getConfig();
 	const dayResolver = buildDayResolver(config);
 	const firstDate = addCalendarDays(today, -(COVERAGE_WINDOW_DAYS - 1));
@@ -124,6 +124,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 		totalCoveredSeconds,
 		activeCount: projects.filter((p) => !p.archived).length
 	};
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
+	// Requirement 1.14 / design.md's Error Handling table: a transient
+	// `SERVICE_UNAVAILABLE` from the store (a dropped connection or a statement
+	// timeout mid-request, `tx.ts`'s `translateOrRethrow`) redirects to
+	// `/offline?next=<path>` instead of falling through to SvelteKit's generic error
+	// boundary — the connection error page task 1.10 already built.
+	try {
+		return await loadProjectsData(locals.today.date);
+	} catch (err) {
+		offlineRedirectOrRethrow(err, url);
+	}
 };
 
 export const actions: Actions = {

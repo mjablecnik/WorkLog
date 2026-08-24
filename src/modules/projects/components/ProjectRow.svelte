@@ -75,12 +75,23 @@
 	/** A submission's own `enhance` callback is the source of truth for this row's UI
 	 * (whether the field stays open, which error shows) — never the page's shared
 	 * `form` export, which one row's submission would otherwise make every other row
-	 * react to as well. */
+	 * react to as well.
+	 *
+	 * `result.type === 'error'` (a genuine server/network failure — `SERVICE_UNAVAILABLE`
+	 * from a dropped connection, or any other `ApiError` `patchProject`/`deleteProject`
+	 * do not special-case and therefore rethrow) used to fall into the same
+	 * `applyAction(result)` branch as a real `redirect`, which navigates the whole page
+	 * to `+error.svelte` — losing every other row's in-progress state for a failure
+	 * that design.md's Error Handling table says should be a toast instead ("An
+	 * unreachable server says so and offers retry without losing input"). Split out
+	 * here, task 9.2's audit found. */
 	async function fallbackHandle(result: ActionResult): Promise<void> {
 		if (result.type === 'success') {
 			await invalidateAll();
-		} else if (result.type !== 'failure') {
+		} else if (result.type === 'redirect') {
 			await applyAction(result);
+		} else if (result.type === 'error') {
+			addErrorToast(m.errors_internal_error({ requestId: '—' }));
 		}
 	}
 
@@ -116,6 +127,8 @@
 		}
 	}
 
+	let renameFormEl: HTMLFormElement | undefined = $state();
+
 	function handleRenameEnhance() {
 		renaming = true;
 		return async ({ result }: { result: ActionResult }) => {
@@ -131,7 +144,16 @@
 				renameErrors = data?.form?.errors?.name ?? [];
 				return;
 			}
-			await applyAction(result);
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+			// A genuine server/network failure — the field stays open with its typed
+			// value intact, offered a retry rather than navigated away from.
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => renameFormEl?.requestSubmit()
+			});
 		};
 	}
 
@@ -185,7 +207,14 @@
 				}
 				return;
 			}
-			await applyAction(result);
+			if (result.type === 'redirect') {
+				await applyAction(result);
+				return;
+			}
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => deleteFormEl?.requestSubmit()
+			});
 		};
 	}
 
@@ -332,6 +361,7 @@
 					method="POST"
 					action="?/rename"
 					class="project-row__rename-form"
+					bind:this={renameFormEl}
 					use:enhance={handleRenameEnhance}
 				>
 					<input type="hidden" name="id" value={project.id} />

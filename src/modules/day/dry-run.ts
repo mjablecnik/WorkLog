@@ -23,6 +23,8 @@
  * fetch boundary, recursively wherever they appear — interval bounds, segment and
  * session bounds, and `anchor.at`.
  */
+import { goto } from '$app/navigation';
+import { page } from '$app/state';
 import type { ActivityEntry, ActivitySegment, Interval, WorkSession } from '$lib/contracts/models';
 import type { ActivityResponse, SessionChangePreview } from '$lib/contracts/responses';
 import type {
@@ -245,6 +247,20 @@ function toSessionPreview(raw: WireSessionChangePreview): SessionPreview {
  * describes: a 2xx with the parsed body, or a non-2xx mapped into a `Rejection`. An
  * abort or a genuine network failure is not caught here — `fetch` itself rejects, and
  * that rejection propagates to the caller unchanged.
+ *
+ * `UNAUTHORIZED` is the one non-2xx outcome that is not just mapped into a
+ * `Rejection` for the caller to render: design.md's Error Handling table ("On
+ * `UNAUTHORIZED` from a browser-issued request, navigate to
+ * `/login?next=<path>&reason=session_expired`") and its "The session-expired
+ * message" paragraph both name exactly this seam — a `Dry_Run` fired by a dialog
+ * left open while the session expired — as the source of that message. A page
+ * `load` gets the equivalent redirect server-side already (`hooks.server.ts`'s
+ * `handleAuth`); this is the browser-`fetch` counterpart. The ordinary rejection is
+ * still returned alongside the navigation (never awaited — a stalled `goto` must not
+ * hang the caller's promise): the caller's component is being torn down by the
+ * navigation anyway, so the returned value's only purpose is to satisfy the return
+ * type, but `errors_unauthorized`'s own text ("Your session expired, please log in
+ * again.") is the right thing to show for the instant before that navigation lands.
  */
 async function runDryRun<T>(
 	input: RequestInfo | URL,
@@ -256,6 +272,10 @@ async function runDryRun<T>(
 		return { ok: true, body: body as T };
 	}
 	const err = body as WireErrorBody;
+	if (res.status === 401) {
+		const next = `${page.url.pathname}${page.url.search}`;
+		void goto(`/login?next=${encodeURIComponent(next)}&reason=session_expired`);
+	}
 	return {
 		ok: false,
 		rejection: {

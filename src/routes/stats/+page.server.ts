@@ -20,6 +20,7 @@ import {
 	gaugeWindowFor
 } from '$lib/server/services/day-aggregation';
 import { withReadTx } from '$lib/server/store/tx';
+import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 import { daySummaries, dayIntervals, suggestedWindow } from '$lib/server/store/aggregates';
 import {
 	computeKpiFigures,
@@ -85,7 +86,7 @@ function resolveSelectedRange(param: string | null): StatsRangeKind {
 	return 'week';
 }
 
-export const load: PageServerLoad = async ({ url, locals }) => {
+async function loadStatsData(url: URL, locals: App.Locals) {
 	const selectedRange = resolveSelectedRange(url.searchParams.get('range'));
 	const today = locals.today.date;
 
@@ -173,4 +174,17 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		eveningHour: config.eveningHour,
 		timeZone: config.timezone
 	};
+}
+
+export const load: PageServerLoad = async ({ url, locals }) => {
+	// Requirement 1.14 / design.md's Error Handling table: a transient
+	// `SERVICE_UNAVAILABLE` from the store (a dropped connection or a statement
+	// timeout mid-request, `tx.ts`'s `translateOrRethrow`) redirects to
+	// `/offline?next=<path>` instead of falling through to SvelteKit's generic error
+	// boundary — the connection error page task 1.10 already built.
+	try {
+		return await loadStatsData(url, locals);
+	} catch (err) {
+		offlineRedirectOrRethrow(err, url);
+	}
 };

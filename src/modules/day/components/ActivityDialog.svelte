@@ -384,6 +384,30 @@
 		return { ...base, date: $form.date };
 	}
 
+	/** `NOTHING_TO_LOG`'s design.md row ("Quick_Log and Open_Mode in the dialog |
+	 * explains there is nothing new since the last entry") needs `details.reason`
+	 * picked, per the same "read the field and pick, never compose" rule
+	 * `SessionDialog.svelte`'s own `adaptRejection` already follows for
+	 * `SESSION_OVERLAP` — this is the `Open_Mode` half of that rule; the `Quick_Log`
+	 * half is `+page.server.ts`'s `quickLog` action, already flavoring its own
+	 * `messageKey` server-side before it ever reaches this dialog. Duplicated from
+	 * `activity-form-actions.ts`'s `nothingToLogMessage`/`NOTHING_TO_LOG_FLAVORS`
+	 * rather than imported — that file is server-only (`lib/server/**`), which a
+	 * `.svelte` module cannot import at all (design.md's own build-boundary rule). */
+	const NOTHING_TO_LOG_FLAVORS = new Set([
+		'errors_nothing_to_log_empty_interval',
+		'errors_nothing_to_log_no_tracked_time',
+		'errors_nothing_to_log_already_covered',
+		'errors_nothing_to_log_all_slivers'
+	]);
+	function adaptRejection(result: Preview): Preview {
+		if (result.rejection === null || result.rejection.code !== 'NOTHING_TO_LOG') return result;
+		const reason = (result.rejection.details as { reason?: string } | undefined)?.reason ?? '';
+		const flavored = `errors_nothing_to_log_${reason.replace(/-/g, '_')}`;
+		if (!NOTHING_TO_LOG_FLAVORS.has(flavored)) return result;
+		return { ...result, rejection: { ...result.rejection, messageKey: flavored } };
+	}
+
 	async function runPreview(): Promise<void> {
 		const controller = new AbortController();
 		abortController = controller;
@@ -393,7 +417,7 @@
 					? await previewCreateActivity(buildCreateInput(), controller.signal)
 					: await previewPatchActivity(entry!.id, buildPatchInput(), controller.signal);
 			if (controller.signal.aborted) return;
-			preview = result;
+			preview = adaptRejection(result);
 		} catch {
 			// Abort or genuine network failure — no second opinion rendered; the next
 			// edit (or a manual retry once one exists) schedules a fresh attempt.
@@ -600,8 +624,16 @@
 			// `result.type === 'error'` — a genuine server/network failure. design.md's
 			// Error Handling table: "the dialog stays open with its input intact" for
 			// both a network failure and an internal error, rather than the navigation
-			// `applyAction` would perform for an 'error' result.
-			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+			// `applyAction` would perform for an 'error' result. "An unreachable server
+			// says so and offers retry without losing input" (task 9.2's own brief): the
+			// input is already intact (this dialog never closes on this branch), so the
+			// remaining half is a retry action on the same toast `feedback_open_conflict`
+			// already uses for `ACTIVITY_OVERLAP` — re-submitting the identical hidden
+			// form rather than asking the user to retype anything.
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => submitFormEl?.requestSubmit()
+			});
 		};
 	}
 
@@ -630,7 +662,10 @@
 				await applyAction(result);
 				return;
 			}
-			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => deleteFormEl?.requestSubmit()
+			});
 		};
 	}
 

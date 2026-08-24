@@ -33,7 +33,7 @@ import type {
 	SessionChangePreview,
 	SessionWriteResponse
 } from '$lib/contracts/responses';
-import type { Project, WorkSession } from '$lib/contracts/models';
+import type { Interval, Project, WorkSession } from '$lib/contracts/models';
 import { startSessionSchema, stopSessionSchema, createActivitySchema } from '$lib/contracts/schemas';
 import { getConfig, FUTURE_TOLERANCE_SECONDS } from '$lib/server/core/config';
 import { ApiError, assertNotTooFarInFuture, messageKeyFor } from '$lib/server/core/errors';
@@ -55,6 +55,7 @@ import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
 import { coveredIntervals, entriesOverlapping, mostRecentEntry } from '$lib/server/store/activities';
 import { listProjects } from '$lib/server/store/projects';
+import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 
 export type TimerPageData = DayResponse & {
 	projects: Project[];
@@ -69,10 +70,7 @@ export type TimerPageData = DayResponse & {
 	now: Date;
 };
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const date = locals.today.date;
-	const bounds = locals.today.bounds;
-
+async function loadTimerData(date: string, bounds: Interval): Promise<TimerPageData> {
 	const config = getConfig();
 	const dayResolver = buildDayResolver(config);
 	const now = new Date();
@@ -80,7 +78,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const gaugeWindow = gaugeWindowFor(dayResolver, date, config);
 	const eveningStart = eveningStartFor(dayResolver, date, bounds, config);
 
-	const data = await withReadTx(async (tx) => {
+	return withReadTx(async (tx) => {
 		const [sessions, entries, coverage, [summary], projects] = await Promise.all([
 			listSessionsOverlapping(tx, bounds),
 			entriesOverlapping(tx, bounds),
@@ -161,8 +159,19 @@ export const load: PageServerLoad = async ({ locals }) => {
 		};
 		return body;
 	});
+}
 
-	return data;
+export const load: PageServerLoad = async ({ locals, url }) => {
+	// Requirement 1.14 / design.md's Error Handling table: a transient
+	// `SERVICE_UNAVAILABLE` from the store (a dropped connection or a statement
+	// timeout mid-request, `tx.ts`'s `translateOrRethrow`) redirects to
+	// `/offline?next=<path>` instead of falling through to SvelteKit's generic error
+	// boundary — the connection error page task 1.10 already built.
+	try {
+		return await loadTimerData(locals.today.date, locals.today.bounds);
+	} catch (err) {
+		offlineRedirectOrRethrow(err, url);
+	}
 };
 
 // ---------------------------------------------------------------------------

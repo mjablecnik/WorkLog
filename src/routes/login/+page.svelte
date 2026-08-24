@@ -22,6 +22,7 @@
 	import FormField from '$lib/ui/forms/FormField.svelte';
 	import Input from '$lib/ui/elements/Input.svelte';
 	import Button from '$lib/ui/elements/Button.svelte';
+	import { addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 
 	interface Props {
 		data: PageData;
@@ -31,6 +32,34 @@
 	let { data, form }: Props = $props();
 
 	let submitting = $state(false);
+
+	/**
+	 * `handleRateLimit` (`hooks.server.ts`, owned by `001` — this page never edits it)
+	 * answers a rate-limited login POST with the standard error envelope
+	 * (`{error, message, messageKey, requestId, details: {scope, retryAfterSeconds}}`)
+	 * directly from the hook, before this route's own `default` action ever runs.
+	 * `$app/forms`'s `deserialize()` still parses that JSON without throwing — it just
+	 * has no `type` field, so it is not a real `ActionResult` — and `use:enhance`'s
+	 * default handling silently drops it (`page.form` ends up `undefined`, since
+	 * `applyAction` reads a `.data` field this envelope does not have): a rate-limited
+	 * attempt currently shows the user nothing at all, task 9.2's audit found. Detected
+	 * here by the one field an envelope always carries and a real `ActionResult` never
+	 * does (`error`), design.md's Error Handling table row: `RATE_LIMITED | toast |
+	 * shows the retry delay`, `details.scope` picking `errors_rate_limited_login` (the
+	 * only scope a login POST can ever carry) over the generic `errors_rate_limited`.
+	 */
+	type RawErrorEnvelope = {
+		type?: string;
+		error?: string;
+		details?: { scope?: string; retryAfterSeconds?: number };
+	};
+
+	function rateLimitedMessage(details: RawErrorEnvelope['details']): string {
+		const retryAfterSeconds = details?.retryAfterSeconds ?? 0;
+		if (details?.scope === 'login') return m.errors_rate_limited_login({ retryAfterSeconds });
+		if (details?.scope === 'request') return m.errors_rate_limited_request({ retryAfterSeconds });
+		return m.errors_rate_limited({ retryAfterSeconds });
+	}
 </script>
 
 <svelte:head>
@@ -50,9 +79,20 @@
 			class="login-form"
 			use:enhance={() => {
 				submitting = true;
-				return async ({ update }) => {
-					await update();
+				return async ({ result, update }) => {
 					submitting = false;
+
+					const raw = result as unknown as RawErrorEnvelope;
+					if (raw.type === undefined && typeof raw.error === 'string') {
+						addErrorToast(
+							raw.error === 'RATE_LIMITED'
+								? rateLimitedMessage(raw.details)
+								: m.errors_internal_error({ requestId: '—' })
+						);
+						return;
+					}
+
+					await update();
 				};
 			}}
 		>

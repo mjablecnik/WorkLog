@@ -247,8 +247,30 @@
 				return m.errors_project_archived({
 					projectName: typeof d.projectName === 'string' ? d.projectName : ''
 				});
-			default:
-				return m.errors_validation_error();
+			default: {
+				// Every code above needed its `details` reshaped to match its catalogue
+				// key's own params (a `conflicts` array flattened to `from`/`to`, a raw
+				// ISO string reformatted, …). Everything else this page's actions can
+				// fail with — `errors_future_timestamp` (no params), `errors_interval_too_short`
+				// (`{minSeconds}`, already the field name `details` carries),
+				// `errors_service_unavailable`/`errors_rate_limited*` (`{retryAfterSeconds}`,
+				// likewise already named right), `errors_stale_preview`/`errors_not_found`
+				// (no params) — already carries exactly the params its own message
+				// expects, so this falls back to the same generic key→function lookup
+				// `ChangePreview.svelte`'s `rejectionMessage` already uses for a `Dry_Run`
+				// rejection, rather than growing this switch case by case and risking the
+				// same silent "shows the wrong sentence" gap that left this default
+				// returning `errors_validation_error()` for every one of them until now.
+				const fn = (m as unknown as Record<string, (inputs?: Record<string, unknown>) => string>)[
+					messageKey
+				];
+				if (typeof fn !== 'function') return m.errors_validation_error();
+				try {
+					return fn(d);
+				} catch {
+					return m.errors_validation_error();
+				}
+			}
 		}
 	}
 

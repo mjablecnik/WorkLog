@@ -39,6 +39,7 @@ import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
 import { coveredIntervals, entriesOverlapping, mostRecentEntry } from '$lib/server/store/activities';
 import { listProjects } from '$lib/server/store/projects';
+import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 import {
 	createActivityAction,
 	patchActivityAction,
@@ -78,16 +79,7 @@ function lastSessionEndWithin(
 	return end.getTime() < dayBounds.end.getTime() ? end : dayBounds.end;
 }
 
-export const load: PageServerLoad = async ({ params }) => {
-	// Requirement 5.5: an invalid YYYY-MM-DD in the URL shows the error page. The same
-	// `dateString` schema `/api/days/{date}` validates against (`dayDateParam`), but
-	// via `safeParse` directly rather than `parseRequest` — that helper throws the
-	// REST layer's `ApiError`/JSON shape, which has no place in a page `load`.
-	const parsed = dayDateParam.safeParse(params.date);
-	if (!parsed.success) error(404, 'Not found');
-	const date = parsed.data;
-
-	const config = getConfig();
+async function loadDayData(date: string, config: ReturnType<typeof getConfig>): Promise<DayPageData> {
 	const dayResolver = buildDayResolver(config);
 	const now = new Date();
 	const bounds = dayResolver.bounds(date);
@@ -96,7 +88,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const gaugeWindow = gaugeWindowFor(dayResolver, date, config);
 	const eveningStart = eveningStartFor(dayResolver, date, bounds, config);
 
-	const data = await withReadTx(async (tx) => {
+	return withReadTx(async (tx) => {
 		const [sessions, entries, coverage, [summary], projects] = await Promise.all([
 			listSessionsOverlapping(tx, bounds),
 			entriesOverlapping(tx, bounds),
@@ -163,8 +155,28 @@ export const load: PageServerLoad = async ({ params }) => {
 		};
 		return body;
 	});
+}
 
-	return data;
+export const load: PageServerLoad = async ({ params, url }) => {
+	// Requirement 5.5: an invalid YYYY-MM-DD in the URL shows the error page. The same
+	// `dateString` schema `/api/days/{date}` validates against (`dayDateParam`), but
+	// via `safeParse` directly rather than `parseRequest` — that helper throws the
+	// REST layer's `ApiError`/JSON shape, which has no place in a page `load`.
+	const parsed = dayDateParam.safeParse(params.date);
+	if (!parsed.success) error(404, 'Not found');
+	const date = parsed.data;
+	const config = getConfig();
+
+	// Requirement 1.14 / design.md's Error Handling table: a transient
+	// `SERVICE_UNAVAILABLE` from the store (a dropped connection or a statement
+	// timeout mid-request, `tx.ts`'s `translateOrRethrow`) redirects to
+	// `/offline?next=<path>` instead of falling through to SvelteKit's generic error
+	// boundary — the connection error page task 1.10 already built.
+	try {
+		return await loadDayData(date, config);
+	} catch (err) {
+		offlineRedirectOrRethrow(err, url);
+	}
 };
 
 // ---------------------------------------------------------------------------

@@ -618,8 +618,18 @@
 			}
 
 			// A genuine network/server failure — design.md's Error Handling table: the
-			// dialog stays open with its input intact.
-			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+			// dialog stays open with its input intact. "An unreachable server says so and
+			// offers retry without losing input" (task 9.2's own brief): the retry
+			// re-submits the same hidden form — `phase = 'saving'` first, mirroring
+			// `handleConfirmClick`'s own sequencing, so the confirm pill shows progress
+			// again rather than sitting back in the `editing` phase mid-retry.
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => {
+					phase = 'saving';
+					submitFormEl?.requestSubmit();
+				}
+			});
 			phase = 'editing';
 		};
 	}
@@ -659,7 +669,14 @@
 				return;
 			}
 
-			addErrorToast(m.errors_internal_error({ requestId: '—' }));
+			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
+				label: m.common_retry(),
+				onclick: () => {
+					phase = 'saving';
+					pendingDelete = true;
+					deleteFormEl?.requestSubmit();
+				}
+			});
 			phase = 'editing';
 			pendingDelete = false;
 		};
