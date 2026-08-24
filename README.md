@@ -103,7 +103,11 @@ Integration tests need PostgreSQL. `scripts/test-e2e.sh` starts one, migrates it
 
 ## Documentation
 
-Everything needed to build this is written down. Read it in this order:
+[`DOCS.md`](DOCS.md) is the reference: every environment variable, the full REST API
+with `dryRun`/`Idempotency-Key` examples, the project structure, testing and
+troubleshooting.
+
+Beyond that, everything needed to build this is written down. Read it in this order:
 
 | Where | What it settles |
 |---|---|
