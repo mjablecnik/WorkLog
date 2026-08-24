@@ -96,6 +96,58 @@
 	}
 
 	/**
+	 * `ACTIVITY_OVERLAP`/`SESSION_OVERLAP`'s wire shape — `details.conflicts[0]`,
+	 * nested and differently-named per code — doesn't match `errors_activity_overlap`'s
+	 * `{project, from, to}` or `errors_session_overlap[_open]`'s `{from, to}`/`{from}`
+	 * flat params at all, so calling the message function with `details` verbatim
+	 * rendered every interpolation as literal "undefined" (found live, task 11's E2E
+	 * pass). Mirrors the identical remapping `activity-form-actions.ts`/
+	 * `session-form-actions.ts` already perform server-side for the submit-failure
+	 * toast, and `SessionDialog.svelte`'s own `adaptRejection` already performs for
+	 * its OWN dry-run preview — done here instead, once, so every caller of this
+	 * component's `rejectionMessage()` benefits (`ActivityDialog`'s live preview had
+	 * no such remapping at all). A `details` that has no `conflicts` array (already
+	 * flattened upstream, e.g. by `SessionDialog`'s own `adaptRejection`) passes
+	 * through unchanged below — this is additive, never a second, conflicting
+	 * remapping. */
+	function adaptOverlapDetails(
+		messageKey: string,
+		details: Record<string, unknown>
+	): Record<string, unknown> {
+		if (
+			messageKey !== 'errors_activity_overlap' &&
+			messageKey !== 'errors_session_overlap' &&
+			messageKey !== 'errors_session_overlap_open'
+		) {
+			return details;
+		}
+		const conflicts = details.conflicts;
+		if (!Array.isArray(conflicts) || conflicts.length === 0) return details;
+		const first = conflicts[0] as {
+			projectName?: string;
+			interval?: { start: string; end: string };
+		};
+		if (!first.interval) return details;
+		const from = fmtTime(new Date(first.interval.start));
+		// `errors_session_overlap_open` (the "still running" variant) takes only
+		// `{from}`; both other keys — `errors_activity_overlap` and the closed-form
+		// `errors_session_overlap` — take `{from, to}` (plus `project` for the
+		// activity case). Branching on the messageKey ITSELF, never on the
+		// conflict's own `open` flag: the server's raw `messageKeyFor(code)` always
+		// returns the generic `errors_session_overlap` (`errors.ts`) — picking the
+		// "_open" variant is a caller-side judgment call some callers (this one
+		// included, going forward) make before `rejectionMessage()` ever runs, so by
+		// the time a key literally says "_open" it has already decided, and the
+		// generic key should always get the full closed-form params it declares.
+		if (messageKey === 'errors_session_overlap_open') return { from };
+		const to = fmtTime(new Date(first.interval.end));
+		if (messageKey === 'errors_activity_overlap') {
+			return { project: first.projectName ?? '', from, to };
+		}
+		return { from, to };
+	}
+
+	/**
 	 * Maps a `Rejection.messageKey` — a string named by the server's error envelope —
 	 * to its compiled Paraglide function and calls it with `details` as the input
 	 * object. No shared helper for this exists yet anywhere in the interface (nothing
@@ -110,7 +162,7 @@
 		];
 		if (typeof fn !== 'function') return rejection.messageKey;
 		try {
-			return fn(rejection.details ?? {});
+			return fn(adaptOverlapDetails(rejection.messageKey, rejection.details ?? {}));
 		} catch {
 			return rejection.messageKey;
 		}
