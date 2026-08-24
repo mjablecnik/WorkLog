@@ -94,9 +94,25 @@
 	/** The logout row closes the menu and lets the form submission navigate away
 	 * on its own — no focus return, since there is nothing left to return focus
 	 * to once the document leaves for `/login` (task instructions, design.md's
-	 * "returning focus to the chip" is the general rule, not this exception). */
+	 * "returning focus to the chip" is the general rule, not this exception).
+	 *
+	 * `open = false` is deferred to a macrotask (`setTimeout`), never applied
+	 * synchronously inside this handler. The form's `{#if open}` block unmounts
+	 * the form the instant `open` becomes `false`; a plain `method="POST"` form
+	 * with no `use:enhance` submits natively, and the browser's own submit
+	 * algorithm checks the form is still connected to the document AFTER this
+	 * synchronous handler returns but still within the same dispatch — closing
+	 * synchronously here cancels the submission outright before any request is
+	 * ever sent (confirmed live: a real browser logs "Form submission canceled
+	 * because the form is not connected", task 11's E2E pass). A macrotask runs
+	 * strictly after the browser has already begun the real submission/
+	 * navigation, so the menu still closes (moot in practice — the whole page is
+	 * about to leave for `/login` — but harmless) without racing the form out
+	 * from under its own submit. */
 	function handleLogoutSubmit(): void {
-		open = false;
+		setTimeout(() => {
+			open = false;
+		}, 0);
 	}
 
 	/** Roving-tabindex arrow navigation shared by both radiogroups: the group is
