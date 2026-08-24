@@ -315,7 +315,9 @@
 		font-size: 13px;
 		font-weight: 500;
 		line-height: 1.4;
-		color: var(--accent);
+		/* --accent-on-tint, not --accent: confirmed via axe-core that plain --accent on
+		   this 6% tint fill is only 4.38:1 in the light theme (theme.css). */
+		color: var(--accent-on-tint);
 	}
 	.sb-unc-hint {
 		font-size: 12px;
@@ -349,7 +351,7 @@
 	.sb-unc-action {
 		font-size: 12px;
 		font-weight: 500;
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		flex-shrink: 0;
 	}
 	.sb-unc-stack {
@@ -363,7 +365,7 @@
 	.sb-unc-title-short {
 		font-size: 12.5px;
 		font-weight: 500;
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		flex-shrink: 0;
 	}
 	.sb-unc-pill {
@@ -371,7 +373,7 @@
 		padding: 2px 9px;
 		border-radius: var(--radius-9999);
 		background: color-mix(in srgb, var(--accent) 14%, transparent);
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		font-size: 11px;
 		font-weight: 500;
 		line-height: 1.4;

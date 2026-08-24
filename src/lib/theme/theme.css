@@ -172,9 +172,23 @@
 	   (0.38) measured 3.38:1 and failed. Dim moved up with it so the two
 	   levels stay visually distinct instead of collapsing together. */
 	--text-dim: rgba(230, 234, 242, 0.62); /* 6.44:1 on #0F1319 */
-	--text-faint: rgba(230, 234, 242, 0.5); /* 4.63:1 on #0F1319 */
+	/* 0.56, not the 0.5 the plain-#0F1319 ratio alone would suggest: confirmed live via
+	   axe-core (tests/e2e/a11y.spec.ts) that .sb-meta (Segment_Block times) drawn in
+	   --text-faint over a --pj-tint block background — every one of the 8 Palette_Slot
+	   hues, not just one — lands at 4.19-4.40:1, under 4.5:1, because the tint itself
+	   darkens the effective background just enough. 0.56 clears the worst slot (pj-2,
+	   4.88:1) and still clears plain #0F1319 with more margin (5.47:1) than before. */
+	--text-faint: rgba(230, 234, 242, 0.56); /* 5.47:1 on #0F1319; >=4.88:1 on any --pj-tint */
 	--accent: #d18a6a;
 	--accent-hover: #e2a88d;
+	/* Text colour for accent-coloured copy drawn on a tinted/row surface rather than
+	   directly on --bg/--dialog, where plain --accent's contrast runs thinner —
+	   SettingsMenu's .seg-item--active, ChangePreview's .change-preview__policy-item--active,
+	   DataTable's .data-table__bulk-bar and StatsPage's .stats-page__range-item--active
+	   (all on --segment-active) and DayRhythm's .day-rhythm__label--today. Plain --accent
+	   already clears 4.5:1 in every one of these spots in the dark theme (e.g. 4.81:1 at
+	   0.16 alpha on --bg) — the light theme's pairings do not, see below. */
+	--accent-on-tint: var(--accent);
 	--ink-on-accent: #1a0f0a;
 	--panel: rgba(255, 255, 255, 0.043);
 	--dialog: #171b22;
@@ -238,10 +252,19 @@
 	   2.99:1); do not copy the dark pair's numbers here, they measure
 	   differently against this theme's ground. */
 	--text-dim: rgba(43, 36, 32, 0.78); /* 6.84:1 on #F3EEE6, 7.18:1 on --dialog */
-	--text-faint: rgba(43, 36, 32, 0.66); /* 4.69:1 on #F3EEE6, 4.85:1 on --dialog */
+	/* 0.70, not 0.66 — same reasoning as the dark theme's --text-faint above: the
+	   worst Palette_Slot (pj-4) only reached 4.31:1 at 0.66. 0.70 clears it (4.81:1)
+	   and still clears plain #F3EEE6 with more margin (5.31:1) than before. */
+	--text-faint: rgba(43, 36, 32, 0.7); /* 5.31:1 on #F3EEE6; >=4.81:1 on any --pj-tint */
 	--accent: #a5522e; /* 5.12:1 on --dialog */
 	--accent-hover: #8a4724;
 	--ink-on-accent: #fbf7f1;
+	/* Plain --accent on --segment-active only reaches 3.59:1 here (confirmed live via
+	   axe-core, tests/e2e/a11y.spec.ts) — the light accent is close enough in hue and
+	   lightness to its own 0.14 tint that the pairing fails 4.5:1, unlike dark's 4.81:1.
+	   --accent-hover is darker and clears it (4.71:1) while staying the same hue and an
+	   already-established token, so no new colour was invented for this. */
+	--accent-on-tint: var(--accent-hover);
 	--panel: rgba(0, 0, 0, 0.045);
 	--dialog: #fbf7f1;
 	--scrim: rgba(43, 36, 32, 0.38);

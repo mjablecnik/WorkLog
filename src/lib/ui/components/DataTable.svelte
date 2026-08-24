@@ -487,7 +487,7 @@
 		padding: 8px 12px;
 		border-radius: var(--radius-11);
 		background: var(--segment-active);
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		font-size: 13px;
 	}
 

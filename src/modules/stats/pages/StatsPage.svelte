@@ -268,8 +268,8 @@
 	}
 
 	.stats-page__range-item--active {
-		background: rgb(from var(--accent) r g b / 0.16);
-		color: var(--accent);
+		background: var(--segment-active);
+		color: var(--accent-on-tint);
 	}
 
 	.stats-page__range-item:focus-visible {

@@ -117,10 +117,10 @@ describe('measured contrast of --text-dim / --text-faint against --bg', () => {
 		expect(Math.abs(ratio - 6.44)).toBeLessThan(0.2);
 	});
 
-	it('dark --text-faint clears 4.5:1 (design.md states ~4.63:1) — the exact check that would have caught 3.38:1', () => {
+	it('dark --text-faint clears 4.5:1 (design.md states ~5.47:1) — the exact check that would have caught 3.38:1', () => {
 		const ratio = measuredContrastAgainstBg(DARK_TEXT_FAINT, DARK_BG);
 		expect(ratio).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-		expect(Math.abs(ratio - 4.63)).toBeLessThan(0.2);
+		expect(Math.abs(ratio - 5.47)).toBeLessThan(0.2);
 	});
 
 	it('light --text-dim clears 4.5:1 (design.md states ~6.84:1)', () => {
@@ -129,9 +129,9 @@ describe('measured contrast of --text-dim / --text-faint against --bg', () => {
 		expect(Math.abs(ratio - 6.84)).toBeLessThan(0.2);
 	});
 
-	it('light --text-faint clears 4.5:1 (design.md states ~4.69:1)', () => {
+	it('light --text-faint clears 4.5:1 (design.md states ~5.31:1)', () => {
 		const ratio = measuredContrastAgainstBg(LIGHT_TEXT_FAINT, LIGHT_BG);
 		expect(ratio).toBeGreaterThanOrEqual(WCAG_AA_NORMAL_TEXT);
-		expect(Math.abs(ratio - 4.69)).toBeLessThan(0.2);
+		expect(Math.abs(ratio - 5.31)).toBeLessThan(0.2);
 	});
 });

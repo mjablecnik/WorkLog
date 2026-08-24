@@ -572,7 +572,7 @@
 	}
 	.change-preview__policy-item--active {
 		background: var(--segment-active);
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		font-weight: 500;
 	}
 

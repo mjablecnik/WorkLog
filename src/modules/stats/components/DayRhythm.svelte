@@ -244,7 +244,10 @@
 		color: var(--text-faint);
 	}
 	.day-rhythm__label--today {
-		color: var(--accent);
+		/* Confirmed via axe-core (tests/e2e/a11y.spec.ts): plain --accent on this row's
+		   background is only 4.31:1 in the light theme, just under 4.5:1. See
+		   theme.css's --accent-on-tint doc comment. */
+		color: var(--accent-on-tint);
 	}
 
 	.day-rhythm__strip {

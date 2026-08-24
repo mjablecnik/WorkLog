@@ -474,11 +474,11 @@
 	}
 	.seg-item--active {
 		background: var(--segment-active);
-		color: var(--accent);
+		color: var(--accent-on-tint);
 		font-weight: 500;
 	}
 	.seg-item--active:hover {
-		color: var(--accent);
+		color: var(--accent-on-tint);
 	}
 	.seg-item:focus-visible {
 		outline: none;

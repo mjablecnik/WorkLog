@@ -72,14 +72,14 @@ describe('theme.css token tables', () => {
 		expect(darkNames).toEqual(lightNames);
 	});
 
-	it('sets dark dim/faint alpha to 0.62 / 0.50 exactly', () => {
+	it('sets dark dim/faint alpha to 0.62 / 0.56 exactly', () => {
 		expect(alphaOf(darkTokens['--text-dim'])).toBe(0.62);
-		expect(alphaOf(darkTokens['--text-faint'])).toBe(0.5);
+		expect(alphaOf(darkTokens['--text-faint'])).toBe(0.56);
 	});
 
-	it('sets light dim/faint alpha to 0.78 / 0.66 exactly', () => {
+	it('sets light dim/faint alpha to 0.78 / 0.70 exactly', () => {
 		expect(alphaOf(lightTokens['--text-dim'])).toBe(0.78);
-		expect(alphaOf(lightTokens['--text-faint'])).toBe(0.66);
+		expect(alphaOf(lightTokens['--text-faint'])).toBe(0.7);
 	});
 
 	it("does not copy one theme's dim/faint pair onto the other", () => {
