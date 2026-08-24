@@ -1,5 +1,79 @@
 # Issues
 
+## [MEDIUM] The E2E suite is not runnable from a clean checkout
+- Run: 2026-08-24-0659
+- Phase: cases
+- Status: OPEN
+- What: two committed files depend on things that exist only in this session.
+  `tests/e2e/a11y.spec.ts:30` hardcodes
+  `const SCRATCH = '/tmp/claude-1000/-workspace/02439d03-f232-4a99-b57d-36aab892936c/scratchpad'`
+  as the directory its per-theme `storageState` files are written to and read from. And
+  `scripts/test-e2e.sh` never sets `WORKLOG_PASSPHRASE_HASH`, so the suite logs in with
+  whatever hash `.env` happens to hold, while `tests/e2e/fixtures.ts` submits the
+  constant `E2E_PASSPHRASE = 'e2e-test-passphrase-9182'` — the two only agree through a
+  wrapper script that lives in the same scratchpad and was never committed.
+- Impact: on any other machine, or in this one after the scratchpad is cleared,
+  `bun run test:e2e:local` fails every login, and `a11y.spec.ts` — the **only**
+  automated check of Requirement 14.1 (no horizontal scrolling at 320 px) and
+  Requirement 14.10 (contrast) — cannot even reach its `beforeAll`. The verify phase
+  will hit this on step 0 of `.agents/tmp/VERIFY_TASKS.md`.
+- Tried: nothing — this phase writes documents and does not touch source. The finding
+  came out of reading the suite to write UC-508 against it.
+- Next: move the `storageState` directory to something derived from
+  `test-results/` or `os.tmpdir()` inside the repo's own conventions, and have
+  `scripts/test-e2e.sh` export a `WORKLOG_PASSPHRASE_HASH` it generates from
+  `E2E_PASSPHRASE` through `scripts/hash-passphrase.sh`, so the constant and the hash
+  cannot drift. UC-508 is the case that closes this.
+
+## [LOW] `DESIGN.md` and `design.md` disagree on the block head's type size
+- Run: 2026-08-24-0659
+- Phase: cases
+- Status: OPEN
+- What: `.design/DESIGN.md:184` states "The block head is 14px / 500 at `1.4`, and
+  `layOutDay` reserves `round(size x line-height)` plus its own padding".
+  `.kiro/specs/002-worklog-ui/design.md:333` puts the block head time at **13 / 500**
+  (mobile 12), and line 967 derives `BLOCK_HEAD_PX` from it as
+  `round(13 x 1.4) + 11 = 29`. `src/modules/day/components/timeline-geometry.ts:26`
+  implements 29, so the code follows `design.md`. At the 14 px `DESIGN.md` states the
+  same formula gives `round(14 x 1.4) + 11 = 31`.
+- Impact: two documents that are both binding disagree about a constant that enters the
+  timeline's height budget, at 2 px per `Work_Block`. Nothing is broken today because
+  the code and `design.md` agree, but the next person to reconcile the implementation
+  against the visual contract will find the contract asking for a different number, and
+  `design.md` itself warns that changing the head's size must change the constant with
+  it.
+- Tried: nothing to try — this is a contradiction between two specification documents,
+  and Requirement 17's own rule is that such a disagreement is a defect to be resolved
+  rather than a choice to be made while implementing.
+- Next: decide which size the head is drawn at, then make the other document and — if
+  the answer is 14 — `BLOCK_HEAD_PX` follow it. The `DayCollapsed` artboard cannot
+  settle it: `design.md` already records that its `.sesshead` carries no line height at
+  all, which is a drawing slip of the same kind as its 88 px top bar.
+
+## [LOW] The mobile `Uncovered_Marker` threshold is 44 px in the requirement and the floor in the design
+- Run: 2026-08-24-0659
+- Phase: cases
+- Status: OPEN
+- What: Requirement 10.7 says the mobile `Uncovered_Marker` is "a two-line block with an
+  action pill when it is at least **44 pixels** tall, or, below that, a single row of
+  title and duration whose whole area is the target". `design.md`'s four-variant table
+  (lines 600-601) instead splits them at the floor: "mobile tall - mobile, **above the
+  floor**" carries the `doplnit` pill, and "mobile short - mobile, **at the 26 px
+  floor**" does not.
+- Impact: a mobile uncovered block between 26 and 44 pixels tall has no defined
+  appearance. The two documents give opposite answers, and `layOutDay` produces heights
+  in that band routinely (the mobile ladder itself contains 44, 48 and 58, but a
+  proportional result of 30 or 38 is ordinary). Whichever the implementation currently
+  does, one of the two documents says it is wrong.
+- Tried: nothing — inventing a threshold here would be presenting an acceptance
+  criterion as settled when it is not, which is exactly what this phase must not do.
+  UC-362 is written to test either side of the band and deliberately not inside it.
+- Next: pick one. The design's reasoning ("26 px cannot hold it") argues for a threshold
+  tied to what actually fits a pill rather than to the 44 px activation floor, which
+  criterion 14.3 has already excepted the timeline from — so the design's reading is
+  probably the intended one and Requirement 10.7 is the line to correct. Then widen
+  UC-362 to cover the band.
+
 ## [MEDIUM] Three real WCAG color-contrast violations, newly visible now that app.css applies
 - Run: 2026-08-24-0659
 - Phase: build
