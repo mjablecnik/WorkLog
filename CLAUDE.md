@@ -108,7 +108,7 @@ bun run check                # type and Svelte checks
 bun run lint                  # eslint
 bun run format                 # prettier --write
 bun run test                    # unit, property and integration tests (needs PostgreSQL)
-bun run test:e2e:local           # Playwright, via scripts/test-e2e.sh — currently broken, see "Known gaps"
+bun run test:e2e:local           # Playwright, via scripts/test-e2e.sh
 bun run test:all                  # check + test + test:e2e:local — intended gate before pushing
 bun run build                      # production build
 

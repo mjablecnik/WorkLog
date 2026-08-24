@@ -103,14 +103,6 @@ bun run test:all        # check + test + test:e2e:local
 
 Integration tests need PostgreSQL. `scripts/test-e2e.sh` starts one, migrates it, runs the suite and tears it down.
 
-> [!WARNING]
-> `test:e2e:local` (and therefore `test:all`) currently fails immediately, before
-> any browser opens — `scripts/test-e2e.sh` points `DATABASE_URL` and
-> `TEST_DATABASE_URL` at the exact same connection string, which
-> `tests/setup/db.ts`'s own safety check refuses to run against. See
-> [`DOCS.md`](DOCS.md#troubleshooting). `bun run test` (no `e2e`) is unaffected
-> and is the suite to run until this is fixed.
-
 ## Documentation
 
 [`DOCS.md`](DOCS.md) is the reference: every environment variable, the full REST API
