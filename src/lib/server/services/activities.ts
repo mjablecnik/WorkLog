@@ -316,13 +316,13 @@ async function clipAndRescue(
 
 export async function createActivity(
 	args: CreateActivityArgs
-): Promise<ActivityResponse & { dryRun: boolean }> {
+): Promise<ActivityResponse & { dryRun: boolean; status: number }> {
 	const config = getConfig();
 	const mode = selectCreateMode(args);
 	const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
 	const minIntervalMs = config.minIntervalSeconds * 1000;
 
-	const run = async (tx: Tx): Promise<ActivityResponse & { dryRun: boolean }> => {
+	const run = async (tx: Tx): Promise<ActivityResponse & { dryRun: boolean; status: number }> => {
 		await assertProjectUsable(tx, args.projectId);
 
 		// A Dry_Run never creates anything, so it neither consults nor claims an
@@ -348,7 +348,14 @@ export async function createActivity(
 						{ key: args.idempotencyKey }
 					);
 				}
-				return existing.response as ActivityResponse & { dryRun: boolean };
+				// Replay the status this key was originally recorded with (Requirement
+				// 12.16) rather than assuming 201 — every replayable write today happens
+				// to be a 201, but the stored column, not that assumption, is the source
+				// of truth.
+				return {
+					...(existing.response as ActivityResponse & { dryRun: boolean }),
+					status: existing.status
+				};
 			}
 		}
 
@@ -506,7 +513,7 @@ export async function createActivity(
 			);
 		}
 
-		return response;
+		return { ...response, status: 201 };
 	};
 
 	if (!args.dryRun) return withTx((tx) => run(tx));

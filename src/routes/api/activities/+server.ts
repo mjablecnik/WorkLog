@@ -100,7 +100,7 @@ export const POST: RequestHandler = async (event) => {
 				? parseRequest(idempotencyKeySchema, idempotencyHeader)
 				: undefined;
 
-		const result = await createActivity({
+		const { status, ...result } = await createActivity({
 			projectId: body.projectId,
 			description: body.description,
 			date: body.date,
@@ -113,7 +113,11 @@ export const POST: RequestHandler = async (event) => {
 			idempotencyKey,
 			now
 		});
-		return json(result, { status: 201 });
+		// Replays a `409`-free `Idempotency-Key` with the status it was originally
+		// recorded under (Requirement 12.16) rather than assuming every replay is a
+		// fresh 201 — see .agents/ISSUES.md, "An idempotent replay ignores the status
+		// it stored".
+		return json(result, { status });
 	} catch (err) {
 		return errorResponse(err, event.locals.requestId);
 	}
