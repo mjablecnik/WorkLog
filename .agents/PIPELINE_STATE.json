@@ -1,0 +1,20 @@
+{
+  "run_id": "2026-08-23-2200",
+  "spec": "001-worklog-domain-api",
+  "target": ".",
+  "started_at": "2026-08-23T22:00:16Z",
+  "phases": {
+    "impl":   { "status": "done", "start_sha": "b96346dbb19a8721469ee47b9157d1b9719cb64d", "end_sha": "146f19846772e74eabf495c80156dfba619534ae",
+                "issues_opened": 4, "finished_at": "2026-08-24T02:40:20Z" },
+    "build":  { "status": "pending", "start_sha": null, "end_sha": null,
+                "issues_opened": 0, "finished_at": null },
+    "cases":  { "status": "pending", "start_sha": null, "end_sha": null,
+                "issues_opened": 0, "finished_at": null },
+    "verify": { "status": "pending", "start_sha": null, "end_sha": null,
+                "issues_opened": 0, "finished_at": null },
+    "docs":   { "status": "pending", "start_sha": null, "end_sha": null,
+                "issues_opened": 0, "finished_at": null },
+    "report": { "status": "pending", "start_sha": null, "end_sha": null,
+                "issues_opened": 0, "finished_at": null }
+  }
+}
