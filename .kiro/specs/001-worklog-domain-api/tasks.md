@@ -430,7 +430,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `tests/lib/server/store/day-boundary.test.ts`: an absent row is written from the configuration; a matching row starts cleanly; a differing row refuses to start; the same differing row with `ALLOW_DAY_BOUNDARY_CHANGE` set is overwritten
     - _Requirements: 10.10, 10.11, 10.12, 11.2, 11.3, 11.4, 11.6, 11.7, 11.8, 11.9, 11.11, 11.12, 11.13, 11.14, 11.15, 11.18, 12.7, 12.8, 12.9, 13.21_
 
-- [ ] 8. Write services and REST routes
+- [x] 8. Write services and REST routes
 
   Every write in tasks 8.1, 8.3 and 8.5 is implemented **once**, in `src/lib/server/services/`,
   and the `+server.ts` route is the thin half: parse with the Zod schema, call the service,
@@ -447,7 +447,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Follow the Module Boundaries: `services` may import `domain`, `store`, `core` and `contracts`, and nothing under `routes`
     - _Requirements: 2.12, 12.8, 12.16, 12.17, 14.1, 14.3, 14.4, 14.5, 14.7, 14.8, 14.9_
 
-  - [ ] 8.1 Implement the session routes
+  - [x] 8.1 Implement the session routes
     - `src/routes/api/sessions/{start,stop,current}/+server.ts`, `sessions/+server.ts` (GET list and **POST create closed**), `sessions/[id]/+server.ts`
     - Validate with `startSessionSchema`, `stopSessionSchema`, `createSessionSchema`, `patchSessionSchema` and `deleteSessionQuery` — **all five carry the dry-run fields**, DELETE taking them as the `dry_run` and `preview_token` **query** parameters because a DELETE body is not reliably transmitted, because start and stop create and modify a `Work_Session` and Requirement 14.2 covers them too; the GET listing validates with `listSessionsQuery`
     - `GET /api/sessions` answers `SessionListResponse` — a bare `WorkSession[]` ordered by start ascending, each carrying its `stale` flag. Not an envelope: the listing is bounded by `MAX_RANGE_DAYS` and is never paged, so there is no cursor to wrap it for
@@ -462,7 +462,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Default the listing range to the current `Logical_Day` and reject spans over 366 days
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 1.10, 1.11, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10, 14.2, 14.3, 14.6, 14.9, 14.10, 14.11, 14.12_
 
-  - [ ] 8.2 Write tests for the session routes
+  - [x] 8.2 Write tests for the session routes
     - `tests/api/sessions.test.ts`: start 201, second start 409, stop 200, stop with none running 409, current with and without an open session including `stale`
     - `POST /api/sessions` creates a closed session and re-clips; an inverted interval 400; an overlap 409 with identifiers; a future start 400; a 30-second session 400
     - DELETE 204 and re-applies `Clipping`; the same DELETE with `dryRun` returns the preview naming each affected `Activity_Entry` and leaves every row untouched
@@ -473,18 +473,18 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - A `Stale_Session` is reported with `stale: true` on `current`, in the listing and in the day response, and is not closed by the server
     - _Requirements: 1.1, 1.2, 1.5, 1.6, 1.8, 1.10, 1.11, 1.13, 1.14, 2.1, 2.5, 2.6, 2.7, 2.8, 2.9, 14.2, 14.5, 14.10_
 
-  - [ ] 8.3 Implement the project routes
+  - [x] 8.3 Implement the project routes
     - `src/routes/api/projects/+server.ts` and `projects/[id]/+server.ts` with `createProjectSchema`, `patchProjectSchema` and `listProjectsQuery`
     - `GET /api/projects` answers `ProjectListResponse` — a bare `Project[]` ordered by name ascending, each carrying its `colorIndex`, archived rows included only with `include_archived=true`. A bare array for the same reason the session listing is one: nothing pages it
     - PATCH accepts name, archived state and `colorIndex`
     - Map store errors to `PROJECT_EXISTS` and `PROJECT_IN_USE`, the latter carrying `Activity_Entry` ids
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11_
 
-  - [ ] 8.4 Write tests for the project routes
+  - [x] 8.4 Write tests for the project routes
     - `tests/api/projects.test.ts`: create; duplicate differing only in case rejected, the response naming the existing project; empty and over-long names rejected; listing excludes archived by default; delete in use rejected with `entryCount` and the blocking entries' descriptions and requested intervals in the details, capped at `ERROR_DETAIL_SAMPLE_SIZE`; delete unused succeeds; PATCH sets a colour index another project already holds
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.11, 12.19_
 
-  - [ ] 8.5 Implement the activity routes
+  - [x] 8.5 Implement the activity routes
     - `src/routes/api/activities/+server.ts` and `activities/[id]/+server.ts` with `createActivitySchema` and `patchActivitySchema`, both `.strict()`
     - Select the mode from the design's table: `endedAt` alone is `Explicit_Mode`, `durationMinutes` alone is `Duration_Mode`, neither is `Open_Mode`, both is `AMBIGUOUS_MODE`; reject naive timestamps and future instants
     - Resolve the `Target_Day` from `date`, defaulting to the current `Logical_Day`, so yesterday can be filled in the next morning
@@ -511,7 +511,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **A PATCH is the orphan rescue path** the day page's "mimo výkaz" panel calls for *Přepsat čas*: an `Orphaned_Entry` owns no segment, and nothing in validation may require one. Supplying both bounds replaces the requested interval, clears `requestedDurationMinutes` and sets `mode` to `explicit`; on success the entry comes back with `orphaned: false`; if the rewritten time still yields no segment, answer 409 `NOTHING_TO_LOG` and leave the entry byte-identical — a failed rescue must not destroy the record
     - _Requirements: 2.12, 4.1, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 5.1, 5.2, 5.3, 5.7, 5.11, 5.12, 5.13, 5.16, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12, 6.16, 6.17, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 7.10, 7.11, 7.12, 7.13, 7.14, 7.15, 7.16, 7.17, 7.18, 7.19, 7.20, 7.21, 7.22, 7.23, 7.24, 7.25, 7.26, 10.2, 10.18, 12.4, 12.8, 12.19, 12.20, 12.21, 12.23, 12.24, 14.1, 14.3, 14.4, 14.7, 14.8, 14.9, 15.1, 15.6, 15.7, 15.8, 15.9, 15.10_
 
-  - [ ] 8.6 Write tests for the activity routes
+  - [x] 8.6 Write tests for the activity routes
     - `tests/api/activities.test.ts`, seeding the frame `[08:00–14:48, 15:12–18:00]` before each case
     - The success body of a `Duration_Mode` and an `Open_Mode` write carries the resolved anchor and its source; an `Explicit_Mode` write carries `anchor: null`
     - `order=desc` returns the newest first and `limit=1` returns exactly one entry
@@ -536,7 +536,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - PATCHing that orphan onto tracked time succeeds despite it having no segments, returns it with `orphaned: false` and new segments, and sets `mode` to `explicit`; PATCHing it onto untracked time returns 409 `NOTHING_TO_LOG` and leaves every column unchanged
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7, 4.10, 5.1, 5.2, 5.11, 6.6, 6.7, 6.9, 7.2, 7.3, 7.7, 7.8, 7.9, 7.11, 7.16, 7.17, 7.18, 7.19, 10.2, 12.4, 12.8, 12.20, 14.1, 14.3, 14.5, 14.8, 15.1, 15.3, 15.7, 15.8_
 
-  - [ ] 8.7 Implement the day, coverage and health routes
+  - [x] 8.7 Implement the day, coverage and health routes
     - `days/[date]/+server.ts` returns bounds, `Work_Session` and `Activity_Entry` records with their true bounds, coverage, and totals **clamped to the day**, including every `Orphaned_Entry` and archived `Project`; `totals.byProject` is `ProjectTotal[]`, so `archived` travels with each row; an empty day returns 200 with zeroes
     - `totals` also carries `sessionCount`, `longestBlockSeconds` and `eveningSeconds`, defined exactly as in `DaySummary`, so the day page fills its "tvar dne" panel from this one response instead of calling `/api/days` for a single day and risking two answers that disagree
     - The response carries `quickLog`: what a one-touch `Open_Mode` write would record — resolved by the Requirement 15 rules **including the end**, so a past day ends at that day's last session end and not at now — with its `anchorSource` **and the `projectId`, `projectName` and `colorIndex`** of the most recent `Activity_Entry` of that day, or of any day when that day has none. `null` when there is no anchor or no entry anywhere to take a project from: `projectId` is required by the write and `002` may not look one up. The client labels the quick-log pill from it and opens the full dialog when it is null; it may not derive the anchor rule itself
@@ -556,7 +556,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `MAX_OPEN_SESSION_HOURS` is published here because the interface bounds how far it draws an `Open_Session` by it. Without it the client estimates that from a day's `trackedSeconds`, which is a guess standing in for a value the server already knows
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10, 8.11, 8.12, 8.13, 8.14, 8.15, 8.16, 8.17, 8.18, 8.19, 8.20, 8.21, 8.22, 8.23, 8.24, 8.25, 8.26, 8.27, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 10.8, 10.15, 10.16, 10.18, 13.1, 13.2, 13.3, 13.4, 13.11, 13.13, 13.16, 13.18_
 
-  - [ ] 8.8 Write tests for the day, coverage and health routes
+  - [x] 8.8 Write tests for the day, coverage and health routes
     - `tests/api/days.test.ts`: a populated day returns correct totals and per-project seconds; an empty day returns zeroes; a malformed date 400; a 400-day range `RANGE_TOO_LARGE`; **a session spanning the 03:00 boundary appears in both days with its true bounds but contributes its own part to each day's total, and the two parts sum to its full length**
     - `longestBlockSeconds` picks the longest single session, not the day total; `overtimeSeconds` counts only `Tracked_Time` outside `GAUGE_START`–`GAUGE_END`; a day ending at 03:00 against the default window reports 3 hours of overtime
     - `overtimeSeconds` plus the `Tracked_Time` inside the window equals `trackedSeconds` on an ordinary day, on the 23-hour day `2026-03-28` and on the 25-hour day `2026-10-24` alike — the DST hour falls in the `Gauge_Gap`, so the window is 18 hours on every one of them

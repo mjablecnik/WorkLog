@@ -128,8 +128,13 @@ async function probeReadiness(): Promise<{ ready: boolean; reason?: string }> {
 let readinessPromise: Promise<{ ready: boolean; reason?: string }> | null = null;
 let readinessCheckedAt = 0;
 
-/** Re-runs the probe at most once per CLEANUP_INTERVAL_MINUTES while it is failing. */
-async function getReadiness(): Promise<{ ready: boolean; reason?: string }> {
+/**
+ * Re-runs the probe at most once per CLEANUP_INTERVAL_MINUTES while it is failing.
+ * Exported so `/api/health` can report `degraded` from the same source of truth
+ * `handleReadiness` gates every other route on — Requirement 13.1's `Health_Endpoint`
+ * is the one place that failure is reported rather than turned into a 503 by the hook.
+ */
+export async function getReadiness(): Promise<{ ready: boolean; reason?: string }> {
 	const now = Date.now();
 	if (readinessPromise === null || now - readinessCheckedAt > CLEANUP_INTERVAL_MINUTES * 60_000) {
 		readinessCheckedAt = now;

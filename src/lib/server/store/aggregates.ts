@@ -11,8 +11,8 @@
  */
 import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
 import type { Interval, ProjectInterval, ProjectTotal } from '$lib/contracts/models';
-import type { DaySummary } from '$lib/contracts/responses';
-import { clamp, intersect, normalize, subtract, total } from '../domain/interval';
+import type { CoverageResponse, DaySummary } from '$lib/contracts/responses';
+import { clamp, gaps, intersect, normalize, subtract, total } from '../domain/interval';
 import { minuteOfDay } from '../domain/logical-day';
 import { dayStartIsInGaugeGap, gaugeWindowContainsTransition, getConfig } from '../core/config';
 import { activityEntries, activitySegments, projects, workSessions } from '../../../db/schema';
@@ -307,6 +307,55 @@ export async function suggestedWindow(
 		return { start: startHHMM, end: endHHMM };
 	}
 	return null;
+}
+
+/**
+ * `/api/coverage` and the single-day route's own `coverage` field: `tracked`,
+ * `covered`, `uncovered` (`Tracked_Time` minus `Covered_Time`) and `untracked` (the
+ * complement of `Tracked_Time` in `range`), plus a `totals` object of all four in
+ * seconds. `minGapSeconds` filters the returned `uncovered` LIST only — the totals
+ * always describe the whole range (Requirements 9.4, 9.8).
+ */
+export async function coverageForRange(
+	tx: Tx,
+	range: Interval,
+	now: Date,
+	minGapSeconds: number
+): Promise<CoverageResponse> {
+	const [sessions, segments] = await Promise.all([
+		fetchSessions(tx, range),
+		fetchSegments(tx, range)
+	]);
+	const { maxOpenSessionHours } = getConfig();
+	const cappedSessions = sessions.map((s) => cappedInterval(s, now, maxOpenSessionHours));
+
+	const tracked = normalize(clamp(cappedSessions, range));
+	const covered = normalize(
+		clamp(
+			segments.map((s) => ({ start: s.startedAt, end: s.endedAt })),
+			range
+		)
+	);
+	const uncoveredAll = subtract(tracked, covered);
+	const untracked = gaps(tracked, range);
+
+	const minGapMs = minGapSeconds * 1000;
+	const uncovered = uncoveredAll.filter((iv) => iv.end.getTime() - iv.start.getTime() >= minGapMs);
+
+	return {
+		from: range.start.toISOString(),
+		to: range.end.toISOString(),
+		tracked,
+		covered,
+		uncovered,
+		untracked,
+		totals: {
+			trackedSeconds: seconds(total(tracked)),
+			coveredSeconds: seconds(total(covered)),
+			uncoveredSeconds: seconds(total(uncoveredAll)),
+			untrackedSeconds: seconds(total(untracked))
+		}
+	};
 }
 
 function toHHMM(minuteOfDay: number): string {

@@ -280,6 +280,26 @@ export async function entriesOverlapping(tx: Tx, window: Interval): Promise<Acti
 	return hydrate(tx, rows);
 }
 
+/**
+ * The single most recent `Activity_Entry` by the total order of Requirement 7.1,
+ * regardless of day — the fallback source for `quickLog`'s `projectId` when the
+ * `Target_Day` itself has none (Requirement: "or of any day when that day has none").
+ */
+export async function mostRecentEntry(tx: Tx): Promise<ActivityEntry | null> {
+	const [row] = await tx
+		.select()
+		.from(activityEntries)
+		.orderBy(
+			desc(activityEntries.requestedStartedAt),
+			desc(activityEntries.createdAt),
+			desc(activityEntries.id)
+		)
+		.limit(1);
+	if (row === undefined) return null;
+	const [hydrated] = await hydrate(tx, [row]);
+	return hydrated;
+}
+
 /** Just the Orphaned_Entry rows whose requested interval overlaps `window`. */
 export async function orphanedEntriesOverlapping(
 	tx: Tx,

@@ -15,8 +15,8 @@ node_modules/
 # Paraglide compiles into the source tree
 src/lib/paraglide/
 
-# Test and tooling output
-coverage/
+# Test and tooling output — anchored to the root, so it never shadows src/routes/api/coverage/
+/coverage/
 playwright-report/
 test-results/
 tests/tmp/
