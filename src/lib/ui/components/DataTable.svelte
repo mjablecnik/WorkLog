@@ -647,44 +647,82 @@
 		color: var(--ink-on-accent);
 	}
 
-	@media (max-width: 767px) {
+	/* Mobile-first: a stacked-card layout is the default (thead visually hidden,
+	   each row a block with its cells as label/value pairs), restored back to a
+	   real table at the 768px breakpoint below. */
+	.data-table__table thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+	}
+
+	.data-table__table,
+	.data-table__table tbody,
+	.data-table__table tr,
+	.data-table__table td {
+		display: block;
+		width: 100%;
+	}
+
+	.data-table__table tr {
+		margin-bottom: 12px;
+		border-bottom: 1px solid var(--divider);
+	}
+
+	.data-table__table tr:last-child {
+		margin-bottom: 0;
+	}
+
+	.data-table__table td {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		border-bottom: none;
+	}
+
+	.data-table__table td[data-label]:not([data-label='']):before {
+		content: attr(data-label);
+		font-weight: 500;
+		color: var(--text-faint);
+	}
+
+	@media (min-width: 768px) {
 		.data-table__table thead {
-			position: absolute;
-			width: 1px;
-			height: 1px;
-			overflow: hidden;
-			clip: rect(0, 0, 0, 0);
+			position: static;
+			width: auto;
+			height: auto;
+			overflow: visible;
+			clip: auto;
 		}
 
-		.data-table__table,
-		.data-table__table tbody,
-		.data-table__table tr,
-		.data-table__table td {
-			display: block;
+		.data-table__table {
+			display: table;
 			width: 100%;
 		}
-
+		.data-table__table tbody {
+			display: table-row-group;
+			width: auto;
+		}
 		.data-table__table tr {
-			margin-bottom: 12px;
+			display: table-row;
+			width: auto;
+			margin-bottom: 0;
+			border-bottom: none;
+		}
+		.data-table__table td {
+			display: table-cell;
+			width: auto;
+			align-items: initial;
+			justify-content: initial;
+			gap: initial;
 			border-bottom: 1px solid var(--divider);
 		}
 
-		.data-table__table tr:last-child {
-			margin-bottom: 0;
-		}
-
-		.data-table__table td {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 12px;
-			border-bottom: none;
-		}
-
 		.data-table__table td[data-label]:not([data-label='']):before {
-			content: attr(data-label);
-			font-weight: 500;
-			color: var(--text-faint);
+			content: none;
 		}
 	}
 </style>

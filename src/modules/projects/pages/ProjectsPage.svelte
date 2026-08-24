@@ -172,7 +172,7 @@
 	.projects-page {
 		display: flex;
 		justify-content: center;
-		padding: 24px 48px;
+		padding: 16px 16px 24px;
 	}
 
 	.projects-page__inner {
@@ -222,10 +222,12 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		width: 100%;
 	}
 
 	.projects-page__create-input {
-		width: 160px;
+		width: 100%;
+		flex: 1 1 auto;
 		height: 38px;
 		padding: 0 12px;
 		border: none;
@@ -295,18 +297,18 @@
 		text-align: center;
 	}
 
-	@media (max-width: 767px) {
+	@media (min-width: 768px) {
 		.projects-page {
-			padding: 16px 16px 24px;
+			padding: 24px 48px;
 		}
 
 		.projects-page__create-input {
-			width: 100%;
-			flex: 1 1 auto;
+			width: 160px;
+			flex: initial;
 		}
 
 		.projects-page__create {
-			width: 100%;
+			width: auto;
 		}
 	}
 </style>

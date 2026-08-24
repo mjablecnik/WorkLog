@@ -164,9 +164,16 @@
 		width: 100%;
 	}
 
-	@media (max-width: 767px) {
+	/* Mobile-first: 48px is the default (matches `Input.svelte`'s `.input` base of
+	   44px only from 768px up, this login field wants a slightly taller mobile
+	   touch target) — overridden back down at the 768px breakpoint every other
+	   responsive file in this project uses. */
+	:global(.login-form__passphrase) {
+		min-height: 48px;
+	}
+	@media (min-width: 768px) {
 		:global(.login-form__passphrase) {
-			min-height: 48px;
+			min-height: 44px;
 		}
 	}
 </style>

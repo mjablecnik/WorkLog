@@ -55,31 +55,31 @@
 		min-height: 0;
 	}
 
+	/* Mobile-first: the bottom nav and its FAB are the default, restored back to
+	   hidden at the 768px breakpoint below. */
+	.shell--with-bottom-nav .shell__content {
+		/* Clears BottomNav's fixed 68px bar plus its safe-area inset. */
+		padding-bottom: calc(68px + env(safe-area-inset-bottom));
+	}
+
 	.shell__fab {
-		display: none;
+		display: contents;
 	}
 
 	.shell__bottom-nav {
-		display: none;
-	}
-
-	@media (max-width: 767px) {
-		.shell--with-bottom-nav .shell__content {
-			/* Clears BottomNav's fixed 68px bar plus its safe-area inset. */
-			padding-bottom: calc(68px + env(safe-area-inset-bottom));
-		}
-
-		.shell__fab {
-			display: contents;
-		}
-
-		.shell__bottom-nav {
-			display: block;
-		}
+		display: block;
 	}
 
 	@media (min-width: 768px) {
+		.shell--with-bottom-nav .shell__content {
+			padding-bottom: 0;
+		}
+
 		.shell__fab {
+			display: none;
+		}
+
+		.shell__bottom-nav {
 			display: none;
 		}
 	}

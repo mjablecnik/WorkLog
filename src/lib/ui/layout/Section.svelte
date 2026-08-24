@@ -85,7 +85,7 @@
 
 	.section__title {
 		margin: 0;
-		font-size: 0.6875rem;
+		font-size: 0.625rem;
 		line-height: 1.35;
 		font-weight: 400;
 		letter-spacing: 0.16em;
@@ -108,9 +108,9 @@
 		padding-top: 0;
 	}
 
-	@media (max-width: 767px) {
+	@media (min-width: 768px) {
 		.section__title {
-			font-size: 0.625rem;
+			font-size: 0.6875rem;
 		}
 	}
 </style>

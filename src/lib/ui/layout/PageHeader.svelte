@@ -46,7 +46,7 @@
 	}
 
 	.page-header__title {
-		font-size: 1.25rem;
+		font-size: 0.9375rem;
 		font-weight: 500;
 		line-height: 1.3;
 		color: var(--text);
@@ -67,9 +67,9 @@
 		gap: 0.5rem;
 	}
 
-	@media (max-width: 767px) {
+	@media (min-width: 768px) {
 		.page-header__title {
-			font-size: 0.9375rem;
+			font-size: 1.25rem;
 		}
 	}
 </style>

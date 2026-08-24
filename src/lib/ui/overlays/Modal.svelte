@@ -295,52 +295,112 @@
 
 	/* --------------------------------------------------------------------
 	 * Full-screen mobile — Requirement 14.15. The dialog *is* the viewport:
-	 * no scrim, no radius, nothing shows through behind it.
+	 * no scrim, no radius, nothing shows through behind it. Mobile-first: these
+	 * are the default whenever `fullScreenOnMobile` adds the class, restored
+	 * back to the regular dialog look at the 768px breakpoint below.
 	 * ------------------------------------------------------------------ */
-	@media (max-width: 767px) {
+	.modal-overlay--fullscreen {
+		padding: 0;
+	}
+
+	.modal--fullscreen-mobile {
+		max-width: none;
+		width: 100%;
+		height: 100dvh;
+		max-height: 100dvh;
+		border-radius: 0;
+		box-shadow: none;
+		animation: modal-sheet-in var(--dur-panel) var(--ease-standard);
+	}
+
+	.modal--fullscreen-mobile .modal__header {
+		height: 58px;
+		padding: 0 20px;
+	}
+
+	.modal--fullscreen-mobile .modal__close {
+		width: 34px;
+		height: 34px;
+	}
+
+	.modal--fullscreen-mobile .modal__body {
+		flex: 1;
+		padding: 0 20px;
+	}
+
+	.modal--fullscreen-mobile .modal__footer {
+		flex-direction: column;
+		align-items: stretch;
+		padding: 14px 20px 24px;
+		border-top: 1px solid var(--divider);
+	}
+
+	.modal--fullscreen-mobile :global(.modal__footer-hint) {
+		margin-right: 0;
+	}
+
+	.modal--fullscreen-mobile :global(.modal__footer-actions) {
+		flex-direction: column-reverse;
+		gap: 10px;
+	}
+
+	@media (min-width: 768px) {
 		.modal-overlay--fullscreen {
-			padding: 0;
+			padding: 16px;
 		}
 
+		/* Restores the regular dialog look — `.modal--fullscreen-mobile` is still
+		   present in the class list above 768px (it is driven by the
+		   `fullScreenOnMobile` prop, not the viewport), so every property the
+		   block above touched needs an explicit reset back to what the plain
+		   `.modal`/`.modal--{size}` rules already specify. */
 		.modal--fullscreen-mobile {
-			max-width: none;
 			width: 100%;
-			height: 100dvh;
-			max-height: 100dvh;
-			border-radius: 0;
-			box-shadow: none;
-			animation: modal-sheet-in var(--dur-panel) var(--ease-standard);
+			height: auto;
+			max-height: calc(100vh - 32px);
+			border-radius: var(--radius-20);
+			box-shadow: var(--dialog-shadow);
+			animation: modal-panel-in var(--dur-panel) var(--ease-standard);
+		}
+		.modal--fullscreen-mobile.modal--sm {
+			max-width: 420px;
+		}
+		.modal--fullscreen-mobile.modal--md {
+			max-width: 560px;
+		}
+		.modal--fullscreen-mobile.modal--lg {
+			max-width: 720px;
 		}
 
 		.modal--fullscreen-mobile .modal__header {
-			height: 58px;
-			padding: 0 20px;
+			height: auto;
+			padding: 22px 26px 18px;
 		}
 
 		.modal--fullscreen-mobile .modal__close {
-			width: 34px;
-			height: 34px;
+			width: 32px;
+			height: 32px;
 		}
 
 		.modal--fullscreen-mobile .modal__body {
-			flex: 1;
-			padding: 0 20px;
+			flex: initial;
+			padding: 0 26px 22px;
 		}
 
 		.modal--fullscreen-mobile .modal__footer {
-			flex-direction: column;
-			align-items: stretch;
-			padding: 14px 20px 24px;
-			border-top: 1px solid var(--divider);
+			flex-direction: row;
+			align-items: center;
+			padding: 16px 26px;
+			border-top: none;
 		}
 
 		.modal--fullscreen-mobile :global(.modal__footer-hint) {
-			margin-right: 0;
+			margin-right: auto;
 		}
 
 		.modal--fullscreen-mobile :global(.modal__footer-actions) {
-			flex-direction: column-reverse;
-			gap: 10px;
+			flex-direction: row;
+			gap: 12px;
 		}
 	}
 
