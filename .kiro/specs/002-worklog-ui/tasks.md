@@ -441,7 +441,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - The rhythm panel labels its evening figure with the `Evening_Hour` from context, so a server configured to 20:00 does not render "21:00"
     - _Requirements: 12.2, 12.4, 12.6, 12.7, 12.8, 12.9, 12.11, 12.12, 12.13, 12.15, 12.17, 12.18, 12.19_
 
-- [ ] 9. Feedback, loading and error states
+- [x] 9. Feedback, loading and error states
   - [x] 9.1 Build the feedback primitives
     - Build these **before** the pages, so every page consumes one implementation instead of inventing its own and being rewritten later
     - `LoadingSkeleton` takes the shape and radius of the block it stands in, on `--panel` with a 1.2 s shimmer — never a bare spinner. It has exactly three callers, because every first load is server-rendered and arrives complete: a client-side navigation, an `invalidate` after a write or on `visibilitychange`, and the statistics range switch
@@ -470,29 +470,29 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - Run `bun run check && bun run test` and walk the whole application by hand on a desktop and at a 375 pixel width, in both themes
 
 - [ ] 11. End-to-end, accessibility and visual conformance
-  - [ ] 11.1 Write the reconciliation E2E scenarios
+  - [x] 11.1 Write the reconciliation E2E scenarios
     - `tests/e2e/day.spec.ts` against the `playwright.config.ts` and the `resetDb` fixture that `001` task 1.9 writes — `workers: 1`, a real database on `TEST_DATABASE_URL`
     - Start the timer, stop at the break, start again, stop at the end; log `13:00–16:00` and assert two `Work_Block` groups with the `Break_Marker` between them, the part counter on both split blocks, and a list entry stating it was split
     - Log two hours in `Duration_Mode` with no start over the same frame and assert the segments total exactly 120 minutes across the break
     - _Requirements: 4.1, 4.6, 6.4, 7.2_
 
-  - [ ] 11.2 Write the preview and gap-filling E2E scenarios
+  - [x] 11.2 Write the preview and gap-filling E2E scenarios
     - `tests/e2e/preview.spec.ts`: shorten a session carrying an activity, assert the preview names the entry, the minutes it loses and the uncovered stretch that falls outside the frame, cancel and assert nothing changed, then repeat and confirm and assert the timeline updates
     - `tests/e2e/gaps.spec.ts`: click an uncovered stretch, assert the dialog opens prefilled with exactly that range, save, assert the uncovered total reaches zero and the day reports itself fully described
     - `tests/e2e/conflict.spec.ts`: log an activity overlapping an existing one and assert the conflict is named and nothing is written
     - _Requirements: 8.4, 9.1, 9.5, 9.7, 9.11, 10.3, 10.5, 15.5_
 
-  - [ ] 11.3 Write the open-mode E2E scenario
+  - [x] 11.3 Write the open-mode E2E scenario
     - `tests/e2e/open-mode.spec.ts`: log through the `Quick_Log` pill and log through the dialog's third mode over an equivalent frame, and assert both produce the same interval and the same stored segments
     - _Requirements: 6.6, 6.12, 6.13_
 
-  - [ ] 11.4 Write the shell E2E scenarios
+  - [x] 11.4 Write the shell E2E scenarios
     - `tests/e2e/locale.spec.ts`: switch to English mid-page and assert the text changes with no reload and no lost scroll position
     - `tests/e2e/settings.spec.ts`: open the `Settings_Menu` from the chip at both widths — the desktop menu is anchored under the chip, the mobile sheet is modal with the bottom navigation beneath the scrim and no `opacity` on the content or the tab bar; Escape closes it and focus returns to the chip; switch to the light theme and assert `data-theme` changes with no reload; reload and assert it is applied before the first paint; set the preference back to `Systém` and assert it follows the emulated `prefers-color-scheme`
     - `tests/e2e/auth.spec.ts`: log out from the `Settings_Menu` and assert the login page follows; clear the cookie and assert a browser-issued request redirects to login with the session-ended message, while a plain navigation redirect shows no such message; a wrong passphrase shows the generic message
     - _Requirements: 1.16, 1.17, 1.19, 1.20, 1.21, 1.22, 2.3, 2.5, 2.6, 2.7, 13.4, 17.5, 17.6, 17.7_
 
-  - [ ] 11.5 Write the accessibility and responsive pass
+  - [x] 11.5 Write the accessibility and responsive pass
     - **Not optional.** This is the only place Requirement 14.1 is verified at all, and the two pages most likely to break it — statistics and projects — have no mobile artboard to compare against, so nothing else would catch an overflow
     - An axe run over the timer, day, projects and statistics pages in **both** themes
     - A keyboard-only walk of the day page reaching every timeline block, opening a dialog and completing a save with no pointer
