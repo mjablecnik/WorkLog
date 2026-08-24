@@ -72,7 +72,15 @@ RUN addgroup --system worklog \
 	&& chown -R worklog:worklog /app
 USER worklog
 
-ENV PORT=3000
+# adapter-node enforces its OWN request-body ceiling (default 512K) before this app's
+# handle chain — and therefore MAX_BODY_BYTES (core/config.ts, 1 MiB) — ever sees a
+# byte of the stream; left at the default, every request between 512K and 1 MiB would
+# be rejected by adapter-node's raw body reader instead of by this app's own
+# Requirement-12.6 check, which is the one that answers PAYLOAD_TOO_LARGE in the
+# standard envelope. Set comfortably above MAX_BODY_BYTES so this app's own check is
+# always the one that fires.
+ENV PORT=3000 \
+	BODY_SIZE_LIMIT=2097152
 EXPOSE 3000
 
 CMD ["bun", "run", "build/index.js"]
