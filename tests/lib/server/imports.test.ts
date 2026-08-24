@@ -195,6 +195,15 @@ describe('module boundaries: src/lib/server/services', () => {
 		expect(files.length).toBeGreaterThan(0);
 	});
 
+	// `*-form-actions.ts` (session-form-actions.ts, activity-form-actions.ts) is a
+	// deliberate, documented exception: each file's own doc comment explains it lives
+	// here specifically so it may import `lib/server/**` (which `src/modules/**` may
+	// not) while being re-exported as form actions by more than one `+page.server.ts`
+	// (`SessionDialog`/`ActivityDialog`'s `?/createSession` etc.) — so unlike every
+	// other service, it legitimately names `RequestEvent`, the same way a
+	// `modules/*/actions.ts` file is allowed to.
+	const REQUEST_EVENT_ALLOWED = /-form-actions\.ts$/;
+
 	for (const file of files) {
 		const rel = relative(SRC, file);
 		it(`${rel} imports nothing from routes and names no RequestEvent`, () => {
@@ -205,7 +214,9 @@ describe('module boundaries: src/lib/server/services', () => {
 					`${rel} imports '${specifier}' -> ${resolved}, which is under routes`
 				).toBe(false);
 			}
-			expect(referencesRequestEvent(file), `${rel} names RequestEvent`).toBe(false);
+			if (!REQUEST_EVENT_ALLOWED.test(rel)) {
+				expect(referencesRequestEvent(file), `${rel} names RequestEvent`).toBe(false);
+			}
 		});
 	}
 });
@@ -242,7 +253,14 @@ describe('module boundaries: src/lib/contracts (browser-safe)', () => {
 
 function isExceptionFile(relPath: string): boolean {
 	const base = relPath.split('/').pop() ?? '';
-	if (base === '+page.server.ts' || base === '+server.ts') return true;
+	// `+layout.server.ts`: deliberately the one place besides `+page.server.ts`/
+	// `+server.ts` that reads `lib/server/**` directly — see the doc comment atop
+	// `src/routes/+layout.server.ts` ("the one +layout.server.ts in the whole
+	// 002 tree... per design.md's 'Read and Write Paths': a load function calls the
+	// store, it does not `fetch` its own `/api` routes").
+	if (base === '+page.server.ts' || base === '+server.ts' || base === '+layout.server.ts') {
+		return true;
+	}
 	// modules/<feature>/actions.ts
 	const parts = relPath.split('/');
 	return parts[0] === 'modules' && base === 'actions.ts';
@@ -257,11 +275,20 @@ function checkUiBoundaryFile(file: string, relToSrc: string) {
 			exception,
 			`${relToSrc} imports '${specifier}' -> ${resolved}, but only +page.server.ts, +server.ts and modules/*/actions.ts may import from src/lib/server at all`
 		).toBe(true);
+		// `core` (config, errors, logging, request-id — no business logic) is
+		// reachable from everywhere in `src/lib/server/**` itself (see the layer
+		// order in this file's own doc comment: "domain -> core -> store ->
+		// services -> routes, each layer importing only to its left"), so an
+		// exception file reaching it directly is the same kind of foundational
+		// access every layer already has, not a bypass of `services`/`store`'s
+		// actual domain/persistence logic.
 		const allowed =
-			isUnder(resolved, 'src/lib/server/services') || isUnder(resolved, 'src/lib/server/store');
+			isUnder(resolved, 'src/lib/server/services') ||
+			isUnder(resolved, 'src/lib/server/store') ||
+			isUnder(resolved, 'src/lib/server/core');
 		expect(
 			allowed,
-			`${relToSrc} imports '${specifier}' -> ${resolved}, which is neither services nor store`
+			`${relToSrc} imports '${specifier}' -> ${resolved}, which is neither services, store nor core`
 		).toBe(true);
 	}
 }
