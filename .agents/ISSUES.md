@@ -3,7 +3,27 @@
 ## [HIGH] `scripts/test-e2e.sh` always throws in `global-setup.ts` before any test runs — `DATABASE_URL`/`TEST_DATABASE_URL` contradiction, not a sandbox artifact
 - Run: 2026-08-24-0659
 - Phase: docs
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — `scripts/test-e2e.sh` no longer
+  exports `DATABASE_URL` into its own shell at all. `playwright.config.ts`'s
+  `webServer.env` already points the spawned app process at the test database
+  explicitly (it always did); the only other consumer, the one-off `migrate.sh`
+  call, now gets `DATABASE_URL` passed inline
+  (`DATABASE_URL="${TEST_DATABASE_URL}" "${SCRIPT_DIR}/migrate.sh" e2e`) instead
+  of via an ambient export. `tests/setup/db.ts`'s safety check is unchanged — it
+  now simply sees `DATABASE_URL` unset (or different) in `global-setup.ts`'s own
+  process, so the two variables are never byte-identical there and the refusal
+  never fires. Verified live using the `sandbox-docker-net` skill's pattern
+  (reaching the pre-existing `worklog-pg` container by name on the shared
+  network): (1) `DATABASE_URL="postgres://worklog:worklog@worklog-pg:5432/worklog_test"
+  ./scripts/migrate.sh e2e` applied cleanly with `DATABASE_URL` unset ambiently;
+  (2) with only `TEST_DATABASE_URL` exported (no ambient `DATABASE_URL`),
+  `bun -e "import gs from './tests/e2e/global-setup.ts'; await gs(); process.exit(0);"`
+  completed successfully — no more refusal; (3) a real
+  `bunx playwright test tests/e2e/auth.spec.ts` (and later the day/gaps/open-mode/
+  preview/conflict/settings/a11y spec files) ran end to end against the real
+  webServer + `worklog-pg`, all passing. `CLAUDE.md`'s "Known gaps" and `DOCS.md`'s
+  Known Limitations / Testing / Troubleshooting sections, which documented this as
+  a standing gap, were updated to drop it.
 - What: `scripts/test-e2e.sh` sets `DATABASE_URL="${TEST_DATABASE_URL}"` — the two
   are made byte-identical on purpose, per the script's own comment ("Point the
   app's own `DATABASE_URL` at the test database too"). `tests/setup/db.ts`
@@ -178,7 +198,30 @@
 ## [LOW] Two Pass-1 source-sweep findings not fixed this phase (UC-472, UC-423)
 - Run: 2026-08-24-0659
 - Phase: verify
-- Status: OPEN
+- Status: OPEN — UC-423 half RESOLVED (2026-08-24-0659 repairs pass); UC-472
+  still needs a product decision and was deliberately left alone (out of scope
+  for a bug-fix pass — it needs a person to decide whether the flag colours are
+  an intentional exception or should be retinted, not a code fix).
+- UC-423 fix: flipped all 7 files' `@media (max-width: 767px)` blocks to
+  `@media (min-width: 768px)`, inverting each block's declarations (the mobile
+  values become the unconditional base, the desktop values move into the
+  `min-width` override) — `src/routes/login/+page.svelte`,
+  `src/modules/projects/pages/ProjectsPage.svelte`,
+  `src/lib/ui/overlays/Modal.svelte`, `src/lib/ui/layout/Section.svelte`,
+  `src/lib/ui/components/DataTable.svelte`, `src/lib/ui/layout/PageHeader.svelte`,
+  `src/lib/ui/layout/Shell.svelte`. `grep -rn "@media (max-width" src` now
+  returns nothing. Verified: `bun run check`/`bun run lint` clean;
+  `bunx playwright test tests/e2e/a11y.spec.ts` (the 320px sweep plus the axe
+  passes in both themes) — 12/12 pass; inspected the actual built CSS
+  (`bun run build`, then read the emitted chunks) for `login/+page.svelte`,
+  `ProjectsPage.svelte`, `Modal.svelte` and `Shell.svelte` directly — each now
+  shows the mobile value as the unconditional rule and the desktop value
+  correctly wrapped in `@media (width>=768px)` (the minifier's equivalent of
+  `min-width: 768px`), reproducing the pre-fix rendering exactly.
+  `Section.svelte`/`PageHeader.svelte`/`DataTable.svelte` turned out to be
+  unused template-scaffold components (no route or test imports any of them),
+  so their flip could only be verified via `check`/`lint`, not a live render —
+  noted here rather than silently claimed as visually confirmed.
 - What: two findings from a source-only sweep against `.agents/USE_CASES.md` UC-471,
   UC-472, UC-473, UC-483, UC-484 (token discipline) and UC-246, UC-341, UC-344,
   UC-373, UC-423 (server-owned computation / breakpoint discipline):
@@ -208,9 +251,7 @@
   chose to spend the phase's fix budget on the contrast violations already flagged
   as one of the nine pre-written expected failures instead.
 - Next: UC-472 — get a decision on the flag-colour exception and either write it into
-  `requirements.md`/`design.md` or retint. UC-423 — flip the 7 files' media queries to
-  `min-width`, then re-run `tests/e2e/a11y.spec.ts`'s 320px sweep and a manual check at
-  768px in both directions to confirm no visual regression.
+  `requirements.md`/`design.md` or retint. UC-423 — done, see above.
 
 ## [MEDIUM] The E2E suite is not runnable from a clean checkout
 - Run: 2026-08-24-0659
@@ -421,7 +462,27 @@
 ## [LOW] "clicking Odhlásit se currently does nothing" now ends up on /login instead of staying put
 - Run: 2026-08-24-0659
 - Phase: build
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — root-caused, not a test-infra
+  artifact: the underlying product bug ("Logging out does nothing", see that
+  entry below) was already fixed by an earlier commit
+  (`d8b4c69 fix(auth): defer closing the settings menu until after logout
+  submits`) — `handleLogoutSubmit()` in `SettingsMenu.svelte` now defers
+  `open = false` to a macrotask instead of unmounting the form synchronously
+  inside its own `onsubmit`, so the native POST actually reaches `/logout`.
+  Clicking "Odhlásit se" genuinely navigates to `/login` now — the test that
+  documented the old broken behaviour was simply never updated to match. Ran
+  `bunx playwright test tests/e2e/auth.spec.ts -g "does nothing"` in isolation
+  first (ruling out cross-test session leakage, per the original "Next" step):
+  still landed on `/login`, confirming this is real, current behaviour, not
+  order-dependent. Rewrote the test
+  (`tests/e2e/auth.spec.ts`, "clicking \"Odhlásit se\" ends the session and lands
+  on the login page") to assert the correct current behaviour — real navigation
+  to `/login`, `Odemknout` visible, and a follow-up `page.goto('/')` also landing
+  back on `/login` (proving the session actually ended server-side, not just a
+  client-side navigation). Also renamed and cleaned up the sibling "logging out
+  via the API" test's now-stale "(see ISSUES.md for the broken UI control)"
+  title, since the control is no longer broken. Verified: the full
+  `tests/e2e/auth.spec.ts` file (5 tests) passes.
 - What: `tests/e2e/auth.spec.ts`'s test of that name (still documenting the
   known logout-button bug — `.agents/ISSUES.md`, "Logging out does nothing") now
   fails a DIFFERENT assertion than before: `expect(page.url()).not.toContain
@@ -646,7 +707,12 @@
 ## [MEDIUM] design.md's Property 1 wording contradicts angleOf's required periodicity
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — documentation-only fix, as
+  planned: reworded `.kiro/specs/002-worklog-ui/design.md`'s Property 1 to state
+  the mod-360 congruence explicitly ("when `b − a` is exactly 24 hours the raw
+  difference SHALL be congruent to 0 mod 360 (i.e. `0`, not `360`...)") instead
+  of "SHALL equal exactly 360". No code changed — the implementation and its
+  property test were already correct.
 - What: design.md's "Property 1: The gauge mapping is monotone and turns exactly once
   per day" states literally that `angleOf(b) − angleOf(a)` "SHALL equal exactly 360
   when `b − a` is 24 hours." Against the actual, correct implementation this is
@@ -739,7 +805,29 @@
 ## [MEDIUM] timeline-geometry.ts's `continues` flag uses a UTC-midnight approximation
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — `layOutDay` now takes an
+  optional 8th parameter, `dayBounds?: Interval` (the real Logical_Day boundary —
+  the exact `DayResponse.bounds` the day page's load function already computes
+  via `dayResolver.bounds(date)`). When supplied, `continues` is computed as
+  `now.getTime() > dayBounds.end.getTime()` for an open, non-stale session —
+  the actual boundary instant, no UTC-midnight approximation involved. When
+  omitted (every pre-existing unit test that predates this parameter), it falls
+  back to the previous UTC-calendar-date approximation, so no existing test
+  needed to change. `DayTimeline.svelte` gained a required `dayBounds: Interval`
+  prop, threaded straight into `layOutDay`; `src/routes/day/[date]/+page.svelte`
+  passes `dayBounds={data.bounds}`. Added three new unit tests in
+  `tests/modules/day/components/timeline-geometry.test.ts` ("continues, against
+  an explicit dayBounds") covering: a session that started before UTC midnight
+  but is still within a 03:00-start Logical_Day (`continues: false`, where the
+  old UTC approximation would have wrongly said `true`); the same session once
+  `now` has actually passed the real boundary end (`continues: true`); and the
+  fallback behaviour when `dayBounds` is omitted. Verified:
+  `./scripts/run-vitest.sh run tests/modules/day/components/timeline-geometry.test.ts
+  tests/modules/day/components/timeline-geometry.property.test.ts
+  tests/modules/day/components/day-timeline.test.ts` — 31/31 pass; `bun run check`
+  and `bun run lint` clean; the real day page verified live via
+  `bunx playwright test tests/e2e/day.spec.ts tests/e2e/gaps.spec.ts
+  tests/e2e/open-mode.spec.ts` — all pass against the rebuilt app.
 - What: `layOutDay` (`src/modules/day/components/timeline-geometry.ts`) receives no
   Logical_Day boundary (no `DAY_START_HOUR`, no time zone), so it cannot compute the
   real day boundary to decide whether an open session's block "continues" past the
@@ -940,7 +1028,24 @@
 ## [LOW] scripts/migrate.sh ignores a DATABASE_URL already set in the environment
 - Run: 2026-08-23-2200
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — changed the `.env` load
+  loop's `export "${KEY}=${VALUE}"` to conditional-assign:
+  `[[ -z "${!KEY:-}" ]] && export "${KEY}=${VALUE}"`, so a value already present
+  in the environment wins, matching the header comment's documented contract.
+  Checked the other scripts using the identical loader pattern
+  (`scripts/backup.sh`, `scripts/run-vite.sh`) — both had the exact same bug (the
+  latter's own comment even documents the intended "already a real environment
+  variable... is never touched by this" contract, which the unconditional
+  `export` was silently breaking for a caller like `scripts/test-e2e.sh`
+  pre-exporting `DATABASE_URL`) — and fixed both identically.
+  `scripts/deploy.sh`'s superficially similar loop builds a `SECRET_ARGS` array
+  rather than exporting into the shell, so it was not affected and was left
+  alone. Verified: `DATABASE_URL="postgres://worklog:worklog@worklog-pg:5432/worklog_test"
+  ./scripts/migrate.sh e2e` (against the pre-existing `worklog-pg` container, per
+  the `sandbox-docker-net` skill) applied cleanly against the override target
+  with no `.env`/`.env.e2e` present to conflict, and the same script is now what
+  `scripts/test-e2e.sh` itself relies on for its own `DATABASE_URL` fix (see
+  the `test-e2e.sh`/`db.ts` contradiction entry above).
 - What: The script's own header comment says it "reads `DATABASE_URL` directly from
   the environment or from `.env.<environment>`", but the code unconditionally
   `export`s every key from `.env`/`.env.<environment>` (to survive the `$`-bearing
@@ -963,7 +1068,17 @@
 ## [LOW] FIX-TOUCHING and FIX-WEEK fixtures collide on 2026-08-19
 - Run: 2026-08-23-2200
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — chose the "note, don't move"
+  option: no use case in the current `USE_CASES.md` catalogue actually seeds
+  both fixtures together (the collision was specific to VERIFY_TASKS.md's own
+  step grouping, a since-cleared `tmp/` handover file, not anything in the
+  catalogue itself), and `FIX-WEEK`'s dates are referenced by explicit date
+  elsewhere (e.g. UC-181's `from=2026-08-17...to=2026-08-20`), so moving the
+  fixture's own dates would have needed cascading edits across several unrelated
+  UCs for no behavioural gain. Instead added an explicit collision note directly
+  under `FIX-WEEK`'s catalogue entry: "Collides with FIX-TOUCHING — ... seed the
+  two fixtures in separate passes — never in the same database at the same
+  time."
 - What: `.agents/USE_CASES.md`'s fixture catalogue: `FIX-TOUCHING` seeds three sessions
   on `2026-08-19`; `FIX-WEEK` seeds one session on each of `2026-08-17/18/19`. Both
   claim `2026-08-19`, and VERIFY_TASKS step 31 groups seeding both in the same pass —
@@ -1215,19 +1330,32 @@ and marked accordingly.
 ## [LOW] An idempotent replay ignores the status it stored
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
-- What: `idempotency_keys.status` is written as the literal `201` and never read back;
-  the route re-hardcodes `201` when replaying.
-- Impact: Requirement 12.16 asks for the original status to be retained **and
-  replayed**. Today every replayable write is a 201, so nothing is observably wrong —
-  but the column is decorative and the next replayable status will be wrong silently.
-- Tried: Nothing — found by reading. UC-059 checks the replay body and status.
-- Next: Replay `status` from the stored row.
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — `createActivity`
+  (`src/lib/server/services/activities.ts`) now returns `status` alongside its
+  response: the replay branch returns `{...existing.response, status:
+  existing.status}` (reading the stored column back, instead of assuming 201),
+  and the genuine-create branch returns `{...response, status: 201}` (the
+  literal status `recordIdempotencyResponse` stores, kept in sync explicitly
+  rather than duplicated by inference). `src/routes/api/activities/+server.ts`'s
+  `POST` handler destructures `{ status, ...result }` from the service call and
+  answers `json(result, { status })` instead of hardcoding `json(result, {
+  status: 201 })` — `status` itself is never leaked into the response body.
+  Verified: `bun run test` (52 files) passes, including
+  `tests/api/activities.test.ts`'s idempotency-replay test (still asserts
+  `replay.status === 201`, now because the stored column really says 201, not
+  because the route hardcodes it); `bun run check`/`bun run lint` clean.
 
 ## [LOW] /logout is exempt from authentication
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659 repairs pass) — decided in favour of fixing
+  the requirement's enumeration to match the correct, intentional code behaviour
+  (never the reverse — the code correctly lets an already-expired session still
+  log out). `.kiro/specs/001-worklog-domain-api/requirements.md`'s Requirement
+  11.1 now reads "...except `GET /api/health`, the login route, the logout
+  route, a CORS preflight, and the static assets..., so that the login page
+  renders with its stylesheet and hydrates, and so that a session that has
+  already expired can still successfully log out." No code changed.
 - What: `src/hooks.server.ts:361` exempts `/logout` alongside `/api/health`, the login
   route and the static assets. Requirement 11.1 enumerates the exemptions and does not
   include it.
@@ -1500,23 +1628,30 @@ and marked accordingly.
 
 ## [HIGH] Every fresh visit (system theme preference) 500s on the server — the whole app is unreachable for a first-time browser
 - Run: 2026-08-24 (task group 11, E2E)
-- Status: RESOLVED (2026-08-24, same day, by a peer agent working the same task
-  group) — `writeResolvedCookie()`/`writePreferenceCookie()` in
-  `src/lib/theme/theme.svelte.ts` now carry the same `typeof document ===
-  'undefined'` guard `applyDomTheme()` already had. Verified live by this agent
-  after rebuilding (`bun run build` — `bun run preview` serves the prebuilt
-  output, so a source fix alone does not take effect without a fresh build) and
-  re-running the exact reproduction: `GET /login` with no cookies at all now
-  answers 200, not 500. The `tests/e2e/fixtures.ts` cookie-seeding workaround
-  (`seedNonSystemThemeCookie`) is left in place — it is harmless now (dark/light
-  are valid preferences either way) and every spec in this suite already depends
-  on it; removing it and adding the now-possible reload-under-`system` scenario
-  is follow-up work, not done as part of this fix.
 - Phase: impl (found while writing the E2E suite — this is the first time any task
   actually drives the running app over real HTTP from a browser; every earlier
   checkpoint that would have caught it — tasks 2, 4 and 10's "walk it by hand"
   checkpoints — is still unchecked in `tasks.md`)
-- Status: OPEN
+- Status: RESOLVED (2026-08-24, same day, by a peer agent working the same task
+  group; re-verified 2026-08-24-0659 repairs pass) — `writeResolvedCookie()`/
+  `writePreferenceCookie()` in `src/lib/theme/theme.svelte.ts` now carry the same
+  `typeof document === 'undefined'` guard `applyDomTheme()` already had (commit
+  `6e87a30 fix(theme): guard the cookie writers against running during SSR`).
+  Re-verified this pass: read the current source (guard present on both
+  functions), rebuilt (`bun run build`), and confirmed `GET /login` with zero
+  cookies renders 200 across a full real Playwright run (auth/day/gaps/open-mode/
+  preview/conflict/settings/a11y spec files all passed against the rebuilt
+  output). The earlier "Next" step's second half — deleting
+  `tests/e2e/fixtures.ts`'s `seedNonSystemThemeCookie` workaround — was
+  investigated and deliberately NOT done: it is load-bearing for something other
+  than the crash it was originally written to route around.
+  `login()`/`auth.spec.ts` call it to pick a *specific* deterministic theme (not
+  just "not system"), and `a11y.spec.ts` explicitly relies on `login(page,
+  {theme})` to drive dark and light through their own dedicated axe passes —
+  removing the helper would remove the ability to deterministically choose a
+  theme for those tests, an unrelated purpose from the bug it was patched around.
+  Left in place, with its doc comment left as historical context (the crash it
+  worked around is fixed; the determinism it also provides is not).
 - What: `src/lib/theme/theme.svelte.ts`'s `writeResolvedCookie()` (used by both
   `document.cookie` writers, `writePreferenceCookie`/`writeResolvedCookie`) has no
   `typeof document === 'undefined'` guard, unlike its sibling `applyDomTheme()` which
@@ -1566,11 +1701,10 @@ and marked accordingly.
   `settings.spec.ts` documents this explicitly at the point it matters. No spec
   reloads or navigates while the theme preference is `system`, because that would
   hit this bug rather than test anything.
-- Next: add the same `typeof document === 'undefined'` guard `applyDomTheme()`
-  already has to `writeResolvedCookie()` and `writePreferenceCookie()` in
-  `src/lib/theme/theme.svelte.ts`, then delete the cookie-seeding workaround from
-  `tests/e2e/fixtures.ts` and add the reload-under-`system` scenario the workaround
-  is currently avoiding.
+- Next: none — resolved. (Historical: the original fix suggestion also proposed
+  deleting `tests/e2e/fixtures.ts`'s cookie-seeding workaround and adding a
+  reload-under-`system` scenario; see the Status line above for why the helper
+  was kept instead.)
 
 ## [HIGH] `GET /stats` 500s — `src/routes/stats/+page.svelte` was never written
 - Run: 2026-08-24 (task group 11, E2E)
