@@ -8,7 +8,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 
 ## Tasks
 
-- [ ] 1. Foundations — dependencies, tokens, themes, shell
+- [x] 1. Foundations — dependencies, tokens, themes, shell
   - [x] 1.1 Add the interface dependencies
     - Runtime: `sveltekit-superforms` ^2.27 and its Zod adapter, `tailwindcss` ^4 with `@tailwindcss/vite`
     - Dev: `@testing-library/svelte` ^5, `@testing-library/jest-dom`, `jsdom`, `@axe-core/playwright`
@@ -152,7 +152,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - [ ] 2. Checkpoint — the shell runs
   - Run `bun run check && bun run test tests/lib` and confirm the application starts, login works, the shell renders in both themes, the theme survives a reload without a flash, and the language switches without a reload
 
-- [ ] 3. Day timeline
+- [x] 3. Day timeline
   - [x] 3.1 Implement the day layout in `src/modules/day/components/timeline-geometry.ts`
     - `layOutDay(sessions, entries, uncovered, availablePx, density, now, maxOpenSessionHours)` returns one block per `Work_Session` with its segments, plus the breaks between them
     - Follow the design's five-step algorithm exactly, because it is normative and the artboard heights are only illustrative: reserve the fixed rows — `BLOCK_HEAD_PX`, `HEAD_GAP_PX`, `BREAK_MARKER_PX`, `BLOCK_TO_BREAK_PX` **and** `BLOCK_GAP_PX`, since leaving the two gap constants out makes Property 2 false — distribute the remainder proportionally inside each block, lift anything under `MIN_BLOCK_PX` and repay the deficit from the unpinned segments in descending height order one step at a time, quantise each height **down** to `HEIGHT_STEP_PX` inside `layOutDay` and give each block's remainder to that block's tallest segment. Quantise in this one place only — the component reads `heightPx` and picks a class, it does not round
@@ -223,7 +223,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 - [ ] 4. Checkpoint — the day is visible
   - Seed a day with a break and an activity spanning it, then confirm the timeline draws two `Work_Block` groups with the `Break_Marker` between them, the split blocks carry the part counter, the uncovered stretch is drawn in place, and the summary panel's totals match what the timeline shows
 
-- [ ] 5. Writes and the change preview
+- [x] 5. Writes and the change preview
   - [x] 5.1 Implement the dry-run client in `src/modules/day/dry-run.ts`
     - Five functions, because five writes can destroy something: `previewCreateActivity`, `previewPatchActivity`, `previewCreateSession`, `previewPatchSession` and `previewDeleteSession`. Each maps the response into `ActivityPreview` or `SessionPreview`, keeping the server's field names and holding the segments inside `entry`
     - `DELETE /api/sessions/{id}` has no body, so it carries `dryRun` and `previewToken` as **query parameters**
@@ -298,7 +298,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/modules/day/components/activity-dialog.test.ts`: the mode switch offers three modes and changes the required fields; `Duration_Mode` with no start shows the inferred anchor; `Open_Mode` offers neither end nor duration; prefill from a gap fills both times exactly; defaults come from the most recent entry; a validation failure keeps the typed input; the preview renders under the form; Escape closes and returns focus to the opener
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.9, 6.10, 6.11, 6.15_
 
-- [ ] 6. Timer page and the day gauge
+- [x] 6. Timer page and the day gauge
   - [x] 6.1 Implement the elapsed store in `src/modules/timer/elapsed.svelte.ts`
     - A rune-based store holding **one** number — the elapsed seconds of the open session, which is exactly what `GET /api/sessions/current` returns — ticking once per second, with `sync()` replacing it from the server response, plus whether the session is stale
     - Do **not** keep `trackedSecondsToday` in the store: the endpoint does not return it, so nothing could refresh it. The day's totals come from the page data
@@ -368,7 +368,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/modules/timer/components/timer-control.test.ts`: start shown when idle and stop when running; the elapsed readout advances; `sync()` overrides a drifted local count; a failed action restores the previous state and shows the reason; Enter and Space both activate; the three figures render in order with the uncovered one in the accent
     - _Requirements: 3.1, 3.2, 3.3, 3.7, 3.10, 3.13, 3.15_
 
-- [ ] 7. Projects
+- [x] 7. Projects
   - [x] 7.1 Build the projects page
     - List every `Project` with its total `Covered_Time` over the last thirty `Logical_Day` values — summed in `src/routes/projects/+page.server.ts` from the store's day summaries over that range, not from a second endpoint — its swatch beside the name in a 32 pixel tinted icon box, and a share bar; content max 940
     - Draw each row's bar as that project's **share of the range's total** `Covered_Time`, the same quantity the statistics breakdown uses, not relative to the largest project as the artboard drew it
@@ -394,7 +394,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - `tests/modules/projects/components/project-picker.test.ts`: filtering by substring; archived projects absent; inline creation inserts and selects without closing the dialog; full keyboard navigation; every option names the project as text
     - _Requirements: 6.8, 11.6, 14.5, 14.11_
 
-- [ ] 8. Statistics
+- [x] 8. Statistics
   - [x] 8.1 Build the statistics queries and range control
     - `src/routes/stats/+page.server.ts` reads the day summaries from the store for the selected day, week or month range — **not** through `/api/days`, which exists for scripts — asking for the per-day intervals only when the `Day_Rhythm_Strip` will be drawn
     - Put the aggregation in `src/modules/stats/aggregate.ts` as pure functions over `DaySummary[]`, importing nothing from `lib/server/`; the load function passes data in
