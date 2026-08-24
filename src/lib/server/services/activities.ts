@@ -33,6 +33,19 @@ import {
 	canonicalRequestHash
 } from '../store/idempotency';
 
+/**
+ * Bounds of the union of every `Logical_Day` that `[start, end)` touches — the whole
+ * span design.md says a `Preview_Token` must fingerprint, not just the day `start`
+ * falls in. An interval spanning two Logical_Days left the second day unfingerprinted
+ * before this existed, so a change there could not invalidate a stale preview
+ * (Requirements 14.7, 14.8).
+ */
+function spanBounds(dayResolver: DayResolver, start: Date, end: Date): Interval {
+	const windows = dayResolver.range(start, end);
+	if (windows.length === 0) return dayResolver.bounds(dayResolver.dateOf(start));
+	return { start: windows[0].start, end: windows[windows.length - 1].end };
+}
+
 function reclipPortsFor(tx: Tx): ReclipPorts {
 	return {
 		trackedIntervals: (window, now) => sessionsStore.trackedIntervals(tx, window, now),
@@ -351,7 +364,7 @@ export async function createActivity(
 		const fingerprintWindow: Interval =
 			mode === 'duration'
 				? (dayBounds as Interval)
-				: dayResolver.bounds(dayResolver.dateOf((requested as Interval).start));
+				: spanBounds(dayResolver, (requested as Interval).start, (requested as Interval).end);
 		const previousToken = await currentFingerprint(tx, fingerprintWindow);
 		assertFreshPreview(previousToken, args.previewToken);
 
@@ -555,7 +568,11 @@ export async function patchActivity(
 		if (args.projectId !== undefined) await assertProjectUsable(tx, args.projectId);
 
 		if (kind === 'meta') {
-			const fingerprintWindow = dayResolver.bounds(dayResolver.dateOf(existing.requestedStartedAt));
+			const fingerprintWindow = spanBounds(
+				dayResolver,
+				existing.requestedStartedAt,
+				existing.requestedEndedAt
+			);
 			const previousToken = await currentFingerprint(tx, fingerprintWindow);
 			assertFreshPreview(previousToken, args.previewToken);
 
@@ -621,9 +638,7 @@ export async function patchActivity(
 		const window: Interval =
 			kind === 'duration' ? (dayBounds as Interval) : (requested as Interval);
 		const fingerprintWindow =
-			kind === 'duration'
-				? (dayBounds as Interval)
-				: dayResolver.bounds(dayResolver.dateOf(window.start));
+			kind === 'duration' ? (dayBounds as Interval) : spanBounds(dayResolver, window.start, window.end);
 		const previousToken = await currentFingerprint(tx, fingerprintWindow);
 		assertFreshPreview(previousToken, args.previewToken);
 
@@ -786,7 +801,11 @@ export async function deleteActivity(
 
 		const config = getConfig();
 		const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
-		const fingerprintWindow = dayResolver.bounds(dayResolver.dateOf(existing.requestedStartedAt));
+		const fingerprintWindow = spanBounds(
+			dayResolver,
+			existing.requestedStartedAt,
+			existing.requestedEndedAt
+		);
 		const previousToken = await currentFingerprint(tx, fingerprintWindow);
 		assertFreshPreview(previousToken, args.previewToken);
 

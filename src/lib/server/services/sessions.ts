@@ -226,6 +226,24 @@ export async function stopSession(
 		);
 		assertFreshPreview(previousToken, args.previewToken);
 
+		// Closing a Stale_Session can turn its uncapped span into one long enough to
+		// overlap a closed session that was written while the timer was still running
+		// (the timer's own span is checked against new writes, but nothing checked the
+		// reverse until now) — proactively, for the same reason every other write here
+		// checks before it acts: once `closeOpenSession` fails, the transaction aborts
+		// and there is no clean way to build a rich error afterwards.
+		const conflicts = await sessionsStore.sessionsConflictingWith(
+			tx,
+			afterWindow[0],
+			open.id,
+			args.now
+		);
+		if (conflicts.length > 0) {
+			throw apiError('SESSION_OVERLAP', 'That would overlap another session.', {
+				conflicts: conflicts.map((c) => toConflictDetail(c, args.now))
+			});
+		}
+
 		const session = await sessionsStore.closeOpenSession(tx, endedAt);
 		return finishWrite(
 			tx,
