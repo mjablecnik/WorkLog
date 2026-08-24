@@ -692,60 +692,72 @@
 	initialFocusEl={resolvedInitialFocusEl}
 	onclose={onClose}
 >
-	{#if phase === 'editing'}
-		<form bind:this={formEl} class="session-dialog session-dialog--{density}" onsubmit={handleSubmit}>
-			<div class="session-dialog__grid session-dialog__grid--{density}">
-				<FormField label={m.session_field_start()} required error={startMessage}>
-					{#snippet children({ id, describedBy })}
-						<div bind:this={startFieldWrapperEl}>
-							<TimeInput
-								{id}
-								date={startDateAnchor}
-								{timeZone}
-								{density}
-								bind:value={$form.start}
-								required
-								error={startMessage !== undefined}
-								aria-describedby={describedBy}
-							/>
-						</div>
-						{#if startChanged}
-							<span class="session-dialog__old-value">{originalStartText}</span>
-						{/if}
-					{/snippet}
-				</FormField>
+	<!-- design.md / the SessionEdit artboard: the two time fields (the changed one
+	     with its old value struck through) and the delete link stay visible and
+	     mounted throughout Confirming/Saving, above the consequence panel — not
+	     replaced by it. Confirmed via the verify phase's artboard comparison that
+	     this dialog previously swapped the whole form out for `ChangePreview` once
+	     `phase` left 'editing', losing both. The fields become read-only outside
+	     'editing' (nothing here should change what a pending preview was computed
+	     against); the delete link stays fully live regardless of `phase` — it opens
+	     its own independent `ConfirmDialog` (`openDeleteConfirm`/`deleteConfirmOpen`)
+	     rather than touching this dialog's own `phase`. -->
+	<form bind:this={formEl} class="session-dialog session-dialog--{density}" onsubmit={handleSubmit}>
+		<div class="session-dialog__grid session-dialog__grid--{density}">
+			<FormField label={m.session_field_start()} required error={startMessage}>
+				{#snippet children({ id, describedBy })}
+					<div bind:this={startFieldWrapperEl}>
+						<TimeInput
+							{id}
+							date={startDateAnchor}
+							{timeZone}
+							{density}
+							bind:value={$form.start}
+							required
+							disabled={phase !== 'editing'}
+							error={startMessage !== undefined}
+							aria-describedby={describedBy}
+						/>
+					</div>
+					{#if startChanged}
+						<span class="session-dialog__old-value">{originalStartText}</span>
+					{/if}
+				{/snippet}
+			</FormField>
 
-				<FormField label={m.session_field_end()} required={endFieldRequired} error={endMessage}>
-					{#snippet children({ id, describedBy })}
-						<div bind:this={endFieldWrapperEl}>
-							<TimeInput
-								{id}
-								date={endDateAnchor}
-								{timeZone}
-								{density}
-								bind:value={$form.end}
-								required={endFieldRequired}
-								error={endMessage !== undefined}
-								aria-describedby={describedBy}
-							/>
-						</div>
-						{#if endChanged}
-							<span class="session-dialog__old-value">{originalEndText}</span>
-						{/if}
-					{/snippet}
-				</FormField>
-			</div>
+			<FormField label={m.session_field_end()} required={endFieldRequired} error={endMessage}>
+				{#snippet children({ id, describedBy })}
+					<div bind:this={endFieldWrapperEl}>
+						<TimeInput
+							{id}
+							date={endDateAnchor}
+							{timeZone}
+							{density}
+							bind:value={$form.end}
+							required={endFieldRequired}
+							disabled={phase !== 'editing'}
+							error={endMessage !== undefined}
+							aria-describedby={describedBy}
+						/>
+					</div>
+					{#if endChanged}
+						<span class="session-dialog__old-value">{originalEndText}</span>
+					{/if}
+				{/snippet}
+			</FormField>
+		</div>
 
-			{#if mode === 'edit' && session}
-				<button type="button" class="session-dialog__delete-link" onclick={openDeleteConfirm}>
-					{m.session_delete_link({
-						from: originalStartText,
-						to: originalEndText === '' ? timeOf(now) : originalEndText
-					})}
-				</button>
-			{/if}
-		</form>
-	{:else}
+		{#if mode === 'edit' && session}
+			<button type="button" class="session-dialog__delete-link" onclick={openDeleteConfirm}>
+				{m.session_delete_link({
+					from: originalStartText,
+					to: originalEndText === '' ? timeOf(now) : originalEndText
+				})}
+			</button>
+		{/if}
+	</form>
+
+	{#if phase !== 'editing'}
 		<ChangePreview
 			preview={displayedPreview}
 			loading={displayedLoading}
