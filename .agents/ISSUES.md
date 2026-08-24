@@ -1,5 +1,29 @@
 # Issues
 
+## [LOW] `README.md` and `CLAUDE.md` still describe the fixed E2E-harness bug as current
+- Run: 2026-08-24-0659
+- Phase: report
+- Status: OPEN
+- What: the repairs pass (`9f84503 docs: remove known-gaps notes for bugs fixed this
+  pass`) removed the `DATABASE_URL`/`TEST_DATABASE_URL` notes from `DOCS.md` — its
+  Known Limitations, Testing and Troubleshooting entries are all gone — but two
+  sibling notes survived. `README.md` (Testing section) still carries a
+  `> [!WARNING]` block stating that `test:e2e:local` "currently fails immediately,
+  before any browser opens", and it links to `DOCS.md#troubleshooting` for a
+  troubleshooting entry that no longer exists. `CLAUDE.md`'s Commands block still
+  annotates `bun run test:e2e:local` with `# ... — currently broken, see "Known gaps"`,
+  while `CLAUDE.md`'s own `## Known gaps` section (correctly) no longer mentions it and
+  lists only the mobile FAB.
+- Impact: both files tell a reader that a command which now works is broken, and steer
+  them away from `test:all` — documented elsewhere as the intended gate before pushing.
+  The `README.md` cross-reference is also now dangling. No code is affected.
+- Tried: nothing — found while reading the three documentation files during the report
+  phase, which does not fix. Verified by reading all three files at `1be51fa`: the
+  `DOCS.md` entries are genuinely gone and `scripts/test-e2e.sh`'s fix is genuinely
+  present (`019b664`).
+- Next: delete `README.md`'s `[!WARNING]` block, and drop the `— currently broken, see
+  "Known gaps"` suffix from `CLAUDE.md`'s `test:e2e:local` line. Two edits, no code.
+
 ## [HIGH] `scripts/test-e2e.sh` always throws in `global-setup.ts` before any test runs — `DATABASE_URL`/`TEST_DATABASE_URL` contradiction, not a sandbox artifact
 - Run: 2026-08-24-0659
 - Phase: docs
