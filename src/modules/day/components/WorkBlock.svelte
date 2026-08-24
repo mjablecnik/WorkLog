@@ -254,6 +254,14 @@
 	.wb {
 		display: flex;
 		flex-direction: column;
+		/* HEAD_GAP_PX (timeline-geometry.ts) -- the head-to-segment-column space
+		   layOutDay already reserves in its fixed-row budget (Property 2). Desktop 8,
+		   mobile 6 below. Without this the DOM's rendered height undershoots what the
+		   layout algorithm budgeted for every block by this amount. */
+		gap: 8px;
+	}
+	.wb--mobile {
+		gap: 6px;
 	}
 
 	.wb-head-btn {
