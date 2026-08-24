@@ -81,11 +81,21 @@ export const theme: { readonly preference: ThemePreference; readonly current: Th
 	}
 };
 
+/** Both cookie writers guard `document` exactly like `applyDomTheme` below —
+ * `initTheme()` calls `writeResolvedCookie()` unconditionally whenever the
+ * preference is `'system'`, and `+layout.svelte` calls `initTheme()` as a
+ * top-level statement that also runs during SSR. Without this guard, every
+ * visitor whose `worklog_theme` cookie is absent or `'system'` (which is every
+ * first-time visitor — `hooks.server.ts` defaults `locals.theme` to `'system'`
+ * with no cookie) hits `ReferenceError: document is not defined` on the server,
+ * 500ing the entire application. Found live during task 11's E2E pass. */
 function writePreferenceCookie(next: ThemePreference): void {
+	if (typeof document === 'undefined') return;
 	document.cookie = `${THEME_COOKIE_NAME}=${next}; path=/; max-age=${THEME_COOKIE_MAX_AGE_SECONDS}; samesite=lax`;
 }
 
 function writeResolvedCookie(next: Theme): void {
+	if (typeof document === 'undefined') return;
 	document.cookie = `${THEME_RESOLVED_COOKIE_NAME}=${next}; path=/; max-age=${THEME_COOKIE_MAX_AGE_SECONDS}; samesite=lax`;
 }
 
