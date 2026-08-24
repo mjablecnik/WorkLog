@@ -1,5 +1,69 @@
 # Issues
 
+## [LOW] scripts/start-docker.sh's --network host untestable in this sandbox
+- Run: 2026-08-23-2200
+- Phase: impl
+- Status: RESOLVED (2026-08-23-2200)
+- What: Task 12's checkpoint (`./scripts/start-docker.sh`, apply migrations, exercise
+  the worked example, confirm `/api/health`, `./scripts/backup.sh`,
+  `./scripts/stop-docker.sh`) could not be run through `start-docker.sh` literally as
+  written: it runs the container with `--network host` (correct for a real Linux
+  deployment reaching a `DATABASE_URL=localhost` Postgres), but this sandbox's Docker
+  daemon is itself accessed through a remote/proxied setup where `worklog-pg` (the
+  Postgres this session has used throughout) is only reachable by container name on
+  the `trayline-net` bridge network — `--network host` bypasses Docker's embedded DNS
+  entirely, so the container could never resolve it.
+- Impact: None on the shipped artifact — `start-docker.sh` itself was not modified.
+  This is purely a sandbox networking limitation (documented in the
+  `sandbox-docker-net` skill: host-published ports are unreachable from this shell).
+- Tried: Ran the equivalent verification directly instead — built the exact image
+  `scripts/build.sh` produces, ran it with `docker run --network trayline-net`
+  (bridge, not host) and `--env-file .env`, then ran every checkpoint step against it:
+  `scripts/migrate.sh` inside the container reported up to date, `/api/health`
+  answered `{"status":"ok",...}` with the correct version/timezone/day start, the
+  worked Clipping example (13:00-16:00 over the 08:00-14:48/15:12-18:00 frame)
+  produced the documented two segments with the break discarded, `scripts/backup.sh`
+  produced a real 13KB `pg_dump` with 8 `COPY` statements (one per table), and the
+  container was torn down cleanly. Every part of `start-docker.sh` this substitution
+  could not itself exercise (the `--network host` flag) was already covered
+  structurally: `docker run --env-file .env` is the only meaningfully different piece,
+  and that pattern is identical to what `docker run --network trayline-net --env-file
+  .env` just verified.
+- Next: None — re-verify with the literal script on a real machine or CI runner where
+  Postgres is reachable at `localhost`, but nothing here suggests it would behave
+  differently.
+
+## [LOW] bun audit reports two transitive vulnerabilities blocked upstream
+- Run: 2026-08-23-2200
+- Phase: impl
+- Status: OPEN
+- What: `bun audit` (checkpoint task 12) reports two: `cookie@0.6.0` (low —
+  GHSA-pxg6-pf52-xh8x, out-of-bounds characters accepted in a cookie name/path/
+  domain, fixed in cookie >=0.7.0) via `@sveltejs/kit@2.70.3 > cookie`; and
+  `esbuild@0.18.20/0.25.12/0.28.2` (moderate — GHSA-67mh-4wv8-2f99, esbuild's dev
+  server accepts requests from any origin, fixed in esbuild >0.24.2) via
+  `drizzle-kit > @esbuild-kit/core-utils@3.3.2 > esbuild` and `vite > tsx > esbuild`.
+- Impact: Low in practice for both. Every cookie this application ever sets uses a
+  fixed, hardcoded name (`worklog_session`, `worklog_locale`, `worklog_theme`,
+  `worklog_theme_resolved`) — never user-controlled input — so the `cookie` advisory's
+  attack surface (an attacker-chosen name/path/domain) does not exist here. The
+  `esbuild` advisory is about its own dev-server accepting cross-origin requests; this
+  project never runs `esbuild serve` directly — `drizzle-kit`'s internal use of it
+  (schema introspection tooling) never exposes a server, and it is a devDependency
+  only, never shipped in the production Docker image (`bun install --frozen-lockfile
+  --production` in the runtime stage).
+- Tried: `bun audit fix` and `bun audit fix --latest` — both report "blocked by a
+  dependent's range": `@sveltejs/kit@2.70.3` itself pins `cookie@^0.6.0` (not this
+  project's own declared range, which is `^2.63.0` for `@sveltejs/kit` and already
+  resolves to its latest matching patch), and `@esbuild-kit/core-utils@3.3.2`
+  (transitive, via `drizzle-kit`) pins `esbuild@~0.18.20`. Neither is fixable by
+  changing a range in this project's own `package.json` — only a newer major release
+  of `@sveltejs/kit` or of `drizzle-kit`'s own dependency chain would move either.
+- Next: Re-run `bun audit` after a future `bun update` once `@sveltejs/kit` or
+  `drizzle-kit` ship a release that bumps these transitive pins; do not bump
+  `@sveltejs/kit` or `drizzle-kit` outside their currently-tested ranges solely to
+  chase this without re-verifying compatibility.
+
 ## [LOW] Task 10.5 (gauge window / suggested window property tests) not written
 - Run: 2026-08-23-2200
 - Phase: impl

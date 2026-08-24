@@ -26,9 +26,15 @@ else
 fi
 
 if [[ -f "${ENV_FILE}" ]]; then
+	# Read line by line rather than `source`: a value containing a literal `$` —
+	# WORKLOG_PASSPHRASE_HASH is an argon2id hash, `$argon2id$v=19$...` — makes
+	# `source` treat it as unset-variable expansion and abort under `set -u`. `read`
+	# never re-parses the value for expansion, so it survives untouched.
 	set -a
-	# shellcheck disable=SC1090
-	source "${ENV_FILE}"
+	while IFS='=' read -r KEY VALUE; do
+		[[ -z "${KEY}" || "${KEY}" == \#* ]] && continue
+		export "${KEY}=${VALUE}"
+	done < "${ENV_FILE}"
 	set +a
 fi
 

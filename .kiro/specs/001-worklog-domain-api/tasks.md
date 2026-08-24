@@ -284,7 +284,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
 - [x] 5. Checkpoint — data layer proven against a real database
   - Start PostgreSQL, run `./scripts/migrate.sh`, then `bun run test tests/lib/server/store`
 
-- [ ] 6. Reconciliation core
+- [x] 6. Reconciliation core
   - [x] 6.1 Implement `clip` for `Explicit_Mode` in `src/lib/server/domain/clipping.ts`
     - Define `UntrackedPolicy`, `ClipInput` and `ClipResult` per design component 3
     - `ClipInput` carries `minIntervalMs` and `now` as inputs. The module may not read `$env` and may not call `new Date()`: the floor of Requirement 6.5 and the future bound of Requirement 6.8 both arrive from the caller, and every test supplies them explicitly
@@ -579,7 +579,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
   - Run `bun run check && bun run test` with PostgreSQL running
 
 - [ ] 10. Guards
-  - [ ] 10.1 Write the module boundary test
+  - [x] 10.1 Write the module boundary test
     - `tests/lib/server/imports.test.ts` walks the import graph of `src/lib/server/`
     - Enforce the layer order `domain` → `core` → `store` → `services` → `routes`, each importing only to its left: fail when `domain` imports anything under `store`, `services` or `core`, Drizzle, `$env`, `$app` or SvelteKit; when `core` imports `domain`, `store`, `services` or `routes`; when `store` imports from `services` or `routes`; when `services` imports from `routes` or names a `RequestEvent`
     - Walk `src/lib/contracts/` too and fail when anything there imports from `src/lib/server/`, `$env`, `$app`, Drizzle or SvelteKit — it is shipped to the browser, so a server import there is a build failure at best and a leak at worst. `lib/server/domain` importing **from** contracts is expected and must pass
@@ -615,8 +615,8 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - **Property 21: The suggested window brackets the bulk of the work**
     - **Validates: Requirements 8.12, 8.13, 13.13, 13.14**
 
-- [ ] 11. Packaging, deployment and documentation
-  - [ ] 11.1 Write the `Dockerfile` and `.dockerignore`
+- [x] 11. Packaging, deployment and documentation
+  - [x] 11.1 Write the `Dockerfile` and `.dockerignore`
     - Two stages on `oven/bun:1.2.15` then `oven/bun:1.2.15-slim`, granular COPY layers — `package.json bun.lock` first, then configs, then `project.inlang`, `messages`, `static`, `src`
     - Install with `bun install --frozen-lockfile`
     - **Copy `migrations/` and `scripts/` into the runtime image.** Readiness compares the filenames in `migrations/` against `schema_migrations` (task 7.4), so without them the check cannot run at all and an unmigrated production database is undetectable. Baking a build-time list instead is rejected: it goes stale the first time anyone migrates by hand
@@ -626,7 +626,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Set `APP_ENV=production` explicitly in the **builder** stage before `bun run build`, beside the placeholder values that let build-time validation pass. The `Content-Security-Policy` is chosen at build time from that variable, and an unset one must never be able to bake a development policy into a shipped image
     - _Requirements: 12.13, 13.10_
 
-  - [ ] 11.2 Write `fly.toml`
+  - [x] 11.2 Write `fly.toml`
     - `app = "worklog"`, `primary_region = "fra"`, `internal_port = 3000`, `force_https`, health check against `/api/health`
     - `[env]` carries only non-secret configuration — `PORT`, `PUBLIC_ORIGIN`, `TIMEZONE`, `DAY_START_HOUR`, `GAUGE_START`, `GAUGE_END`, `EVENING_HOUR`, `APP_ENV`, `TRUSTED_PROXY_HOPS`, `LOG_LEVEL`, `DB_POOL_MAX`, `MAX_OPEN_SESSION_HOURS`, `MIN_INTERVAL_SECONDS`, `SESSION_DURATION_HOURS`, `RATE_LIMIT_PER_MINUTE`. `PUBLIC_ORIGIN` is the app's `https://` URL: behind Fly's TLS proxy the runtime otherwise infers `http://localhost:3000`, and both the cross-origin check and the form-action CSRF protection are decided from it
     - Never place `WORKLOG_API_TOKEN`, `WORKLOG_PASSPHRASE_HASH` or `DATABASE_URL` in this file
@@ -652,7 +652,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
       `auto_stop_machines = false` matters as much as the count: an autostopped machine loses its in-memory buckets on every wake, which turns the login limiter off for the first `LOGIN_ATTEMPT_LIMIT` attempts after each idle period
     - _Requirements: 11.16, 13.1, 13.4, 13.10, 13.11, 13.16, 13.18, 13.19, 13.20, 13.21, 13.25_
 
-  - [ ] 11.3 Write the operational scripts
+  - [x] 11.3 Write the operational scripts
     - `scripts/build.sh`, `start-docker.sh`, `stop-docker.sh`, `deploy.sh`, `backup.sh`, `hash-passphrase.sh` and `test-e2e.sh`, all with `#!/bin/bash`, `set -euo pipefail` and the Script Portability preamble defined in task 4.2, parsing the app name from the resolved fly config
     - `hash-passphrase.sh` is how `WORKLOG_PASSPHRASE_HASH` is produced — without it the variable is a value nobody can generate. It reads the passphrase from `/dev/tty` without echoing, prints the argon2id hash, and nothing else:
       ```bash
@@ -665,7 +665,7 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - `test-e2e.sh` starts PostgreSQL with plain `docker run`, migrates, runs Playwright and tears everything down
     - _Requirements: 13.8, 13.10_
 
-  - [ ] 11.4 Write `README.md` and `DOCS.md`
+  - [x] 11.4 Write `README.md` and `DOCS.md`
     - `README.md` follows the ten required sections in order: title and description, prerequisites, installation, usage, deployment, testing, documentation link, author, show your support, license — no environment table and no endpoint table, those belong in `DOCS.md`
     - Deployment covers `./scripts/start-docker.sh`, `./scripts/stop-docker.sh`, `./scripts/deploy.sh <env>`, `dploy release prod` and the useful Fly commands
     - `DOCS.md` carries environment variables, project structure, full API documentation with request and response examples including `dryRun` and `Idempotency-Key`, testing, and troubleshooting
@@ -674,12 +674,12 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - Document the `Gauge_Window` rules: `GAUGE_END` wraps past midnight, and `DAY_START_HOUR` must fall inside the `Gauge_Gap` or the server refuses to start
     - _Requirements: 13.8, 13.13, 13.14_
 
-  - [ ] 11.5 Write the project `CLAUDE.md` and register the project
+  - [x] 11.5 Write the project `CLAUDE.md` and register the project
     - `CLAUDE.md` at the project root describing the two specs, the driver deviation, the reconciliation model and the commands
     - Add `worklog` to the project list in `/workspace/CLAUDE.md`
     - _Requirements: 13.8_
 
-- [ ] 12. Checkpoint — deployable service
+- [x] 12. Checkpoint — deployable service
   - Run `bun audit` and resolve anything it reports
   - Run `./scripts/start-docker.sh`, apply migrations, exercise the worked example end to end with `curl` using the bearer token, confirm `/api/health` reports status, version, timezone and day start, take a backup with `./scripts/backup.sh`, then `./scripts/stop-docker.sh`
 
