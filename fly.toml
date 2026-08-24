@@ -1,0 +1,53 @@
+# Fly.io app configuration. Never place a secret here (WORKLOG_API_TOKEN,
+# WORKLOG_PASSPHRASE_HASH, DATABASE_URL) — those are set with `fly secrets set` /
+# scripts/deploy.sh, never committed. [env] carries only non-secret configuration.
+
+app = "worklog"
+primary_region = "fra"
+
+[build]
+
+[deploy]
+  release_command = "./scripts/migrate.sh"
+  strategy = "immediate"
+
+[env]
+  PORT = "3000"
+  PUBLIC_ORIGIN = "https://worklog.fly.dev"
+  TIMEZONE = "Europe/Prague"
+  DAY_START_HOUR = "3"
+  GAUGE_START = "06:00"
+  GAUGE_END = "00:00"
+  EVENING_HOUR = "21"
+  APP_ENV = "production"
+  TRUSTED_PROXY_HOPS = "1"
+  LOG_LEVEL = "info"
+  DB_POOL_MAX = "10"
+  MAX_OPEN_SESSION_HOURS = "12"
+  MIN_INTERVAL_SECONDS = "60"
+  SESSION_DURATION_HOURS = "720"
+  RATE_LIMIT_PER_MINUTE = "120"
+
+# Requirement 13.25: pinned to exactly one machine. The rate-limit buckets in
+# core/rate-limit.ts live in process memory and the Day_Boundary_Config startup write
+# races between processes — a second machine would silently double the login
+# allowance LOGIN_ATTEMPT_LIMIT deliberately made unconfigurable.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  count = 1
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"

@@ -24,6 +24,10 @@ tests/tmp/
 # Backups produced by scripts/backup.sh
 backups/
 
+# The Fly org choice scripts/deploy.sh persists after the first /dev/tty prompt —
+# a per-developer/per-machine preference, never a project setting.
+.fly-org
+
 # Editors and OS
 .DS_Store
 .idea/
