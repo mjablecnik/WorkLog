@@ -296,7 +296,7 @@ The visual contract for the interface lives in `.design/DESIGN.md` and is the so
 
 #### Acceptance Criteria
 
-1. THE Auth_Hook SHALL authenticate every request except `GET /api/health`, the login route, a CORS preflight, and the static assets the framework serves, so that the login page renders with its stylesheet and hydrates
+1. THE Auth_Hook SHALL authenticate every request except `GET /api/health`, the login route, the logout route, a CORS preflight, and the static assets the framework serves, so that the login page renders with its stylesheet and hydrates, and so that a session that has already expired can still successfully log out
 2. WHEN a request carries a `Browser_Session` cookie that matches an unexpired stored session, THE Auth_Hook SHALL admit the request
 3. WHEN a request carries an `Authorization: Bearer <token>` header equal to the `API_Token`, THE Auth_Hook SHALL admit the request
 4. IF a request to a path under `/api` carries neither a valid `Browser_Session` nor a valid `API_Token`, THEN THE Auth_Hook SHALL return HTTP 401 with error code `UNAUTHORIZED`
