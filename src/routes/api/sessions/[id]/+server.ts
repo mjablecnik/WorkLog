@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { deleteSessionQuery, patchSessionSchema } from '$lib/contracts/schemas';
+import { deleteSessionQuery, idParam, patchSessionSchema } from '$lib/contracts/schemas';
 import { FUTURE_TOLERANCE_SECONDS, getConfig } from '$lib/server/core/config';
 import {
 	assertIntervalNotTooShort,
@@ -21,11 +21,12 @@ import { deleteSession, patchSession } from '$lib/server/services/sessions';
  */
 export const PATCH: RequestHandler = async (event) => {
 	try {
+		const id = parseRequest(idParam, event.params.id);
 		const body = parseRequest(patchSessionSchema, await parseJsonBody(event.request));
 		const now = new Date();
 		const config = getConfig();
 
-		const existing = await withReadTx((tx) => getSession(tx, event.params.id));
+		const existing = await withReadTx((tx) => getSession(tx, id));
 		if (existing !== null) {
 			const newStart = body.startedAt ?? existing.startedAt;
 			const newEnd = body.endedAt === null ? null : (body.endedAt ?? existing.endedAt);
@@ -41,7 +42,7 @@ export const PATCH: RequestHandler = async (event) => {
 		}
 
 		const result = await patchSession({
-			id: event.params.id,
+			id,
 			startedAt: body.startedAt,
 			endedAt: body.endedAt,
 			dryRun: body.dryRun,
@@ -61,11 +62,12 @@ export const PATCH: RequestHandler = async (event) => {
  */
 export const DELETE: RequestHandler = async (event) => {
 	try {
+		const id = parseRequest(idParam, event.params.id);
 		const query = parseRequest(deleteSessionQuery, Object.fromEntries(event.url.searchParams));
 		const dryRun = query.dry_run === 'true';
 		const now = new Date();
 		const result = await deleteSession({
-			id: event.params.id,
+			id,
 			dryRun,
 			previewToken: query.preview_token,
 			now

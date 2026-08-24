@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { deleteActivityQuery, patchActivitySchema } from '$lib/contracts/schemas';
+import { deleteActivityQuery, idParam, patchActivitySchema } from '$lib/contracts/schemas';
 import { apiError, errorResponse, parseJsonBody, parseRequest } from '$lib/server/core/errors';
 import { withReadTx } from '$lib/server/store/tx';
 import { getEntry } from '$lib/server/store/activities';
@@ -9,11 +9,12 @@ import { deleteActivity, patchActivity } from '$lib/server/services/activities';
 /** GET /api/activities/{id} — Requirement 7.7. */
 export const GET: RequestHandler = async (event) => {
 	try {
-		const entry = await withReadTx((tx) => getEntry(tx, event.params.id));
+		const id = parseRequest(idParam, event.params.id);
+		const entry = await withReadTx((tx) => getEntry(tx, id));
 		if (entry === null) {
 			throw apiError('NOT_FOUND', 'That record could not be found.', {
 				resource: 'activity',
-				id: event.params.id
+				id
 			});
 		}
 		return json(entry, { status: 200 });
@@ -25,10 +26,11 @@ export const GET: RequestHandler = async (event) => {
 /** PATCH /api/activities/{id} — Requirements 7.8-7.12, 7.16-7.26. */
 export const PATCH: RequestHandler = async (event) => {
 	try {
+		const id = parseRequest(idParam, event.params.id);
 		const body = parseRequest(patchActivitySchema, await parseJsonBody(event.request));
 		const now = new Date();
 		const result = await patchActivity({
-			id: event.params.id,
+			id,
 			description: body.description,
 			projectId: body.projectId,
 			date: body.date,
@@ -49,10 +51,11 @@ export const PATCH: RequestHandler = async (event) => {
 /** DELETE /api/activities/{id} — Requirement 7.11; `dryRun`/`Preview_Token` as query params (14.12). */
 export const DELETE: RequestHandler = async (event) => {
 	try {
+		const id = parseRequest(idParam, event.params.id);
 		const query = parseRequest(deleteActivityQuery, Object.fromEntries(event.url.searchParams));
 		const dryRun = query.dry_run === 'true';
 		const result = await deleteActivity({
-			id: event.params.id,
+			id,
 			dryRun,
 			previewToken: query.preview_token
 		});
