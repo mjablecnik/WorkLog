@@ -392,6 +392,16 @@ body {
 }
 
 /* ----------------------------------------------------------------------------
+ * Modal scroll lock — the class src/lib/ui/overlays/modal-stack.ts toggles on
+ * <body> for as long as any Modal-based surface (a write dialog, a
+ * confirmation, the mobile Settings_Menu sheet) is open, so the page beneath
+ * cannot scroll while a modal surface sits over it (Requirement 14.24).
+ * -------------------------------------------------------------------------- */
+body.modal-scroll-lock {
+	overflow: hidden;
+}
+
+/* ----------------------------------------------------------------------------
  * Typography — the full type scale, each class carrying its own line-height
  * from design.md's line-height table (the layout budget, `layOutDay`, counts
  * it — see BLOCK_HEAD_PX/BLOCK_HEAD_PAD_PX in timeline-geometry.ts, a later
