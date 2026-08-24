@@ -9,7 +9,21 @@
  * and exiting non-zero (Requirement 13.24) — `loadConfig()` itself only throws, so it
  * stays testable without killing the process it runs in.
  */
-import { version as packageVersion } from '../../../../package.json';
+// The `with { type: 'json' }` import attribute is required here: Bun and Vite both
+// accept a bare JSON import without it (the app, `bun run dev`/`build`/`preview`,
+// never noticed), but a plain Node.js ESM loader — which is what actually executes
+// this file transitively when Playwright loads `tests/e2e/*.spec.ts` (import chain:
+// spec -> `fixtures.ts` -> `tests/setup/db.ts` -> ... -> this file) — throws
+// `TypeError: ... needs an import attribute of "type: json"` without it.
+//
+// Once the attribute is present, though, Bun switches to strict (spec-conformant)
+// JSON-module semantics: a JSON module only ever has a `default` export, never named
+// exports synthesized per top-level property — `import { version } from ...` (which
+// worked with the bare, non-standard import) throws `does not provide an export
+// named 'version'` under Bun once the attribute is added. Importing the default and
+// reading `.version` off it satisfies both runtimes' strict semantics at once.
+import packageJson from '../../../../package.json' with { type: 'json' };
+const packageVersion: string = packageJson.version;
 import {
 	MAX_INTERVAL_RANGE_DAYS,
 	MAX_RANGE_DAYS,
