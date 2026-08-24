@@ -9,7 +9,10 @@
 import type { ActivityEntry, ActivityMode, Interval } from '$lib/contracts/models';
 import type { ActivityResponse } from '$lib/contracts/responses';
 import { ERROR_DETAIL_SAMPLE_SIZE, FUTURE_TOLERANCE_SECONDS, getConfig } from '../core/config';
-import { apiError } from '../core/errors';
+import {
+	apiError,
+	assertNotTooFarInFuture as assertTimestampNotTooFarInFuture
+} from '../core/errors';
 import { computePreviewToken } from '../core/preview-token';
 import { intersect, normalize, subtract, total } from '../domain/interval';
 import {
@@ -75,14 +78,7 @@ async function assertProjectUsable(tx: Tx, projectId: string): Promise<void> {
 }
 
 function assertNotTooFarInFuture(field: 'startedAt' | 'endedAt', value: Date, now: Date): void {
-	const maxAllowed = new Date(now.getTime() + FUTURE_TOLERANCE_SECONDS * 1000);
-	if (value.getTime() > maxAllowed.getTime()) {
-		throw apiError('FUTURE_TIMESTAMP', 'That lies too far in the future.', {
-			field,
-			value: value.toISOString(),
-			maxAllowed: maxAllowed.toISOString()
-		});
-	}
+	assertTimestampNotTooFarInFuture(field, value, now, FUTURE_TOLERANCE_SECONDS);
 }
 
 type NothingToLogReason = 'empty-interval' | 'no-tracked-time' | 'already-covered' | 'all-slivers';

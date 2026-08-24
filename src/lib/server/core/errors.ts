@@ -188,6 +188,59 @@ export function parseRequest<T extends z.ZodTypeAny>(schema: T, data: unknown): 
 	return result.data;
 }
 
+/**
+ * Reads a request body as JSON, treating an empty body as `{}` — every request schema
+ * in this project has every field optional or defaulted, so a bare `POST` with no body
+ * (starting a timer "now", for instance) is a valid request, not a parse failure.
+ * Malformed JSON becomes the standard `VALIDATION_ERROR` (Requirement 12.4).
+ */
+export async function parseJsonBody(request: Request): Promise<unknown> {
+	const raw = await request.text();
+	if (raw.length === 0) return {};
+	try {
+		return JSON.parse(raw);
+	} catch {
+		throw apiError('VALIDATION_ERROR', 'The request body is not valid JSON.');
+	}
+}
+
+/**
+ * Throws `FUTURE_TIMESTAMP` when `value` lies more than `toleranceSeconds` past `now`
+ * (Requirements 1.13, 4.10). Shared by the session routes and the activity services,
+ * which is why the tolerance travels as a parameter rather than being read from
+ * `$env` here — this module stays free of that dependency.
+ */
+export function assertNotTooFarInFuture(
+	field: string,
+	value: Date,
+	now: Date,
+	toleranceSeconds: number
+): void {
+	const maxAllowed = new Date(now.getTime() + toleranceSeconds * 1000);
+	if (value.getTime() > maxAllowed.getTime()) {
+		throw apiError('FUTURE_TIMESTAMP', 'That lies too far in the future.', {
+			field,
+			value: value.toISOString(),
+			maxAllowed: maxAllowed.toISOString()
+		});
+	}
+}
+
+/** Throws `INTERVAL_TOO_SHORT` when `[start, end)` is shorter than `minIntervalSeconds`. */
+export function assertIntervalNotTooShort(
+	start: Date,
+	end: Date,
+	minIntervalSeconds: number
+): void {
+	const actualSeconds = Math.round((end.getTime() - start.getTime()) / 1000);
+	if (actualSeconds < minIntervalSeconds) {
+		throw apiError('INTERVAL_TOO_SHORT', 'That interval is too short.', {
+			minSeconds: minIntervalSeconds,
+			actualSeconds
+		});
+	}
+}
+
 export type ErrorBody = {
 	error: ErrorCode;
 	message: string;
