@@ -127,10 +127,35 @@
 		query = '';
 	}
 
+	/**
+	 * `openDropdown` is also bound to the input's `onfocus`, so restoring focus after a
+	 * programmatic close (selection, inline creation) would normally fire a real `focus`
+	 * event and reopen the dropdown it was just told to close. In the ordinary mouse
+	 * flow this never surfaces, because the option row's `onmousedown` already calls
+	 * `preventDefault()`, which keeps the input's DOM focus intact through the click, so
+	 * `.focus()` here is a same-element no-op that fires nothing — but any OTHER
+	 * selection path (a future keyboard shortcut, assistive tech, a programmatic call)
+	 * would hit the reopen. This flag makes the restore-focus-without-reopening
+	 * intent explicit rather than relying on that masking.
+	 */
+	let suppressFocusOpen = false;
+	function focusInputWithoutReopening(): void {
+		suppressFocusOpen = true;
+		inputEl?.focus();
+	}
+
+	function handleInputFocus(): void {
+		if (suppressFocusOpen) {
+			suppressFocusOpen = false;
+			return;
+		}
+		openDropdown();
+	}
+
 	function selectProject(project: Project): void {
 		onChange(project.id);
 		closeDropdown();
-		inputEl?.focus();
+		focusInputWithoutReopening();
 	}
 
 	function handleInput(event: Event): void {
@@ -265,7 +290,7 @@
 			onChange(project.id);
 			onCreate(project);
 			closeDropdown();
-			inputEl?.focus();
+			focusInputWithoutReopening();
 		} catch {
 			// A genuine network failure, not a server error envelope — there is no
 			// requestId to quote. Minimal local handling only (design.md task 7.2);
@@ -313,7 +338,7 @@
 			aria-activedescendant={activeOptionId}
 			aria-invalid={error}
 			aria-describedby={describedBy}
-			onfocus={openDropdown}
+			onfocus={handleInputFocus}
 			oninput={handleInput}
 			onkeydown={handleKeydown}
 			onblur={closeDropdown}
