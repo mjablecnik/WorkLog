@@ -1,17 +1,27 @@
 # Use Cases — Worklog
 
-Everything that must be true for the `Worklog_Server` (spec
-`.kiro/specs/001-worklog-domain-api/`) to count as working. Numbers are **stable**:
+Everything that must be true for Worklog to count as working. Numbers are **stable**:
 the walkthrough in `.agents/tmp/VERIFY_TASKS.md` and every later run refer to them.
 New cases are appended at the end; an obsolete case is marked `OBSOLETE` in place and
 never renumbered away.
 
-Spec `002-worklog-ui` is not started, so there is no browser interface to drive. Every
-case below is exercised over the REST API with `curl` (or the equivalent), except the
-handful marked `Method: inspection`, which are properties of the code, the schema or
-the process that no request can observe.
+The file is in **two parts**, one per specification:
 
-## Conventions
+- **Part I — UC-001 … UC-236** covers the `Worklog_Server` (spec
+  `.kiro/specs/001-worklog-domain-api/`): the domain, the data layer and the REST API.
+  Every case is exercised over the API with `curl` (or the equivalent), except the
+  handful marked `Method: inspection`.
+- **Part II — UC-237 … UC-508** covers the `Worklog_UI` (spec
+  `.kiro/specs/002-worklog-ui/`): the browser interface, driven through a real browser.
+  It begins after Part I's requirement-coverage table and carries its own conventions
+  and fixtures.
+
+Part I was written when no browser interface existed, so its cases drive the API
+directly. That remains correct and they are not superseded: the two parts test two
+layers of the same server, and a Part II case failing while its Part I counterpart
+passes localises the defect to the interface.
+
+## Conventions — Part I
 
 - `$BASE` — the running server's origin (`http://localhost:3000` for the built Node
   server; `4173` for `bun run preview`, `5173` for `bun run dev`).
@@ -46,7 +56,7 @@ Fixed constants the cases rely on: `MAX_RANGE_DAYS=366`, `MAX_INTERVAL_RANGE_DAY
 `LOGIN_ATTEMPT_WINDOW_MINUTES=15`, `IDEMPOTENCY_RETENTION_HOURS=24`,
 `MAX_BODY_BYTES=1048576`, `SERVICE_RETRY_AFTER_SECONDS=5`.
 
-## Fixtures
+## Fixtures — Part I
 
 Named data sets. A `Data needed` line names one and adds whatever else the case wants.
 Every fixture starts from `FIX-CLEAN` and is built **through the API** unless the
@@ -2421,7 +2431,7 @@ fixture says otherwise.
 
 ---
 
-## Requirement coverage
+## Requirement coverage — `001-worklog-domain-api`
 
 Every acceptance criterion of `requirements.md`, and the use case (or cases) that
 exercise it. Nothing in the specification is left without a home.
@@ -2522,3 +2532,3729 @@ P11 UC-114, UC-117, UC-135 · P12 UC-203, UC-207 · P13 UC-210, UC-231 ·
 P14 UC-210, UC-231 · P15 UC-230 · P16 UC-155, UC-236 · P17 UC-233 ·
 P18 UC-059, UC-060 · P19 UC-184, UC-235 · P20 UC-143 · P21 UC-185, UC-235 ·
 P22 UC-228 · P23 UC-229 · P24 UC-116 · P25 UC-162, UC-112
+---
+
+# Part II — Use Cases for `Worklog_UI` (spec `002-worklog-ui`)
+
+Everything that must be true for the **browser interface** to count as working. Part I
+above drives the REST API directly and stays valid; this part drives the same server
+through the screens a person actually uses — the timer, the day timeline, the projects
+page, the statistics, the dialogs, both themes, both viewport classes.
+
+Numbering continues from Part I and is equally **stable**: UC-237 onwards. The
+walkthrough in `.agents/tmp/VERIFY_TASKS.md` refers to these numbers.
+
+## Conventions for Part II
+
+- `$APP` — the running application's origin. `bun run dev` → `http://localhost:5173`,
+  `bun run preview` → `4173`, the built Node server / Docker image → `3000`. Unless a
+  case says otherwise it may be any of them; cases that depend on the production
+  `Content-Security-Policy` say so and require the **built** server.
+- **Every case is driven through a real browser** — Chromium at
+  `/opt/playwright-browsers` (already installed; never run `playwright install` here).
+  Three exceptions are marked on the case itself:
+  - `Method: inspection` — a property of the source, the compiled CSS or the rendered
+    HTML that no interaction can observe (an absent `style=` attribute, a message key
+    that exists in both catalogues, a cookie flag).
+  - `Method: artboard` — a visual comparison against `.design/screens/<Name>.png` at the
+    artboard's own frame size, taken from `.design/artboards/canvas.json`. Arrangement,
+    relative proportion and palette are compared; **exact pixel heights, copy and
+    example data are not** (Requirement 17.16).
+  - `Method: screen reader` — needs an actual screen reader or an accessibility-tree
+    dump; a DOM assertion alone does not prove the announcement.
+- **The user is logged in** on every case unless the case is about authentication.
+  Log in once at `$APP/login` with the passphrase behind `WORKLOG_PASSPHRASE_HASH`.
+- **Viewports.** Three, and they are named rather than restated:
+  - `VP-DESKTOP` — 1440 × 900. The desktop artboards are drawn at 1440 wide.
+  - `VP-MOBILE` — 390 × 844. Every mobile artboard is drawn at this size.
+  - `VP-NARROW` — 320 × 720. The floor Requirement 14.1 names; no artboard exists.
+  The single breakpoint is **768 px** (Requirement 14.12); `VP-DESKTOP` is above it and
+  both others below.
+- **Themes.** `dark` ("Midnight") is what a first visit renders; `light` ("Daylight") is
+  reached through the `Settings_Menu`. A case that does not name a theme runs in `dark`.
+- **Locale.** `cs` is the default. A case that does not name a locale runs in Czech, and
+  quotes the Czech string from the design's Message Catalogue.
+- **Cookies** the interface reads or writes, and the only four that exist:
+  `worklog_theme` (`system|light|dark`, written **only** by the `Theme_Switcher`),
+  `worklog_theme_resolved` (`light|dark`, written by the client from
+  `prefers-color-scheme`), `worklog_locale` (`cs|en`) and `worklog_viewport`
+  (`<width>x<height>`). Nothing that decides the first paint is in `localStorage`.
+- `Requirement:` cites `.kiro/specs/002-worklog-ui/requirements.md` as
+  `<requirement>.<criterion>`. `design Property N` cites that spec's Correctness
+  Properties. `Design_Contract:` cites `.design/DESIGN.md` by section or an artboard by
+  name.
+- **`TODAY`** is the current `Logical_Day` as the server reports it on
+  `event.locals.today` — never a date computed in the browser, and never a date typed
+  into a fixture. Cases needing a past day use `D` = 2026-08-20 as Part I does.
+- Times are Prague wall clock. The interface renders every time in the **server's** zone.
+- A case's `Expected` is the **specified** behaviour. Where the current implementation is
+  known to deviate, the case says so and names the `ISSUES.md` entry — the case still
+  fails until the code matches, which is the point.
+
+## Fixtures for Part II
+
+Built on Part I's fixtures. Every one is seeded **through the API** (bearer token) or by
+the E2E `resetDb` helper, never by clicking through the interface — a fixture built by
+hand is a test of the thing under test.
+
+Where a fixture says a wall-clock time it means that time **on the current
+`Logical_Day`**, so that the timer page, the `Day_Gauge` and the day page all have
+something to draw. A fixture on a fixed past date says the date explicitly.
+
+- **FIX-UI-EMPTY** — `FIX-CLEAN`. No `Project`, no `Work_Session`, no `Activity_Entry`.
+  This is the state every empty state is checked against.
+- **FIX-UI-DAY** — `FIX-PROJECTS` (Alpha 0, Beta 1, Gamma 2 archived) plus two closed
+  sessions on `TODAY`: `08:00 → 12:30` and `13:15 → 17:00`; plus two `Explicit_Mode`
+  entries — Alpha `08:00 → 10:15` ("Oprava filtrů ve flotile") and Beta
+  `13:15 → 14:00` ("Worklog"). Leaves three stretches of `Uncovered_Time`
+  (10:15–12:30, 14:00–17:00) and a 45-minute break. The everyday day.
+- **FIX-UI-SPLIT** — `FIX-UI-DAY` plus one Alpha entry requested `12:00 → 14:00`, which
+  the server clips into two `Activity_Segment` records around the 12:30–13:15 break.
+  The `Split_Marker` case.
+- **FIX-UI-RUNNING** — `FIX-UI-DAY` plus an `Open_Session` started 90 minutes ago.
+- **FIX-UI-STALE** — `FIX-PROJECTS` plus an `Open_Session` started 13 hours ago, past
+  `MAX_OPEN_SESSION_HOURS` (12).
+- **FIX-UI-NIGHT** — `FIX-PROJECTS` plus one closed session `21:30 → 01:00` on `TODAY`
+  (crossing the `Evening_Hour` and midnight, still one `Logical_Day`).
+- **FIX-UI-OVERRUN** — `FIX-PROJECTS` plus two closed sessions on `TODAY`:
+  `05:00 → 06:30` (before `GAUGE_START`) and `23:00 → 01:30` (past `GAUGE_END`). Two
+  `Overtime_Arc` stretches, one at each end of the `Gauge_Track`.
+- **FIX-UI-NONSTOP** — `FIX-PROJECTS` plus closed sessions covering the whole of a past
+  `Logical_Day` (`D`), so the gauge closes into a complete circle.
+- **FIX-UI-CONTINUES** — `FIX-PROJECTS` plus one closed session
+  `2026-08-19T22:00+02:00 → 2026-08-20T05:00+02:00`, which belongs to `Logical_Day`
+  2026-08-19 and continues past its end.
+- **FIX-UI-ORPHAN** — `FIX-ORPHAN` moved onto `TODAY`: an `Activity_Entry` whose
+  sessions were deleted, so it holds no `Activity_Segment` and is `orphaned: true`.
+- **FIX-UI-WEEK** — seven consecutive `Logical_Day` values ending on `TODAY`: five with
+  work across Alpha, Beta and a third project, one of them with a session after the
+  `Evening_Hour`, one with work but no description at all, and one with nothing. The
+  statistics range fixture.
+- **FIX-UI-MANY** — `FIX-PROJECTS` plus one closed session `08:00 → 16:00` on `TODAY`
+  holding fifty `Activity_Entry` records of about nine minutes each. Forces every
+  `Segment_Block` to the `MIN_BLOCK_PX` floor and the page to scroll.
+- **FIX-UI-NINE** — `FIX-CLEAN` plus nine projects, so `colorIndex` 8 wraps to
+  `Palette_Slot` 0 and two projects share a hue.
+
+---
+
+## UC-237 — The root path shows the timer page
+- Area: shell
+- Requirement: 1.9
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/`
+- Expected: the timer page renders — hero readout, `Day_Gauge`, three figures — without
+  a redirect to another path. The URL stays `/`.
+
+## UC-238 — The desktop top bar is a three-column grid with the navigation centred
+- Area: shell
+- Requirement: 1.1, 1.2, 1.6
+- Design_Contract: `DESIGN.md` § 6; artboards `Main`, `DayCollapsed`, `Stats`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/` and inspect the top bar's computed `grid-template-columns`, then
+  visit `/day/<TODAY>`, `/projects` and `/stats`
+- Expected: `1fr auto 1fr` on every page. The brand `Worklog` sits left, the four
+  navigation targets — `Timer`, `Den`, `Projekty`, `Statistiky` — are centred as one
+  group, and the right cell holds the `Running_Indicator` (when a session is open)
+  followed by the `Settings_Menu` gear chip. Bar height 84 on every page including the
+  day page, whose artboard draws 88 as a drawing slip.
+
+## UC-239 — Below 768 the navigation collapses into a four-tab bottom bar
+- Area: shell
+- Requirement: 1.3, 14.12
+- Design_Contract: artboards `TimerMobile`, `DayMobile`
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/`; then widen the viewport past 768 and back
+- Expected: at 390 px the top bar carries only the brand, the `Running_Indicator` and the
+  gear chip, and a bottom bar of four tabs appears — each an SVG icon above its label,
+  bar height 66–68 with a 1 px top divider. Above 768 the bottom bar disappears and the
+  centred desktop navigation returns. There is exactly one breakpoint and it is 768.
+
+## UC-240 — The active navigation target is marked, and marked differently on each width
+- Area: shell
+- Requirement: 1.4
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at `VP-DESKTOP` visit each of the four pages and read the navigation items'
+  attributes and computed colour; repeat at `VP-MOBILE`
+- Expected: on every width the current page's item carries `aria-current`. On the desktop
+  top bar it is drawn in full-strength `--text` at weight 500 while the others are
+  `--text-faint`; on the mobile bottom bar it is drawn in `--accent`. The two treatments
+  are deliberately different and neither may be used on the other width.
+
+## UC-241 — The mobile create button offers a choice on the day page and acts directly elsewhere
+- Area: shell
+- Requirement: 1.5, 8.1
+- Design_Contract: artboard `DayMobile` — FAB 54 px, 18 from the right, 12 above the bar,
+  halo `0 0 0 10px`
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: open `/day/<TODAY>` and activate the round button at the bottom right; dismiss;
+  then open `/projects` and activate its create button
+- Expected: on the day page the FAB opens a two-item sheet — `Přidat úkol` and
+  `Přidat úsek timeru` — because one button cannot mean two things; choosing either
+  opens the matching dialog. On the projects page the FAB performs the single create
+  action directly with no sheet. The FAB is 54 px and sits above the bottom bar, never
+  under it.
+
+## UC-242 — The Running_Indicator rides every page except the timer page
+- Area: shell
+- Requirement: 1.7, 1.8
+- Design_Contract: `DESIGN.md` § 6 — the timer pages omit it because their hero *is* the
+  elapsed time
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-RUNNING
+- Steps: visit `/day/<TODAY>`, `/projects`, `/stats`, then `/`
+- Expected: on the first three the top bar's right cell carries a 6 px round `--accent`
+  dot beside the elapsed time in tabular figures at 13 px `--text-dim`, and the figure
+  advances at least once per second. On the timer page there is no indicator at all —
+  only the gear chip. Repeat at `VP-MOBILE`: the same rule holds.
+
+## UC-243 — Moving between pages never reloads the document
+- Area: shell
+- Requirement: 1.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window` (or watch for a `load` event), then click through
+  Timer → Den → Projekty → Statistiky → Timer using the navigation
+- Expected: the marker survives every transition and no document `load` fires — every
+  move is a client-side navigation. The URL changes each time and the back button walks
+  the same path in reverse.
+
+## UC-244 — An unknown route renders the error page with a way back
+- Area: shell
+- Requirement: 1.10
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `$APP/nope/nowhere`
+- Expected: the interface's own error page renders — `Tady nic není` over
+  `Stránka, kterou hledáš, neexistuje.` — with a filled accent pill `Zpět na timer`
+  that navigates to `/`. Not a framework stack trace, not a blank page.
+
+## UC-245 — Times render in the server's zone, and the interface says so when they differ
+- Area: shell
+- Requirement: 1.12, 1.13
+- Preconditions: logged in; the browser's zone set to something other than
+  `Europe/Prague` (for example `America/New_York`)
+- Data needed: FIX-UI-DAY
+- Steps: open `/day/<TODAY>` with the device zone matching the server's, note the block
+  head times; then reopen with the device zone changed and compare
+- Expected: the rendered times are identical in both runs — they follow the server's
+  `timezone`, never the device's. In the second run one line at 12 px `--text-faint`
+  appears directly under the top bar, centred:
+  `Časy jsou v pásmu Europe/Prague, ne v pásmu tvého zařízení`. In the first run that
+  line is absent.
+
+## UC-246 — No Logical_Day boundary is ever computed in the browser
+- Area: shell
+- Requirement: 1.25, 3.18
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: search `src/` outside `src/lib/server/` and `src/routes/api/` for arithmetic on
+  `DAY_START_HOUR`, for a locally constructed day boundary, and for any time-zone
+  conversion of one; confirm the current day and its bounds arrive from
+  `event.locals.today` through `+layout.server.ts` into context
+- Expected: the browser reads the day and its bounds from the server payload and derives
+  none of them. A helper that adds `dayStartHour` to a local `Date` is a defect even if
+  it currently returns the right answer, because it reimplements the server's zone and
+  DST rules.
+
+## UC-247 — A failed page load goes to /offline; a later failure stays in place
+- Area: shell · errors
+- Requirement: 1.14, 15.7
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: (a) stop PostgreSQL (or point `DATABASE_URL` at a dead port) and navigate to
+  `/stats`; (b) restore it, reload, open the `Activity_Dialog`, type a description, then
+  stop the server and let the debounced `Dry_Run` fire
+- Expected: (a) the browser lands on `/offline?next=/stats` showing
+  `Server neodpovídá` over `Zkus to za chvíli znovu. Nic, co jsi napsal, se neztratilo.`
+  with a retry action that navigates back to `/stats`. (b) the dialog stays open with the
+  typed description intact and the failure surfaces as a retryable message in place —
+  the browser does **not** navigate to `/offline`, because that would discard the input
+  Requirement 15.7 protects.
+
+## UC-248 — User-supplied text is escaped everywhere it is drawn
+- Area: shell · security
+- Requirement: 1.15
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY plus a project named `<img src=x onerror=alert(1)>Alpha` and an
+  `Activity_Entry` whose description is `"><script>alert(1)</script>`, both created
+  through the API
+- Steps: open `/day/<TODAY>`, `/projects`, `/stats` and the timer page; open the
+  `Activity_Dialog` on that entry and the `Project_Picker`
+- Expected: the markup is displayed as literal text on every surface — timeline block,
+  project row, legend, breakdown, picker option, dialog field, tooltip and `aria-label`
+  alike. No dialog fires, no element is injected. A source search confirms no `{@html}`
+  is applied to a project name or an entry description anywhere.
+
+## UC-249 — The Settings_Menu opens as a 268 px anchored menu on desktop
+- Area: shell · settings
+- Requirement: 1.16, 1.6
+- Design_Contract: artboards `Settings`, `SettingsLight`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: activate the gear chip at the right end of the top bar
+- Expected: a 268 px wide surface opens anchored under the chip at the page's right
+  padding — `--dialog` at radius 14, a 1 px `--menu-border` outline, the menu shadow,
+  16 px padding, 16 px gaps. It is not full-width, not centred and not a sheet.
+
+## UC-250 — The mobile Settings_Menu is a modal bottom sheet, dimmed only by its scrim
+- Area: shell · settings
+- Requirement: 1.17, 1.19, 1.20, 14.24
+- Design_Contract: artboards `SettingsMobile`, `SettingsMobileLight`; `DESIGN.md` § 6a —
+  the stacking-context trap
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: activate the gear chip; then read the computed `opacity` of the page content
+  container and of the bottom navigation, try to scroll the page behind the sheet, and
+  Tab repeatedly
+- Expected: the same content opens as a bottom sheet with a 38 × 4 grabber centred at its
+  top edge, radius `20px 20px 0 0`. A scrim covers the page content **and** the bottom
+  navigation, and the sheet paints above both. Neither the page content nor the tab bar
+  carries an `opacity` of its own — any value below 1 creates a stacking context and the
+  tab bar then paints over the sheet whatever its `z-index`. The document beneath does
+  not scroll and is `inert`, so Tab never leaves the sheet.
+
+## UC-251 — The Settings_Menu holds exactly four rows in a fixed order
+- Area: shell · settings
+- Requirement: 1.18
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open the menu at `VP-DESKTOP` and read it top to bottom; repeat at `VP-MOBILE`
+- Expected: in this order — the caps label `MOTIV` over the three-way `Theme_Switcher`
+  (`Systém` / `Světlý` / `Tmavý`), the caps label `JAZYK` over the two-way
+  `Locale_Switcher` (`Čeština` / `English`), a 1 px `--divider` hairline, and
+  `Odhlásit se` drawn in `--destructive` with a 15 px exit icon. Nothing else is in the
+  menu, and the order is identical on both widths.
+
+## UC-252 — The Settings_Menu closes three ways and always returns focus to its chip
+- Area: shell · settings
+- Requirement: 1.21, 14.23
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at each width, open the menu and (a) press Escape, (b) reopen and activate a
+  point outside it, (c) reopen and choose `Odhlásit se`
+- Expected: all three close it. After (a) and (b) focus is back on the gear chip that
+  opened it — verified through `document.activeElement`, not by eye. After (c) the menu
+  closes and the logout form action is submitted.
+
+## UC-253 — Logging out is offered from the Settings_Menu and nowhere else
+- Area: shell · settings · auth
+- Requirement: 1.22, 2.5
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: sweep every page at both widths for any control naming logout outside the menu;
+  then choose `Odhlásit se` inside it
+- Expected: the menu is the only place the interface offers logging out — no header
+  button, no footer link, no keyboard shortcut. Choosing it closes the menu, submits the
+  logout form action, and the login page follows with no authenticated view state left
+  behind (the back button does not restore a rendered day).
+
+## UC-254 — app.html carries the two placeholders the server substitutes
+- Area: shell · theming · i18n
+- Requirement: 1.23, 13.14, 17.8
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: read `src/app.html`; then request a page with `curl` carrying
+  `worklog_locale=en` and `worklog_theme=light` and read the first bytes of the response
+- Expected: the file declares `<html lang="%lang%" data-theme="%theme%">` alongside
+  `%sveltekit.head%`, `%sveltekit.body%` and `%sveltekit.nonce%`. The served HTML has
+  both substituted — `lang="en"` and `data-theme="light"` — in the first bytes, before
+  any script runs. `002` writes the placeholders; `001`'s hook fills them.
+
+## UC-255 — The Inter Tight faces are served from this origin
+- Area: shell · typography
+- Requirement: 1.24, 14.7
+- Preconditions: the **built** server, so the production CSP is in force
+- Data needed: none
+- Steps: load any page with the network panel recording; read the `@font-face` rules and
+  the `Content-Security-Policy` response header
+- Expected: four `woff2` files are requested from `$APP` itself (`static/fonts/`), none
+  from `fonts.googleapis.com` or `fonts.gstatic.com`, and the policy carries
+  `font-src 'self'` with no third-party host. No font request is blocked, and the
+  rendered body text is Inter Tight rather than the `system-ui` fallback.
+
+## UC-256 — An unauthenticated navigation lands on login carrying where it was going
+- Area: auth
+- Requirement: 2.1
+- Preconditions: no session cookie
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/stats` with no cookie jar
+- Expected: the login page renders at `/login?next=/stats`, and the form carries a hidden
+  field named `next` with the same value. No session-ended message is shown (see
+  UC-261).
+
+## UC-257 — The login form takes a passphrase and returns the visitor where they were going
+- Area: auth
+- Requirement: 2.2, 2.4
+- Preconditions: no session cookie
+- Data needed: FIX-UI-DAY
+- Steps: open `/login?next=/projects`, type the correct passphrase into the single field
+  and submit; then repeat from `/login` with no `next`
+- Expected: the page offers exactly one field, named `passphrase`, submitted as a form
+  action (it works with JavaScript disabled). The first run lands on `/projects`, the
+  second on `/`. The field is marked required and is 44 px tall (48 on `VP-MOBILE`).
+
+## UC-258 — A wrong passphrase says nothing about what exists
+- Area: auth
+- Requirement: 2.3, 13.8
+- Preconditions: no session cookie
+- Data needed: FIX-UI-EMPTY
+- Steps: submit a wrong passphrase
+- Expected: one generic message renders — `Nesprávné heslo.`, the translation of
+  `errors_login_failed` — and nothing distinguishes a wrong passphrase from an
+  unconfigured one. The typed value is not echoed back into the field, and the raw error
+  code never appears on screen.
+
+## UC-259 — Logging out leaves no authenticated view state behind
+- Area: auth
+- Requirement: 2.5
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: log out from the `Settings_Menu`, then press the browser's back button, then
+  open `/day/<TODAY>` directly
+- Expected: the login page renders after logout. Back does not restore a rendered day —
+  it lands on login again — and the direct navigation redirects to
+  `/login?next=/day/<TODAY>`. No day data is left in the document.
+
+## UC-260 — A browser-issued request that is refused sends the user to login with a reason
+- Area: auth · errors
+- Requirement: 2.6, 15.9
+- Preconditions: logged in on `/day/<TODAY>` with the `Activity_Dialog` open
+- Data needed: FIX-UI-DAY
+- Steps: delete the session cookie from the browser without navigating, then change a
+  time field so the debounced `Dry_Run` fires
+- Expected: the `Dry_Run` receives `UNAUTHORIZED` and the interface itself navigates to
+  `/login?next=/day/<TODAY>&reason=session_expired`, rendering
+  `Přihlášení vypršelo, přihlas se znovu`. This is the **only** source of that message.
+
+## UC-261 — The login page stays silent when it was reached by a plain redirect
+- Area: auth
+- Requirement: 2.7
+- Preconditions: no session cookie
+- Data needed: FIX-UI-EMPTY
+- Steps: open `$APP/projects` and let the `Auth_Hook` redirect; read the page
+- Expected: `/login?next=/projects` renders with **no** session-ended message, because a
+  hook-issued redirect carries the requested path only and cannot tell an expired session
+  from a first visit. The message appears only with `reason=session_expired` in the URL.
+
+## UC-262 — At rest the timer offers start and puts the day's total in the hero
+- Area: timer
+- Requirement: 3.1, 3.19, 3.20
+- Design_Contract: artboard `GaugeNormal` — the resting state
+- Preconditions: logged in, `VP-DESKTOP`, no `Open_Session`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/`; then compare against the same page under FIX-UI-EMPTY
+- Expected: the `Timer_Control` shows a single start action with the start icon and its
+  accessible name is `Spustit timer`. The hero readout is the day's total `Tracked_Time`
+  in the same 68/300 face the running clock uses, under the caption
+  `zastaveno v <time>` naming when the last session stopped. Under FIX-UI-EMPTY the
+  caption reads `timer neběží`. The `Day_Gauge` draws the day's arcs unchanged — the
+  resting page differs from the running one only in the hero figure, the caption and the
+  icon.
+
+## UC-263 — While a session is open the hero clock ticks and the control stops it
+- Area: timer
+- Requirement: 3.2, 3.3
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-RUNNING (open session started 90 min ago)
+- Steps: open `$APP/`, read the hero readout, wait three seconds and read it again
+- Expected: the `Timer_Control` shows a single stop action named `Zastavit timer`. The
+  hero shows the elapsed time of the open session as a running clock (`1:30:04` form)
+  advancing at least once per second, under the caption `běží od <time>` naming when it
+  started. The figure is drawn above the gauge, never inside it.
+
+## UC-264 — The three figures sit side by side in order, and only the third is accent
+- Area: timer
+- Requirement: 3.4, 3.5, 3.6, 3.7, 10.6
+- Design_Contract: `DESIGN.md` § 6 — three figures at `gap: 56`, 26/300 tabular
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/` and read the row beneath the gauge; repeat at `VP-MOBILE`
+- Expected: exactly three figures in this order, each under an uppercase caps label —
+  `odpracováno` (`Tracked_Time`), `popsáno` (`Covered_Time`), `chybí popis`
+  (`Uncovered_Time`). Only the third is drawn in `--accent`; the first two are `--text`.
+  All three are tabular. On `VP-MOBILE` they spread across the full width at 19/300 with
+  the short labels (`odprac.` / `popsáno` / `chybí`) and the unit-less duration form.
+  The third figure matches the day page's `Chybí popis` row exactly.
+
+## UC-265 — The Project_Legend names every project on the gauge plus the uncovered entry
+- Area: timer
+- Requirement: 3.8, 11.11, 16.19
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/` and read the row beneath the gauge
+- Expected: one legend item per `Project` drawn on the inner arc — an 8 × 8 swatch of
+  radius 2 in that project's `Palette_Slot` beside the project's **name** at 12 px
+  `--text-faint`, `gap: 22` — closing with a 14 px dashed accent rule labelled
+  `bez popisu`. No project appears as a swatch without its name; the legend is what
+  carries project identity in text for the gauge, so it is never optional.
+
+## UC-266 — The timer page's elements appear in the specified order
+- Area: timer
+- Requirement: 3.9
+- Design_Contract: artboard `Main`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-RUNNING
+- Steps: open `$APP/` and read the centred column top to bottom, in DOM order
+- Expected: hero elapsed readout → caption naming when the running session started →
+  `Day_Gauge` with the `Timer_Control` at its exact centre → the three figures →
+  `Quick_Log` control → `Project_Legend`. Nothing else sits between them and nothing is
+  reordered on `VP-MOBILE` (`TimerMobile` draws the same order at a smaller size).
+
+## UC-267 — The timer state comes from the server, never from the browser
+- Area: timer
+- Requirement: 3.10
+- Preconditions: logged in
+- Data needed: FIX-UI-RUNNING
+- Steps: open `$APP/`; stop the session through the API from another client; reload the
+  page; then inspect `localStorage` and `sessionStorage`
+- Expected: after the reload the page shows the resting state — the browser held no
+  cached timer to contradict the server. Neither storage holds any timer state at all.
+
+## UC-268 — The tab title carries the running elapsed time
+- Area: timer
+- Requirement: 3.11, 15.15
+- Preconditions: logged in
+- Data needed: FIX-UI-RUNNING
+- Steps: open `$APP/`, read `document.title`, wait two seconds and read it again; then
+  stop the timer and read it once more
+- Expected: while a session is open the title carries the running clock and it advances.
+  After the stop the ticking value is gone from the title. The title is written from the
+  same elapsed store as the on-screen readout, so the two can never disagree.
+
+## UC-269 — Regaining focus refreshes the timer and the page data together
+- Area: timer
+- Requirement: 3.12
+- Preconditions: logged in on `$APP/`
+- Data needed: FIX-UI-RUNNING
+- Steps: with the tab open, from another client stop the session **and** add an
+  `Activity_Entry` to the same day; then switch away from the tab and back
+- Expected: on `visibilitychange` back to visible the interface refetches
+  `GET /api/sessions/current` **and** invalidates the page's loaded data, so the resting
+  timer and the new entry appear together. A fresh timer beside a stale day is exactly
+  the failure this criterion exists to prevent.
+
+## UC-270 — A failed start or stop rolls back and says why
+- Area: timer · errors
+- Requirement: 3.13, 15.4
+- Preconditions: logged in on `$APP/`
+- Data needed: FIX-UI-DAY
+- Steps: make the start action fail — stop PostgreSQL, or start a session from another
+  client first — then press start
+- Expected: the optimistic change is rolled back and the control returns to its previous
+  state rather than showing a running timer that does not exist. The reason is shown
+  through the interface's error surface, as the translation of the server's `messageKey`,
+  never as a raw error code.
+
+## UC-271 — The Quick_Log control is offered on the timer page
+- Area: timer
+- Requirement: 3.14, 6.13
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open `$APP/` and locate the pill between the three figures and the legend
+- Expected: a 50 px fully-rounded pill on `--field` with a 34 px round icon box, reading
+  `Zapsat <from> → teď` at 14 px `--text-dim`, with the outstanding `Uncovered_Time` at
+  13 px `--text-faint` beside it (dropped on `VP-MOBILE`). It states the interval **and**
+  the project it will send before it is pressed.
+
+## UC-272 — The Timer_Control is fully operable from the keyboard
+- Area: timer · accessibility
+- Requirement: 3.15, 14.5
+- Preconditions: logged in on `$APP/`, no pointer used at any point
+- Data needed: FIX-UI-DAY
+- Steps: Tab until the `Timer_Control` has focus, press Enter; Tab back to it and press
+  Space
+- Expected: the control is reachable by Tab, shows the focus ring, and **both** Enter and
+  Space activate it. Its accessible name changes between `Spustit timer` and
+  `Zastavit timer` — that change is what a screen reader hears, since the digits are
+  hidden (UC-453).
+
+## UC-273 — A stale session is announced with a prefilled way to close it
+- Area: timer
+- Requirement: 3.16
+- Design_Contract: design.md *Stale-session notice* — no dismiss action
+- Preconditions: logged in
+- Data needed: FIX-UI-STALE (open session started 13 h ago, cap is 12 h)
+- Steps: open `$APP/` and read the area above the hero readout; then use the offered
+  action
+- Expected: a `--panel` box at radius 14 with a `1px solid rgba(209,138,106,0.28)` border
+  sits **above** the hero, carrying a 15 px warning icon and
+  `Timer běží od <start> a už se nezapočítává`, a 44 px time field prefilled with
+  `startedAt + MAX_OPEN_SESSION_HOURS` (the instant counting stopped, read from the
+  `Health_Endpoint`, not guessed), and one filled accent pill
+  `Zastavit v tomto čase`. There is **no** dismiss action. Using the pill closes the
+  session at that time and the notice disappears.
+
+## UC-274 — Starting a timer that is already running explains what is in the way
+- Area: timer · errors
+- Requirement: 3.17, 15.5
+- Preconditions: logged in on `$APP/` showing the resting state (a stale page)
+- Data needed: FIX-UI-RUNNING, with the session started after the page was loaded
+- Steps: press start
+- Expected: the write is refused and the interface names the session in the way —
+  `Timer už běží od <startedAt>` (the translation of `errors_session_already_running`) —
+  then resyncs from the server so the control shows the true state. It does not fail
+  silently and it does not leave the control claiming a second running timer.
+
+## UC-275 — A day rollover while the page is open re-resolves the day
+- Area: timer · shell
+- Requirement: 3.18, 1.25
+- Preconditions: logged in on `$APP/`, the server's `DAY_START_HOUR` temporarily moved to
+  a minute or two ahead of the current time so the boundary is reachable in a test
+- Data needed: FIX-UI-RUNNING
+- Steps: leave the page open across the boundary and watch without touching it
+- Expected: at the boundary the interface re-resolves the current `Logical_Day` from the
+  server and invalidates the page data, so the totals become the new day's while the
+  running session keeps counting. It does not keep showing yesterday's figures beside a
+  running timer, and it does not compute the boundary itself.
+
+## UC-276 — The day is one column of Work_Block groups with collapsed breaks between them
+- Area: day timeline
+- Requirement: 4.1, 4.18, 7.1
+- Design_Contract: artboard `DayCollapsed`; `DESIGN.md` § 6
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (two sessions, one 45-minute break)
+- Steps: open `/day/<TODAY>` and read the timeline top to bottom in DOM order
+- Expected: exactly two `Work_Block` sections in chronological order, and between them
+  exactly one `Break_Marker` — a single fixed-height row with `role="separator"`, a
+  centred label naming the break's duration and its bounds
+  (`pauza 45 min · 12:30 – 13:15`) between two dashed `--hairline` rules indented to
+  clear the rail. The break is **not** drawn as proportional empty space, and there is no
+  second list of the same records beside the timeline.
+
+## UC-277 — Each block has its own axis and its segments are proportional within it
+- Area: day timeline
+- Requirement: 4.2, 4.3; design Property 2
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: measure the rendered height of each `Segment_Block` and compare the ratios
+  within one `Work_Block`, then across the break
+- Expected: within a block, heights are in proportion to the segments' durations (modulo
+  the `MIN_BLOCK_PX` floor and the 2 px quantisation). Across a break they are **not** —
+  the second block's scale is its own. Distance equals time inside a block and nowhere
+  else; that is the trade the `Day_Gauge` exists to compensate for.
+
+## UC-278 — The Session_Rail stands for the session at the block's left edge
+- Area: day timeline
+- Requirement: 4.4, 14.3
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at `VP-DESKTOP` measure the rail's width and height against its segment column;
+  repeat at `VP-MOBILE`
+- Expected: a rounded vertical bar in `--rail` at the left edge of each `Work_Block`,
+  spanning the full height of that block's segment column — 8 px wide on desktop, 6 px on
+  mobile. It is a container of three sibling buttons (two 12 px edges and the middle),
+  never a button wrapping other buttons, and the edges are omitted entirely below a block
+  height of 60 px.
+
+## UC-279 — A Segment_Block is tinted and bordered in its project's colour
+- Area: day timeline
+- Requirement: 4.5, 11.9, 17.14
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (Alpha slot 0, Beta slot 1)
+- Steps: read each segment's class list and computed background and left border
+- Expected: each block carries one `pj-<n>` class matching the `colorIndex` the server
+  returned for that entry, a background of `var(--pj-tint)` (0.16 alpha dark, 0.13 light)
+  and a 3 px left border of `var(--pj)` at full strength. No `style=` attribute is used
+  to carry the colour, and no project colour is resolved by joining the projects list in
+  the browser.
+
+## UC-280 — A split entry carries the marker on every one of its parts, three ways
+- Area: day timeline
+- Requirement: 4.6, 7.2
+- Design_Contract: design.md *The Split Marker* — counter, notch, linked hover
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-SPLIT (one entry clipped into two segments around the break)
+- Steps: read both blocks' text and `aria-label`; hover one of them and observe the
+  other; read the SVG/notch on each
+- Expected: all three mechanisms are present on **both** parts — (1) `část 1 ze 2` and
+  `část 2 ze 2` in the meta line at 12 px `--text-faint`, and in the `aria-label`
+  (`· 1/2` on a collapsed block); (2) a 7 px `--pj` triangle on the edge facing the
+  break — bottom edge of every part but the last, top edge of every part but the first;
+  (3) hovering or focusing either part raises the `--pj-tint` of **both** by half again
+  and outlines each in 1 px `--pj`. The parts share a `data-entry-id`, which is what the
+  linked state keys on.
+
+## UC-281 — Uncovered stretches inside a block carry the Uncovered_Marker
+- Area: day timeline
+- Requirement: 4.7, 10.2
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (10:15–12:30 and 14:00–17:00 uncovered)
+- Steps: read the blocks that stand for those stretches
+- Expected: each is drawn in place, in chronological position among the described
+  segments, with the `Uncovered_Marker` treatment — fill
+  `rgba(209,138,106,0.06)`, a `1px dashed rgba(209,138,106,0.45)` border (light theme
+  0.52) and an accent title — carrying its own times and duration. There is no separate
+  list of uncovered stretches anywhere on the page.
+
+## UC-282 — An open session's block runs to now and says it is running
+- Area: day timeline
+- Requirement: 4.8
+- Design_Contract: design.md *Running, Capped and Continuing Blocks*
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-RUNNING
+- Steps: open `/day/<TODAY>` and read the last `Work_Block`
+- Expected: the block extends to the current time. Its rail is `--accent` instead of
+  `--rail` with a **square** bottom end (the block has no end yet), a 6 px accent dot
+  precedes the head time, and `běží` renders at the head's right in 12/500 `--accent`.
+  The state is carried in text as well as in colour.
+
+## UC-283 — A stale session's block stops where the server stopped counting
+- Area: day timeline
+- Requirement: 4.9
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-STALE
+- Steps: open `/day/<TODAY>` and read the block's head and rail
+- Expected: the block is drawn only as far as `startedAt + MAX_OPEN_SESSION_HOURS` — the
+  cap the `Health_Endpoint` reports, not a value reconstructed from the day's totals —
+  and the head time is that cap instant rather than `now`. The rail is `--accent` down to
+  the cap, then `--rail` at `opacity: 0.5`, the two divided by a 1 px `--hairline`. The
+  text `timer běží, ale už se nezapočítává` replaces the `v kuse` phrase in 12 px accent.
+  The drawn block and the figure beside it agree, because both stop at the same instant.
+
+## UC-284 — Hovering or focusing a segment reveals its times, project and description
+- Area: day timeline
+- Requirement: 4.10
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-MANY (every block at the 36 px floor, so descriptions are dropped)
+- Steps: hover a collapsed block and wait out the 400 ms delay; then reach the same block
+  by keyboard and observe
+- Expected: a tooltip appears above the block, centred on it with an 8 px offset,
+  `--dialog` at radius 9 with a 1 px `--menu-border`, naming the project, the description
+  and the times. Focus opens one with **no** delay. It is `role="tooltip"` referenced by
+  `aria-describedby`, never the accessible name — everything it says is already in the
+  DOM or in the block's `aria-label`, so a touch device that has no hover loses nothing.
+
+## UC-285 — Activating a segment opens the Activity_Dialog for its entry
+- Area: day timeline
+- Requirement: 4.11, 7.4
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: click the Alpha segment; then repeat by focusing it and pressing Enter
+- Expected: the `Activity_Dialog` opens in edit mode for that `Activity_Entry`, prefilled
+  with its current project, description and times. Activating either part of a split
+  entry opens the same single entry, not one dialog per segment.
+
+## UC-286 — Activating the rail or the block head opens the Session_Dialog
+- Area: day timeline
+- Requirement: 4.12
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: activate the middle of a `Session_Rail`; close; activate the `Work_Block` head
+- Expected: both open the `Session_Dialog` for that `Work_Session`, with neither time
+  field focused (the edges are what focus a field — UC-340). The head is a `<button>`
+  inside the head row and the rail's parts are sibling buttons, so no button nests inside
+  another.
+
+## UC-287 — Activating an uncovered stretch opens the dialog prefilled with exactly it
+- Area: day timeline
+- Requirement: 4.13, 10.3
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (10:15–12:30 uncovered)
+- Steps: activate the uncovered block and read the dialog's fields
+- Expected: the `Activity_Dialog` opens in `Explicit_Mode` with `od` = `10:15` and
+  `do` = `12:30` — exactly that stretch, to the minute — the day field on the displayed
+  day, and focus on the description field. Nothing is written yet.
+
+## UC-288 — The timeline is vertical at every width
+- Area: day timeline · responsiveness
+- Requirement: 4.14, 14.12
+- Design_Contract: `DESIGN.md` § 9 row 4 — the difference is density, not orientation
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open `/day/<TODAY>` at `VP-DESKTOP`, `VP-MOBILE` and `VP-NARROW`
+- Expected: one vertical column of blocks at all three widths. What changes is density —
+  block floor 36 → 26, rail 8 → 6, head 13/500 → 12/500, padding `9px 13px` → `8px 11px`,
+  the description dropped entirely, and the break label losing its bounds. The layout
+  never becomes horizontal and the side panels move below the timeline rather than
+  disappearing.
+
+## UC-289 — The timeline is navigable by keyboard in chronological order
+- Area: day timeline · accessibility
+- Requirement: 4.15, 14.5
+- Preconditions: logged in, `VP-DESKTOP`, no pointer used
+- Data needed: FIX-UI-DAY
+- Steps: Tab from the top of the timeline through to the bottom, recording each focused
+  element
+- Expected: focus visits the blocks in chronological order — head, rail parts, then each
+  `Segment_Block` in the `<ol>`'s order — matching what is drawn top to bottom. Every
+  stop shows the focus ring. A `Break_Marker` is **not** a stop: it is a
+  `role="separator"` with a label, and there is nothing to activate on a break.
+
+## UC-290 — An empty day invites the user to start the timer
+- Area: day timeline · empty states
+- Requirement: 4.16, 15.10
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/day/<TODAY>`
+- Expected: the timeline is replaced entirely by a centred empty state — a 20 px icon in
+  `--text-faint`, `Zatím nic` and `Spusť timer a den se začne plnit sám.` at 14 px
+  `--text-dim`, and one filled accent pill as the next step. Not an empty frame, not a
+  zero-height column.
+
+## UC-291 — A session continuing past the day is drawn to the block's end and named
+- Area: day timeline
+- Requirement: 4.17
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-CONTINUES (session 22:00 → 05:00 next date, on `Logical_Day`
+  2026-08-19)
+- Steps: open `/day/2026-08-19` and read the last block's rail, head and meta line
+- Expected: the block reaches the end of its own column rather than being clipped
+  mid-segment; its rail's bottom end is square with a 7 px `--rail` triangle centred on
+  the bottom edge; and `pokračuje do 05:00` renders on the meta line at 12 px
+  `--text-faint`, naming the session's **true** end in the head. Known deviation:
+  `timeline-geometry.ts` derives `continues` from a UTC-midnight approximation rather
+  than from `DAY_START_HOUR` and the server's zone, so a session near the real boundary
+  can be flagged wrongly — see ISSUES.md "`timeline-geometry.ts`'s `continues` flag uses
+  a UTC-midnight approximation".
+
+## UC-292 — A break of an hour or more is drawn more heavily than a short one
+- Area: day timeline
+- Requirement: 4.19
+- Design_Contract: `LONG_BREAK_SECONDS = 3600`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (45-minute break) and a variant with a four-hour evening break
+- Steps: compare the two `Break_Marker` rows
+- Expected: the 45-minute break renders at 11.5 px / 400 in `--text-faint` with 11 px
+  vertical padding; the four-hour break renders at 12 px / 500 in `--text-dim` with 13 px
+  padding. The threshold is exactly one hour — a break of 59 minutes takes the short
+  treatment and one of 60 takes the long one.
+
+## UC-293 — No Segment_Block is ever drawn below the floor
+- Area: day timeline
+- Requirement: 4.20, 14.3; design Property 2
+- Preconditions: logged in
+- Data needed: FIX-UI-MANY (fifty entries of about nine minutes in one session)
+- Steps: at `VP-DESKTOP` measure every rendered block height; repeat at `VP-MOBILE`
+- Expected: every block is at least 36 px on desktop and 26 px on mobile, however short
+  its segment. A two-minute segment is drawn at the floor, not as a sliver, and it is
+  still clickable.
+
+## UC-294 — The description appears only on a desktop block of at least 60 pixels
+- Area: day timeline
+- Requirement: 4.21
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY (tall blocks) and FIX-UI-MANY (floor blocks)
+- Steps: at `VP-DESKTOP` compare a block above 60 px with one at the floor; then view the
+  same day at `VP-MOBILE`
+- Expected: a desktop block of 60 px or more carries project name 14/500 → description
+  12.5 `--text-dim` → times 12 `--text-faint`. Below 60 px it collapses to one row — name
+  13/500 and times side by side, no description. At **every** mobile height the
+  description is absent, and the tooltip (UC-284) is what supplies it.
+
+## UC-295 — Every block head names its start, its end and its total
+- Area: day timeline
+- Requirement: 4.22
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read both block heads
+- Expected: `08:00 – 12:30` at 13/500 tabular beside `4 h 30 min v kuse` at 12 px
+  `--text-faint`, and the same for the second block. The head is also the block's
+  accessible name, so a screen reader gets the same three facts.
+
+## UC-296 — When the floor cannot fit the budget, the page scrolls
+- Area: day timeline
+- Requirement: 4.23; design Property 2
+- Preconditions: logged in, `VP-DESKTOP` with a deliberately short viewport (900 tall)
+- Data needed: FIX-UI-MANY
+- Steps: open `/day/<TODAY>` and measure the timeline column's height against
+  `availablePx`, then scroll
+- Expected: the column exceeds the available height — every block pinned at the floor —
+  and the page scrolls vertically. No block is squeezed below 36 px to make the day fit:
+  a block too small to read is worse than a page that scrolls. The mobile artboard's
+  `overflow: hidden` on the column is a drawing convenience, not the contract.
+
+## UC-297 — A block touching the Evening_Hour is marked as a night block
+- Area: day timeline
+- Requirement: 4.24
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-NIGHT (session 21:30 → 01:00, `EVENING_HOUR=21`)
+- Steps: open `/day/<TODAY>` and read the head; then check a 06:00–09:00 block on another
+  day
+- Expected: the 21:30 block's head carries `· noční`. The 06:00–09:00 block does not,
+  whatever date it started on — crossing midnight is not the test, reaching the
+  `Evening_Hour` is. The hour comes from the server, so a configuration of 20 moves the
+  marker with it, and a block called `noční` here is a block contributing to
+  `Po 21:00` in the statistics.
+
+## UC-298 — A stretch under five minutes gets no block but still counts
+- Area: day timeline
+- Requirement: 4.25, 10.4
+- Design_Contract: `MIN_UNCOVERED_SECONDS = 300`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY plus one entry leaving a 3-minute uncovered gap and one leaving
+  a 7-minute gap
+- Steps: read the timeline, the `souhrn dne` panel, the timer page's third figure and the
+  statistics `Bez popisu` row
+- Expected: the 7-minute stretch is drawn; the 3-minute one is not drawn and is not named
+  anywhere. Its duration nevertheless stays in the proportional division of its block's
+  height — absorbed by the segment that follows it, so the drawn blocks still sum to the
+  session — and it is counted in every total on all four surfaces. One threshold,
+  applied everywhere.
+
+## UC-299 — A day is addressed by its date and survives a reload
+- Area: day navigation
+- Requirement: 5.1
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: navigate to a past day through the previous-day control, copy the URL, open it
+  in a fresh tab
+- Expected: the URL is `/day/YYYY-MM-DD` and reopening it renders the same day. The date
+  is in the path, so a particular day can be bookmarked, shared and reloaded.
+
+## UC-300 — Previous, next and a date picker are all offered
+- Area: day navigation
+- Requirement: 5.2
+- Design_Contract: design.md — desktop puts the two 34 px round buttons in the heading
+  line, left of the date, matching the mobile treatment
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at `VP-DESKTOP` locate all three controls in the heading line and use each;
+  repeat at `VP-MOBILE` in the 44 px date row
+- Expected: `Předchozí den` and `Následující den` move the displayed day by one and
+  update the URL; `Vybrat datum` opens a date picker that navigates to the chosen day.
+  All three exist at both widths — the desktop artboards draw no date navigation, which
+  is a gap in the drawing, not permission to omit the controls.
+
+## UC-301 — The next-day control is disabled on the current day
+- Area: day navigation
+- Requirement: 5.3
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open `/day/<TODAY>`, inspect the next-day control, try to activate it; then go
+  back one day and inspect it again
+- Expected: on `TODAY` it is disabled, carries `aria-disabled`, is drawn at reduced
+  opacity (0.3), shows no pointer cursor and does nothing when activated. On a past day
+  it is enabled and moves forward. There is nothing after today to navigate to.
+
+## UC-302 — The current day is labelled as today, not only by its date
+- Area: day navigation
+- Requirement: 5.4, 13.7
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read the heading on `/day/<TODAY>`, then on the previous day, then on a day
+  further back
+- Expected: today reads `dnes`, the previous day `včera`, and anything earlier falls
+  through to the long form (`pátek 21. srpna`). The label comes from `formatDayLabel`
+  with `form: 'relative'` and the server's `today`, never from a date compared in the
+  browser.
+
+## UC-303 — A malformed date in the URL shows the error page
+- Area: day navigation · errors
+- Requirement: 5.5
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/day/2026-13-45`, then `/day/yesterday`, then `/day/20260820`
+- Expected: each renders the interface's error page rather than an empty day, a crash or
+  a redirect. The date parameter is validated against `YYYY-MM-DD` on the server before
+  anything is loaded.
+
+## UC-304 — The day's heading line states the date, its bounds and its total
+- Area: day navigation
+- Requirement: 5.6
+- Design_Contract: artboard `DayCollapsed`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read the heading line
+- Expected: the date at 20/500 beside `08:00 – 17:00 · odpracováno 8 h 15 min` at 13 px
+  `--text-faint` — the day's first tracked instant, its last, and its total
+  `Tracked_Time`, in one line. On `VP-MOBILE` the same three facts sit under the centred
+  date at 10 px.
+
+## UC-305 — The day page offers an action that opens the Activity_Dialog
+- Area: activity creation
+- Requirement: 6.1
+- Design_Contract: artboard `DayCollapsed` — `+ Přidat úkol` as a filled accent pill,
+  34 tall, radius 9999, 13.5/600 in `--ink-on-accent`, at the heading line's right end
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at `VP-DESKTOP` activate `+ Přidat úkol` in the heading line; at `VP-MOBILE`
+  reach the same dialog through the create action
+- Expected: the `Activity_Dialog` opens in create mode on both widths. Known deviation:
+  on mobile the create pills render only in the desktop branch and the FAB has no
+  content mechanism, so there is currently **no** mobile entry point for creating an
+  activity or a session — see ISSUES.md "Mobile FAB two-item create sheet still has no
+  entry point" and "No FAB-content mechanism exists between the shell and pages".
+
+## UC-306 — The dialog offers three modes and all three are first class
+- Area: activity creation
+- Requirement: 6.2, 14.18
+- Design_Contract: `DESIGN.md` § 7 and § 9 row 2 — the third mode is settled, design wins
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open the dialog, read the mode control, and reach it by keyboard
+- Expected: a segmented control of exactly three items — `Přesně od–do`, `Jen délka`,
+  `Od posledního` — items 36 tall at radius 9 inside a radius-12 group on `--group`, the
+  active one on `--segment-active` with accent 13/500 text. It is exposed as a
+  `radiogroup` of `radio` items, so Tab reaches the group once and the arrow keys move
+  between the options. No mode is hidden, secondary or reached through a different
+  control.
+
+## UC-307 — Explicit_Mode requires a start and an end
+- Area: activity creation · validation
+- Requirement: 6.3, 14.13, 6.10
+- Preconditions: logged in, dialog open in `Přesně od–do`
+- Data needed: FIX-UI-DAY
+- Steps: leave `od` empty and try to save; then fill `od` and leave `do` empty and try
+  again; then give an end before the start
+- Expected: both fields are marked required. Each empty field is refused with
+  `Vyplň tohle pole.` rendered directly beneath it at 12 px `--destructive`, the field
+  taking `inset 0 0 0 1px var(--destructive)` in place of its resting ring and **keeping
+  what was typed**. An end before the start renders
+  `Konec musí být po začátku.` beside the time fields and nothing is saved.
+
+## UC-308 — Duration_Mode requires a duration and leaves the start optional
+- Area: activity creation
+- Requirement: 6.4, 6.19
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: switch to `Jen délka` and read the field row; save with a duration and no start
+- Expected: the row shows day, duration and project (`1fr 1fr 1.2fr`) — no `od`, no `do`.
+  The duration is marked required; the start is not offered as a field at all in this
+  mode, and the server resolves it from the `Placement_Anchor`. The save succeeds.
+
+## UC-309 — The Placement_Anchor is shown as an inference, and comes from the Dry_Run
+- Area: activity creation · preview
+- Requirement: 6.5, 9.1
+- Preconditions: logged in, dialog open in `Jen délka`
+- Data needed: FIX-UI-DAY
+- Steps: type a duration, wait for the debounced `Dry_Run`, read the note; then record the
+  network traffic and confirm where the value came from; then switch to `Od posledního`
+- Expected: a tinted note with an info icon renders
+  `Začne se od 14:00 — konec posledního záznamu. Do 2 h se počítá jen čistá práce, pauzy
+  se přeskakují.` — the instant carried by the **successful** `Dry_Run` response's
+  `anchor` field, labelled as an inference rather than offered as an input. The same in
+  `Od posledního`. The browser computes no anchor of its own and does not read one out of
+  an error payload; blocking the `Dry_Run` leaves the note absent rather than guessed.
+
+## UC-310 — Open_Mode asks for neither an end nor a duration
+- Area: activity creation
+- Requirement: 6.6, 6.19
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: switch to `Od posledního` and read the field row; save with a project alone
+- Expected: the row shows day and project only (`1fr 1.6fr`). No end field, no duration
+  field. The submitted body carries the project, the description and the date; the server
+  resolves both ends of the interval. The write succeeds and one segment appears on the
+  timeline.
+
+## UC-311 — A project is required and a description is optional
+- Area: activity creation · validation
+- Requirement: 6.7, 14.13
+- Preconditions: logged in, dialog open in `Přesně od–do`
+- Data needed: FIX-UI-DAY
+- Steps: fill valid times, clear the project, save; then choose a project, clear the
+  description, save
+- Expected: the project field is marked required and its absence is refused with
+  `Vyplň tohle pole.` beside it, the typed times intact. With a project and no
+  description the save succeeds and the resulting `Segment_Block` shows the project name
+  with no description line.
+
+## UC-312 — The Project_Picker searches and creates without leaving the dialog
+- Area: activity creation · projects
+- Requirement: 6.8, 11.13
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: open the picker, type `Bet`, choose the match; reopen, type a name that matches
+  nothing, choose the create row; then check the dialog's other fields
+- Expected: the picker is a `combobox` over non-archived projects with substring search
+  and keyboard navigation. With no match it offers `Vytvořit „<name>"`, which POSTs to
+  `/api/projects` and inserts the result as the selected value **without closing the
+  surrounding dialog** and without losing anything already typed into it. Each option
+  shows its `Palette_Slot` swatch next to the name, never the swatch alone. When no
+  project exists at all it offers creating the first one rather than an empty control.
+
+## UC-313 — A new entry defaults to the day's most recent entry
+- Area: activity creation
+- Requirement: 6.9
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY (most recent entry: Beta, "Worklog")
+- Steps: open the dialog in create mode with no prefill and read the project and
+  description fields
+- Expected: the project is Beta and the description is `Worklog` — the values of the most
+  recent `Activity_Entry` of the **displayed** day. Prefill precedence is: an explicit
+  prefill from a clicked gap first, then this, then empty. Opening the dialog from an
+  uncovered stretch therefore overrides both (UC-287).
+
+## UC-314 — Validation happens in the browser without clearing what was typed
+- Area: activity creation · validation
+- Requirement: 6.10, 15.4, 15.12
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: type a description, then a malformed time such as `25:99`, and submit
+- Expected: the message renders beside the time field before any request is issued —
+  `Zadej čas ve tvaru HH:MM` — and every other field keeps its value, the description
+  included. Focus moves to the first bad field. The message is the translation of the
+  catalogue key the shared schema maps the issue to; the Zod validator's own English
+  sentence never reaches the screen.
+
+## UC-315 — The Change_Preview renders live beneath the form, not as a separate step
+- Area: activity creation · preview
+- Requirement: 6.11, 9.16
+- Design_Contract: `DESIGN.md` § 7 — live under the form for the activity dialog
+- Preconditions: logged in, dialog open in `Přesně od–do`
+- Data needed: FIX-UI-DAY
+- Steps: type times spanning the break, wait, then change the end by fifteen minutes and
+  wait again
+- Expected: a panel of radius 14 on `--panel` renders beneath the fields, headed by an eye
+  icon and the caps label `uloží se takto` in accent, showing the resulting segments as
+  miniature blocks. It **updates in place** as the input changes — there is no
+  "preview" button and no intermediate confirmation screen. The save action stays enabled
+  throughout unless the `Dry_Run` returned a rejection. The footer states
+  `Počítá to server, ne prohlížeč — co vidíš, to se stane`.
+
+## UC-316 — Quick_Log submits in Open_Mode and lets the server resolve the interval
+- Area: activity creation · quick log
+- Requirement: 6.12
+- Preconditions: logged in on `$APP/`
+- Data needed: FIX-UI-RUNNING
+- Steps: record the outgoing request, press the `Quick_Log` pill, then read the created
+  entry through `GET /api/days/<TODAY>`
+- Expected: the pill posts an `Open_Mode` write carrying the project (and the date) and
+  **no** start, end or duration. The server resolves the start from the
+  `Placement_Anchor` and the end from the current time. The browser computes neither.
+
+## UC-317 — Quick_Log names the interval and project it will send before it is pressed
+- Area: activity creation · quick log
+- Requirement: 6.13, 6.17
+- Preconditions: logged in on `$APP/`
+- Data needed: FIX-UI-DAY
+- Steps: read the pill's label; compare it with `DayResponse.quickLog` from
+  `GET /api/days/<TODAY>`; then use the pill's alternative action
+- Expected: the pill reads `Zapsat 14:00 → teď` and names the project it will use, both
+  taken verbatim from `DayResponse.quickLog` — the project of the most recent
+  `Activity_Entry` of the displayed `Logical_Day`, or of any day when that day holds
+  none. Nothing is recomputed in the browser. The pill also offers
+  `Otevřít dialog`, which opens the full `Activity_Dialog` instead of posting.
+
+## UC-318 — A created entry appears on the timeline with no page reload
+- Area: activity creation
+- Requirement: 6.14
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window`, create an entry through the dialog, watch the timeline
+- Expected: the new `Segment_Block` appears, the uncovered stretch it filled shrinks or
+  disappears, and the `souhrn dne` figures update — all without a document reload, so the
+  marker survives. The dialog closes and a brief success confirmation appears.
+
+## UC-319 — Escape closes the dialog and hands focus back
+- Area: activity creation · accessibility
+- Requirement: 6.15, 14.22
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: note which control opens the dialog, open it, press Escape, read
+  `document.activeElement`
+- Expected: the dialog closes and focus returns to the exact control that opened it —
+  the `+ Přidat úkol` pill, the `Segment_Block`, or the uncovered block, whichever it
+  was. This holds for the `Session_Dialog` and every confirmation dialog too.
+
+## UC-320 — The dialog footer says nothing is written until confirmed
+- Area: activity creation
+- Requirement: 6.16, 9.11
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: read the footer
+- Expected: `Esc zavře · nic se neuloží, dokud nepotvrdíš` at 12 px `--text-faint` in the
+  footer band, beside the ghost pill and the primary pill (both 42 tall). Closing the
+  dialog at any point before confirming writes nothing — verified by re-reading the day
+  through the API.
+
+## UC-321 — With no project at all, Quick_Log opens the dialog instead of posting
+- Area: activity creation · quick log · empty states
+- Requirement: 6.18, 11.13
+- Preconditions: logged in on `$APP/`
+- Data needed: FIX-UI-EMPTY (no project exists)
+- Steps: read the pill, then activate it
+- Expected: `DayResponse.quickLog` is `null`, so the pill does not post. It reads
+  `Nejdřív vytvoř projekt` and activating it opens the `Activity_Dialog` in
+  `Od posledního` with focus already on the `Project_Picker`, which is also where the
+  first project gets created. No request is issued and no error is shown.
+
+## UC-322 — The field row's column count follows the active mode
+- Area: activity creation
+- Requirement: 6.19
+- Design_Contract: artboard `AddTask` draws the `Duration_Mode` layout
+- Preconditions: logged in, dialog open, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read the field row's computed `grid-template-columns` in each of the three modes
+- Expected: `Explicit_Mode` `1fr 0.8fr 0.8fr 1.4fr` (day, from, to, project);
+  `Duration_Mode` `1fr 1fr 1.2fr` (day, duration, project); `Open_Mode` `1fr 1.6fr`
+  (day, project). The **day field appears in all three**. Fields are 44 tall at radius 11
+  on `--field`, `gap: 12`, and the field the active mode derives is drawn with
+  `--field-active-bg` and `--field-active-ring`. On `VP-MOBILE` the grid collapses to one
+  field per row at 48 px and 15 px type.
+
+## UC-323 — The timeline is the day's list; there is no second one
+- Area: activity editing
+- Requirement: 7.1
+- Design_Contract: design.md — there is no `ActivityList` and no `UncoveredList`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read the whole day page and look for any list repeating the day's entries or its
+  uncovered stretches
+- Expected: every `Activity_Segment` of the day is drawn as a `Segment_Block` carrying its
+  project, its description where the height allows, its times and its duration, and no
+  list of the same records is rendered beside it. The side column holds only
+  `souhrn dne`, `tvar dne` and — when the day has one — the `Orphan_Panel`.
+
+## UC-324 — A split entry's segments carry their own times and say they were split
+- Area: activity editing
+- Requirement: 7.2, 4.6
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-SPLIT
+- Steps: read both parts of the split entry
+- Expected: each part shows its own start, end and duration — `12:00 – 12:30` and
+  `13:15 – 14:00`, not the requested `12:00 – 14:00` on both — and each states through
+  the `Split_Marker` that the entry was split around a break. The break stays visible
+  between them rather than being smoothed over.
+
+## UC-325 — When stored differs from requested, the dialog says so
+- Area: activity editing
+- Requirement: 7.3
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-SPLIT (requested 12:00 – 14:00, stored as two segments)
+- Steps: open the `Activity_Dialog` on that entry and read above the field row
+- Expected: one line at 12.5 px `--text-faint` —
+  `žádáno 12:00 – 14:00 · uloženo ve 2 částech` — built from `requestedStartedAt` /
+  `requestedEndedAt` (or `requestedDurationMinutes`). It is a statement, not a field:
+  editing the times replaces it. This is the only place the difference is shown, because
+  it is the only place it can be acted on.
+
+## UC-326 — Opening an entry for editing prefills its current values
+- Area: activity editing
+- Requirement: 7.4
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: activate the Alpha segment and read every field
+- Expected: the mode, the day, the times, the project and the description all carry the
+  entry's current values, and the dialog title reads `Upravit úkol` rather than
+  `Přidat úkol`. Nothing is blank and nothing is defaulted from another entry.
+
+## UC-327 — Changing only the description or project saves without a preview
+- Area: activity editing · preview
+- Requirement: 7.5
+- Design_Contract: design.md — the `Editing → Saving` shortcut
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open an entry, change only the description, save; repeat changing only the
+  project
+- Expected: no `Change_Preview` is requested or rendered, and the save goes straight
+  through — a change that cannot move a segment has nothing to preview. The timeline
+  updates in place.
+
+## UC-328 — Changing the interval or the duration shows a preview first
+- Area: activity editing · preview
+- Requirement: 7.6, 9.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open an entry, move its end by thirty minutes, wait for the debounce
+- Expected: the `Change_Preview` renders beneath the form showing the segments as they
+  would be stored, and nothing is written until the user confirms. Re-reading the day
+  through the API before confirming shows the original values unchanged.
+
+## UC-329 — Deleting an entry is confirmed by naming what goes
+- Area: activity editing
+- Requirement: 7.7, 15.8
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open an entry, choose delete, read the confirmation, cancel; then repeat and
+  confirm
+- Expected: a confirmation dialog of `max-width: 420` opens headed `Smazat úkol?` with a
+  body naming the record and the duration —
+  `Alpha, 08:00 – 10:15 · 2 h 15 min. Zmizí z výkazu.` — never a bare "are you sure".
+  Its confirm pill is filled in `--destructive` with `--ink-on-accent` text. Cancelling
+  writes nothing; confirming removes the entry.
+
+## UC-330 — A deleted entry leaves the timeline without a page reload
+- Area: activity editing
+- Requirement: 7.8
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window`, delete an entry, watch the timeline and the side panel
+- Expected: the `Segment_Block` disappears, the stretch it occupied becomes an
+  `Uncovered_Marker`, and the `souhrn dne` figures and meter update — with no document
+  reload, so the marker survives. A brief `Smazáno` confirmation appears.
+
+## UC-331 — Orphaned entries get their own panel, because they have nowhere to be drawn
+- Area: activity editing · orphans
+- Requirement: 7.9
+- Design_Contract: artboard `DayCollapsed` — the `mimo výkaz` panel
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-ORPHAN
+- Steps: open `/day/<TODAY>` and read the third panel of the side column
+- Expected: a panel headed `mimo výkaz` listing one row per emptied entry, each naming
+  its `Project` and its **originally requested** interval
+  (`žádáno 13:00 – 16:00 · zbylo 0 min`), above the sentence
+  `Zápisy, kterým po úpravě timeru nezbyl žádný čas. Na ose je nevidíš, protože nikde
+  neleží.` The entries are absent from the timeline, which is correct — an entry with no
+  `Activity_Segment` has no position to be drawn at.
+
+## UC-332 — With no orphans the panel is not rendered at all
+- Area: activity editing · orphans
+- Requirement: 7.10
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (no orphaned entry)
+- Steps: read the side column
+- Expected: exactly two panels — `souhrn dne` and `tvar dne`. There is no `mimo výkaz`
+  heading, no empty panel and no placeholder occupying the space.
+
+## UC-333 — The Orphan_Panel offers recovery and deletion from one shared pair of actions
+- Area: activity editing · orphans
+- Requirement: 7.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-ORPHAN (at least two orphaned entries)
+- Steps: select a row, use `Přepsat čas` and give the entry a new interval inside
+  `Tracked_Time`; then select another row and delete it
+- Expected: the two actions are drawn **once at the foot of the panel**, not repeated per
+  row, and they act on the selected row — at 290 px a pair of pills per row costs more
+  height than the rows themselves. Re-entering the times places the entry back on the
+  timeline as real segments; deleting removes it. An `Orphaned_Entry` can never become a
+  record the user cannot reach.
+
+## UC-334 — Adding a Work_Session is offered in the heading line and the mobile menu
+- Area: frame editing
+- Requirement: 8.1, 1.5
+- Design_Contract: artboard `DayCollapsed` — `+ úsek` as a ghost pill on `--chip` in
+  `--text-dim`, 34 tall, beside the filled `+ Přidat úkol`
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: at `VP-DESKTOP` activate `+ úsek`; at `VP-MOBILE` reach the same through the
+  create action
+- Expected: the `Session_Dialog` opens in create mode with empty start and end fields on
+  the displayed day, and saving adds a `Work_Session` for a stretch that was never
+  tracked. The task is the everyday action and gets the filled treatment; adding a timer
+  block is a repair and stays quiet. Known deviation on mobile — see UC-305.
+
+## UC-335 — Editing a session shows the new value beside the old one struck through
+- Area: frame editing
+- Requirement: 8.2
+- Design_Contract: artboard `SessionEdit`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open the `Session_Dialog` on the first session and change the end from `12:30`
+  to `11:30`
+- Expected: two 44 px time fields, start and end, both editable. The changed one carries
+  the new value with the previous one beside it struck through at 12 px `--text-faint`,
+  so what is being replaced stays visible while the change is considered.
+
+## UC-336 — Deleting a session is an inline destructive control behind a confirmation
+- Area: frame editing
+- Requirement: 8.3, 15.8
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open the `Session_Dialog`, activate the delete control, read the confirmation
+- Expected: deletion is offered as an inline `--destructive` text link
+  (`Smazat celý úsek 08:00 – 12:30`), not as a footer button, and it opens a confirmation
+  headed `Smazat úsek timeru?` whose body names the interval that will be removed and how
+  many entries lose time — `Úsek 08:00 – 12:30 · 4 h 30 min zmizí. Jeden záznam přijde o
+  čas.` Cancelling writes nothing.
+
+## UC-337 — A session change that costs recorded time becomes a confirmation state
+- Area: frame editing · preview
+- Requirement: 8.4, 9.11
+- Design_Contract: `DESIGN.md` § 7 — the two dialogs use different preview patterns
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: shorten the first session's end from `12:30` to `09:00` — which cuts into the
+  Alpha entry — and submit
+- Expected: the preview does **not** sit under the form as it does in the
+  `Activity_Dialog`. It takes over the dialog body as a distinct confirmation state: the
+  save action is replaced by `Potvrdit a uložit` beside `Zpět k úpravě`, and the body
+  shows what disappears. Going back returns to editing with the typed values intact;
+  confirming performs the write.
+
+## UC-338 — A session change that would overlap another names the conflict and refuses
+- Area: frame editing · errors
+- Requirement: 8.5, 15.5
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (two sessions, 08:00–12:30 and 13:15–17:00)
+- Steps: open the second session and move its start back to `11:00`
+- Expected: the preview reports a rejection naming the conflicting session —
+  `Překrývá se s úsekem 08:00 – 12:30` — the confirm action stays disabled, and nothing
+  is written. Where the conflict is with the running timer the message is
+  `Překrývá se s běžícím timerem od <from>` instead. Re-reading the day confirms both
+  sessions are unchanged.
+
+## UC-339 — A start that is not before its end is refused beside the field
+- Area: frame editing · validation
+- Requirement: 8.6
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open a session and set the end earlier than the start, then equal to it
+- Expected: `Konec musí být po začátku.` renders beside the time fields, the fields keep
+  their values, and the write is refused in both cases. An interval is half-open, so an
+  end equal to the start is empty and equally invalid.
+
+## UC-340 — A rail edge opens the dialog with that end's field focused and selected
+- Area: frame editing
+- Requirement: 8.7, 14.21
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY (blocks taller than 60 px, so the edges are rendered)
+- Steps: activate the top 12 px of a `Session_Rail`, note focus and selection; close;
+  activate the bottom 12 px
+- Expected: the top edge opens the `Session_Dialog` with `začátek` focused **and its
+  content selected**, ready to be typed over or stepped; the bottom edge does the same
+  for `konec`. Their accessible names are `Upravit začátek úseku, 08:00` and
+  `Upravit konec úseku, 12:30`. Every boundary change therefore goes through a field with
+  a `Change_Preview` behind it.
+
+## UC-341 — No session edge can be dragged
+- Area: frame editing
+- Requirement: 8.8, 14.3
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: press and drag a `Session_Rail` edge vertically by fifty pixels and release;
+  then search the source for a pointer-move handler on the rail
+- Expected: nothing moves, no ghost is drawn, no time is changed and no write is issued —
+  the drag is simply not a gesture the interface implements. A block's height is
+  proportional only within its block and is clamped at `MIN_BLOCK_PX`, so no
+  pixel-to-minute mapping exists that would not misreport the time being set.
+
+## UC-342 — A changed or removed session updates the timeline without a reload
+- Area: frame editing
+- Requirement: 8.9
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window`; shorten a session and confirm; then delete the other
+  one and confirm
+- Expected: the `Work_Block` resizes and the affected `Segment_Block` elements re-clip in
+  place; the deleted session's block and every segment inside it disappear and the
+  `Break_Marker` between them goes with it. No document reload — the marker survives.
+
+## UC-343 — Deleting a session previews every entry that loses time
+- Area: frame editing · preview
+- Requirement: 8.10, 9.5, 9.8
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open the first session, choose delete, and read the preview before confirming
+- Expected: the `Change_Preview` names each `Activity_Entry` that would lose time and the
+  duration it would lose, and describes in prose any entry that would be emptied
+  completely — becoming an `Orphaned_Entry` — rather than showing it as a
+  before-and-after pair. The confirmation is not offered until that preview has been
+  computed.
+
+## UC-344 — Every figure in a preview comes from the server
+- Area: preview
+- Requirement: 9.1, 9.16
+- Method: browser plus inspection
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: record the network traffic while a `Dry_Run` runs, and compare every number the
+  panel prints against the response body; then search `src/modules/day/` for any
+  arithmetic over the day's loaded `uncovered` or `segments` used to build a preview
+  figure
+- Expected: every printed value — the resulting segments, `removedSeconds`,
+  `lostUncoveredSeconds`, `unplacedMinutes`, `slivers`, `discarded`, the anchor — appears
+  verbatim in the `Dry_Run` response. `lostUncoveredSeconds` in particular is **not**
+  derived by intersecting the loaded intervals in the browser, even though it could be:
+  that would be the one figure in the report computed on the client, and the whole
+  preview rests on the rule that none is.
+
+## UC-345 — A split preview shows each resulting segment and how many parts there will be
+- Area: preview
+- Requirement: 9.2
+- Preconditions: logged in, dialog open in `Přesně od–do`
+- Data needed: FIX-UI-DAY
+- Steps: enter `12:00 – 14:00`, spanning the 12:30–13:15 break, and wait for the preview
+- Expected: the panel renders two miniature blocks — `12:00 – 12:30` and `13:15 – 14:00`
+  — above `Uloží se 2 části kolem pauzy.`, using the Czech plural form. The count and
+  the drawn segments agree.
+
+## UC-346 — A request reaching outside Tracked_Time says which part and how long
+- Area: preview
+- Requirement: 9.3, 9.10
+- Preconditions: logged in, dialog open in `Přesně od–do`
+- Data needed: FIX-UI-DAY
+- Steps: enter `17:00 – 18:00`, an hour after the last session ended
+- Expected: the preview names the stretch that falls outside `Tracked_Time` and its
+  duration, drawn as a dashed accent warning, and offers the `Untracked_Policy` control
+  (`Se zbytkem:` / `Zahodit` / `Prodloužit timer`) with `Zahodit` selected. Changing the
+  choice re-runs the `Dry_Run`, so the consequence of each option is visible before one
+  is picked.
+
+## UC-347 — A duration that cannot be placed in full reports the remainder
+- Area: preview
+- Requirement: 9.4
+- Preconditions: logged in, dialog open in `Jen délka`
+- Data needed: FIX-UI-DAY
+- Steps: ask for a duration longer than the tracked time left after the anchor — for
+  example six hours with two hours of frame remaining
+- Expected: the preview states how many minutes would remain unplaced —
+  `2 h 00 min se nevejde.` — with the reason beneath:
+  `Po 17:00 už timer neběžel, takže z 6 h 00 min se zapíše 4 h 00 min.` The figures are
+  the server's `unplacedMinutes` and the sum of the preview's own segments.
+
+## UC-348 — A session preview names each affected entry and shows now beside after
+- Area: preview
+- Requirement: 9.5
+- Design_Contract: artboard `SessionEdit`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: shorten the first session so the Alpha entry loses thirty minutes, and read the
+  consequence panel
+- Expected: a panel of radius 14 on `rgba(209,138,106,0.07)` with a
+  `1px solid rgba(209,138,106,0.28)` border, holding one row per affected entry inside a
+  radius-11 `--panel` box — a 3 × 18 slot-coloured tick, the project name at 13.5/500,
+  the loss at 12.5 accent (`−30 min`), and beneath it a `1fr 20px 1fr` grid of `teď` →
+  `po úpravě` with an arrow between, showing the entry's segments as they are now beside
+  what they would become.
+
+## UC-349 — The preview states one total, split into its two parts, counting entries only
+- Area: preview
+- Requirement: 9.6
+- Design_Contract: `DESIGN.md` § 7 — the two numbers count different things
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY, with a session change that removes 30 min from one entry and
+  pushes 1 h 30 of `Uncovered_Time` outside the frame
+- Steps: read the headline, the line beneath it and the closing count
+- Expected: the headline duration is `removedSeconds + lostUncoveredSeconds` — the
+  combined `2 h 00 min` — at 15/500 accent. Directly beneath it,
+  `Z toho 30 min ze záznamů a 1 h 30 min nepopsaného času.` names the two parts, so no
+  reader has to work out why the headline exceeds the entries listed under it. The
+  closing count counts **`Activity_Entry` records only** — one entry, not two — because
+  uncovered time is not a record. The `SessionEdit` artboard says *2 záznamy* over one
+  entry and one uncovered row; the artboard is wrong and this rule holds.
+
+## UC-350 — Lost uncovered time is its own row, in prose, marked as uncovered
+- Area: preview
+- Requirement: 9.7
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: as UC-349
+- Steps: read the last row of the consequence panel
+- Expected: a row rendered **last**, labelled `Zatím bez popisu`, described in prose
+  rather than as a before-and-after pair, with its tick drawn in
+  `rgba(209,138,106,0.6)` rather than any `Palette_Slot`, naming the stretch and its
+  duration. It refreshes with the rest of the preview on every recomputation. It is not
+  counted among the affected entries. Known deviation: `SessionDialog`'s
+  `Editing → Saving` shortcut ignores `lostUncoveredSeconds`, so a change that **only**
+  loses uncovered time saves with no confirmation at all — see ISSUES.md "SessionDialog's
+  Editing→Confirming shortcut ignores `lostUncoveredSeconds`".
+
+## UC-351 — An entry that would be emptied is described in prose
+- Area: preview
+- Requirement: 9.8
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: delete the session that wholly contains the Alpha entry and read the preview
+- Expected: that entry is described as
+  `Úsek 08:00 – 10:15 zmizí celý — po zkrácení už nebude uvnitř běhu timeru.` — prose,
+  not a `teď` → `po úpravě` pair, because there is no "after" to draw. It will become an
+  `Orphaned_Entry` and appear in the `Orphan_Panel` afterwards.
+
+## UC-352 — A rejected request shows the reason and disables the confirm action
+- Area: preview · errors
+- Requirement: 9.9, 9.13
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: enter times overlapping an existing entry and wait for the preview
+- Expected: the rejection replaces the whole preview body with the translated
+  `messageKey` — `Překrývá se se záznamem Alpha (08:00 – 10:15).` — and the confirm
+  action is disabled. A non-2xx `Dry_Run` response is treated as a **rejection to
+  display**, not as a transport failure: no retry toast, no offline page, and the dialog
+  keeps every value that was typed.
+
+## UC-353 — The Untracked_Policy choice is offered where it applies, defaulting to clip
+- Area: preview
+- Requirement: 9.10
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: enter a range partly outside `Tracked_Time`, read the control's default, choose
+  `Prodloužit timer`, wait, then save
+- Expected: the segmented control appears only when the preview reports `discarded`
+  intervals, with `Zahodit` (`clip`) selected by default. Choosing `Prodloužit timer`
+  (`extend`) re-runs the `Dry_Run`; the new preview shows the session extended and
+  nothing discarded, and saving produces exactly what that preview showed.
+
+## UC-354 — Nothing is written until the preview is confirmed
+- Area: preview
+- Requirement: 9.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open each of the five previewed writes in turn — create activity, edit activity,
+  create session, edit session, delete session — let each preview settle, then close the
+  dialog with Escape; after each, re-read the day through `GET /api/days/<TODAY>`
+- Expected: the day is byte-for-byte unchanged after all five. A `Dry_Run` is evaluated in
+  full, including every rejection, and rolled back inside the same transaction — it never
+  leaves a row, an extended session or a claimed key behind.
+
+## UC-355 — While a Dry_Run is in flight the panel loads and confirm stays disabled
+- Area: preview · loading
+- Requirement: 9.12, 15.2
+- Preconditions: logged in, dialog open, the server's response artificially delayed
+- Data needed: FIX-UI-DAY
+- Steps: change a time field and watch the panel and the footer during the round trip
+- Expected: the panel shows a loading state (a skeleton of its own shape, never a
+  spinner) and carries `aria-busy`, and the confirm action is disabled for the whole
+  flight. It re-enables only when a response settles, and stays disabled if that response
+  is a rejection.
+
+## UC-356 — A non-2xx Dry_Run is a rejection, not a transport failure
+- Area: preview · errors
+- Requirement: 9.13
+- Preconditions: logged in, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: provoke a 400 (`INVALID_INTERVAL`), then a 409 (`ACTIVITY_OVERLAP`), then a 422
+  (`OUTSIDE_TRACKED_TIME`)
+- Expected: each renders inside the preview panel as the translation of its `messageKey`
+  with confirm disabled. None produces a retry toast, an offline redirect or a blank
+  panel, and none closes the dialog. A network failure — a different thing entirely —
+  does produce a retryable message, and still keeps the dialog and its input (UC-445).
+
+## UC-357 — A stale preview is recomputed and confirmed again
+- Area: preview
+- Requirement: 9.14
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: open the `Session_Dialog`, shorten a session, let the preview settle, then from
+  another client change the timer frame; now press confirm
+- Expected: the write returns `STALE_PREVIEW`, the interface renders
+  `Mezitím se něco změnilo — tady je nový náhled.`, recomputes the preview against the
+  new frame and asks the user to confirm again. What the user finally confirmed is always
+  what happens. Nothing is written on the refused attempt.
+
+## UC-358 — Typing does not exhaust the request budget
+- Area: preview
+- Requirement: 9.15
+- Preconditions: logged in, dialog open, network panel recording
+- Data needed: FIX-UI-DAY
+- Steps: type `1`, `3`, `:`, `0`, `0` into a time field in quick succession, then pause
+- Expected: no `Dry_Run` is issued while the keystrokes are still arriving; one fires
+  about 400 ms after the last one. Any request still in flight when a new keystroke
+  arrives is aborted. Five keystrokes produce one request, not five.
+
+## UC-359 — The preview says the server computed it
+- Area: preview
+- Requirement: 9.16
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read the footer of the `Session_Dialog` while a preview is shown, and the
+  preview panel's heading in the `Activity_Dialog`
+- Expected: the session dialog's footer reads
+  `Počítá to server, ne prohlížeč — co vidíš, to se stane`, and the activity dialog's
+  panel is headed by the caps label `uloží se takto` in accent. It is explicit that what
+  is shown is what will happen, not an estimate.
+
+## UC-360 — The day summary panel states the four figures, a meter and the share
+- Area: uncovered guidance
+- Requirement: 10.1
+- Design_Contract: artboard `DayCollapsed` — the `souhrn dne` panel
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: read the first panel of the 290 px side column
+- Expected: label-value rows at 13 px `--text-dim` against 15/500 tabular —
+  `Odpracováno` (`Tracked_Time`), `Popsáno` (`Covered_Time`) and `Chybí popis`
+  (`Uncovered_Time`, the value in `--accent`) — then a 4 px meter on `--meter-track`
+  filled to the described share, then that share as a percentage in words:
+  `81 % odpracovaného času má popis` at 12 px `--text-faint`. The three figures reconcile
+  (`covered + uncovered = tracked`) and match the timer page's three figures for the same
+  day.
+
+## UC-361 — A fully described day says so
+- Area: uncovered guidance
+- Requirement: 10.5
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY with every stretch described (or the gap-filling of UC-287
+  carried through)
+- Steps: describe every uncovered stretch, then read the side panel and the timeline
+- Expected: `Chybí popis` reads `0 min`, the meter is full, and the panel states
+  `Celý den je popsaný.` No `Uncovered_Marker` remains on the timeline. The user is told
+  they are finished rather than being left to infer it from a zero.
+
+## UC-362 — The Uncovered_Marker takes the right one of its four variants
+- Area: uncovered guidance
+- Requirement: 10.7
+- Design_Contract: design.md *Uncovered_Marker* — four variants, one treatment
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY (a tall uncovered stretch) plus FIX-UI-MANY (stretches at the
+  floor)
+- Steps: at `VP-DESKTOP` compare a stretch of at least 60 px with one at 36 px; at
+  `VP-MOBILE` compare one above 44 px with one at the 26 px floor
+- Expected: all four share the same fill, the same dashed border and the same accent
+  title, and differ only as follows. Desktop tall: `Zatím bez popisu` 13/500 accent over
+  `01:30 – 03:00 · 1 h 30 min — klikni a doplň` at 12 px `--text-faint`. Desktop short:
+  `Bez popisu` 13/500 accent · the times · a flexible gap · `doplnit` at 12 px accent
+  against the right edge. Mobile tall: title 12.5/500 accent over times 10.5 px, with
+  `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)`. Mobile short (at
+  26 px): title and times on one row and **no** `doplnit` pill — the whole block is the
+  target, so a pill would be a second affordance for the same tap.
+  **Undecided band:** the criterion puts the mobile threshold at 44 px while `design.md`
+  puts it at "above the floor" (26 px), so a mobile block between 26 and 44 px has no
+  defined variant. This case deliberately tests either side of the band and not inside
+  it — see ISSUES.md "The mobile `Uncovered_Marker` threshold is 44 px in the
+  requirement and the floor in the design".
+
+## UC-363 — The shape-of-the-day panel reads three figures from the day response
+- Area: uncovered guidance
+- Requirement: 10.8
+- Preconditions: logged in, `VP-DESKTOP`, network panel recording
+- Data needed: FIX-UI-NIGHT plus a second session, so all three figures are non-trivial
+- Steps: read the second panel of the side column and count the requests the page issued
+- Expected: a panel headed `tvar dne` giving `Bloky práce` (`sessionCount`),
+  `Nejdelší v kuse` (`longestBlockSeconds`) and `Po 21:00` (`eveningSeconds`), all three
+  taken from `DayResponse.totals` — the page issues **no** second request for them. The
+  evening label carries the `Evening_Hour` the server reports, so a configuration of 20
+  renders `Po 20:00`.
+
+## UC-364 — The projects page lists every project with its thirty-day total
+- Area: projects
+- Requirement: 11.1
+- Design_Contract: artboard `Projects` — content max 940, rows `padding: 16px 18px`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK (work spread across several projects)
+- Steps: open `/projects` and read each row
+- Expected: one row per non-archived project, each with a 32 px icon box of radius 9
+  tinted from its slot carrying a 13 px rounded swatch, the project name, its total
+  `Covered_Time` over the last thirty `Logical_Day` values — summed from the per-project
+  totals the server returns for that range, not recomputed — a share bar, and the row's
+  actions. The heading meta line counts the active projects.
+
+## UC-365 — A project can be created by name
+- Area: projects
+- Requirement: 11.2
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/projects`, type `Delta` into the create field and submit
+- Expected: the project is created through a form action, appears in the list
+  immediately, and is assigned the first free `Palette_Slot` by the server. The field
+  clears and a brief `Uloženo` confirmation appears.
+
+## UC-366 — A duplicate name is refused beside the field
+- Area: projects · validation
+- Requirement: 11.3
+- Preconditions: logged in
+- Data needed: FIX-PROJECTS (Alpha exists)
+- Steps: try to create `alpha`, then `  Alpha  `, then `ALPHA`
+- Expected: each is refused with `Projekt Alpha už existuje.` rendered beside the name
+  field, and no duplicate is created — the comparison ignores case and surrounding
+  whitespace. The typed value stays in the field.
+
+## UC-367 — A project can be renamed
+- Area: projects
+- Requirement: 11.4
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: rename `Alpha` to `Alpha CRM`; then open `/day/<TODAY>` and the timer page
+- Expected: the rename saves through a form action and the row updates. Every surface
+  that names that project follows — the `Segment_Block` elements, the `Project_Legend`,
+  the `Project_Picker` and the statistics breakdown — because all of them read the name
+  from the server rather than caching it. Renaming to an existing name is refused as in
+  UC-366.
+
+## UC-368 — Archiving hides a project from the list by default, and unarchiving returns it
+- Area: projects
+- Requirement: 11.5
+- Preconditions: logged in
+- Data needed: FIX-PROJECTS (Gamma already archived)
+- Steps: read the default list; use `Zobrazit archivované`; archive `Beta`; unarchive
+  `Gamma`
+- Expected: archived projects are absent from the default list — Gamma is not shown until
+  `Zobrazit archivované` is chosen, and then it carries the `archivovaný` badge. Archiving
+  Beta removes it from the default list without deleting it or its entries; unarchiving
+  Gamma returns it to the default list and to the `Project_Picker`.
+
+## UC-369 — The Project_Picker offers only non-archived projects
+- Area: projects
+- Requirement: 11.6
+- Preconditions: logged in, `Activity_Dialog` open
+- Data needed: FIX-PROJECTS (Gamma archived)
+- Steps: open the picker with an empty search, then search for `Gamma`
+- Expected: Alpha and Beta are offered; Gamma is not, under either search. The only way
+  an archived project appears in the picker is as the current value of an entry that
+  already references it (UC-375).
+
+## UC-370 — A project no entry references can be deleted
+- Area: projects
+- Requirement: 11.7, 15.8
+- Preconditions: logged in
+- Data needed: FIX-PROJECTS plus an unused project `Delta`
+- Steps: delete `Delta`, read the confirmation, confirm
+- Expected: a confirmation headed `Smazat projekt?` with the body
+  `Delta nemá žádný záznam, takže po smazání nic nezmizí.` Confirming removes the row and
+  the project is gone from the picker and the statistics.
+
+## UC-371 — Deleting a referenced project explains and offers archiving instead
+- Area: projects · errors
+- Requirement: 11.8
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY (Alpha carries entries)
+- Steps: read the delete control's state on the `Alpha` row, activate it, confirm, and
+  read the response
+- Expected: the delete control is **enabled** before the attempt — the list carries no
+  reference count to disable it from, and disabling it on a guess would be wrong. The
+  attempt is refused with
+  `Alpha má 1 záznam, takže ho nejde smazat. Archivace ho schová z nabídky.` and the
+  interface offers archiving as the alternative. Nothing is deleted.
+
+## UC-372 — A project's colour is changed from inside its own row
+- Area: projects
+- Requirement: 11.10
+- Design_Contract: artboard `Projects` — the artboard's standalone strip is a
+  presentation of the control, not its placement
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: activate the swatch on the `Alpha` row, read the strip, choose a different slot;
+  repeat at `VP-MOBILE`
+- Expected: a strip of the **eight** `Palette_Slot` swatches expands **inside that row**,
+  each 38 tall at radius 11, the current one ringed with
+  `0 0 0 2px var(--bg), 0 0 0 4px var(--text)`. Choosing one saves and collapses the
+  strip; the new colour appears on the timeline, the gauge, the picker and the statistics
+  at once. On mobile the same strip expands inside the row as two rows of four, reached
+  through the row's overflow control. A page-level picker would have no way of saying
+  which project it is about, so the control never leaves the row.
+
+## UC-373 — colorIndex comes from the server on every surface
+- Area: projects · theming
+- Requirement: 11.9
+- Method: browser plus inspection
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY plus one archived project holding time in the range
+- Steps: read the `pj-*` class on a `Segment_Block`, the swatch on the legend, the picker
+  option and the statistics breakdown row for the same project, and compare all four with
+  the `colorIndex` the API returns; then search `src/` for a lookup that joins a project
+  id against the projects list to find a colour
+- Expected: all four surfaces use the same slot, taken from the `colorIndex` each read
+  shape carries (`ActivityEntry.colorIndex`, `ProjectTotal.colorIndex`, the interval
+  attribution of a `DaySummary`). No client-side join exists — a join would be wrong for
+  an archived project missing from the list and stale for one recoloured in another tab.
+
+## UC-374 — A project's name is shown wherever its colour is
+- Area: projects · accessibility
+- Requirement: 11.11, 14.11
+- Preconditions: logged in
+- Data needed: FIX-UI-NINE (nine projects, so `colorIndex` 8 wraps to slot 0)
+- Steps: sweep every surface that draws a project colour — timeline blocks, gauge legend,
+  picker options, projects rows, statistics breakdown, rhythm strip legend
+- Expected: each shows the project's name beside the colour. The one surface that cannot
+  — a `Day_Gauge` arc — is covered by its hover and focus label (UC-467) and by the
+  `Project_Legend` beneath it. With nine projects two share a hue, which is exactly why
+  the name is never optional. No text is placed on a filled slot anywhere.
+
+## UC-375 — An archived project stays selectable on an entry that already uses it
+- Area: projects
+- Requirement: 11.12
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY plus an entry on a project that is then archived
+- Steps: open that entry's `Activity_Dialog` and read the `Project_Picker`'s value and
+  option list
+- Expected: the archived project is offered as the **current** value, marked with the
+  `archivovaný` badge, so the entry can be edited without silently changing its project.
+  It still does not appear among the choices for a different entry. Known deviation: the
+  badge offers no unarchive action from inside the picker — see the phase-1 report's
+  MEDIUM findings.
+
+## UC-376 — With no project, both the page and the picker offer creating the first
+- Area: projects · empty states
+- Requirement: 11.13, 15.10
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/projects`; then open the `Activity_Dialog` and its picker
+- Expected: the page shows an empty state — `Zatím žádný projekt` over
+  `Založ první projekt a začni k němu psát čas.` — with one filled accent pill as the
+  next step, not an empty table. The picker likewise offers creating the first project
+  rather than an empty control with no options.
+
+## UC-377 — A project row's bar is its share of the range's covered time
+- Area: projects
+- Requirement: 11.14, 12.4
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: measure each row's bar width as a fraction of its track and compare with that
+  project's share of the thirty-day total `Covered_Time`; then compare the same project's
+  bar on `/stats`
+- Expected: each bar is the project's share of the **range's total** `Covered_Time`, so a
+  full track means the whole range and the printed figures reconcile. It is not scaled to
+  the largest project — that reading is superseded — and it draws the same quantity the
+  statistics breakdown draws.
+
+## UC-378 — Statistics offers exactly three ranges, anchored on today
+- Area: statistics
+- Requirement: 12.1
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: read the range control, choose each of the three, and read the resolved range
+  beside it; check the URL
+- Expected: a segmented control of exactly three items — `Den`, `Týden`, `Měsíc` — each
+  anchored on the current `Logical_Day`, the week beginning on **Monday** and the month
+  being the calendar month of today. The resolved date range is named beside the control.
+  No fourth range and nothing longer than a month is offered anywhere. The choice rides
+  the URL as `?range=day|week|month`, and an unrecognised value falls back to `week`.
+
+## UC-379 — The KPI_Row states four figures
+- Area: statistics
+- Requirement: 12.2
+- Design_Contract: artboard `Stats` — `repeat(4, 1fr)`, panels radius 14, figures 30/300
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: read the four panels
+- Expected: `odpracováno` (`Tracked_Time`), `popsáno` (`Covered_Time`),
+  `podíl popsaného` (the described share as a percentage over a 4 px meter) and
+  `mimo obvyklé hodiny` (`Overtime`, summed from `overtimeSeconds`, with its share of
+  `Tracked_Time` at 11.5 px `--text-faint` beneath it). Each is a caps label over a
+  tabular figure. The `Evening_Hour` figure is **not** here — it lives in the rhythm
+  panel.
+
+## UC-380 — The breakdown lists projects descending with swatch, name, duration and share
+- Area: statistics
+- Requirement: 12.3
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: read the breakdown rows in order
+- Expected: one row per project with `Covered_Time` in the range, sorted **descending** by
+  duration — a 9 × 9 swatch, the name at 14 px, the duration at 14/300 tabular, and the
+  share at 12 px `--text-faint` in a 42 px gutter. The shares sum to 100 % of the range's
+  `Covered_Time`.
+
+## UC-381 — Each breakdown bar draws the same quantity its percentage prints
+- Area: statistics
+- Requirement: 12.4
+- Design_Contract: `DESIGN.md` § 8 — the artboard's 100/54/14 % reading is superseded
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: measure each 8 px bar against its track and compare with the printed share
+- Expected: the bar is the project's share of the range's total `Covered_Time`, matching
+  the printed percentage to the point. The top project's bar is **not** automatically
+  full; a full track means the whole range. Two scales in one row is a misreading waiting
+  to happen, and the share is the number the reader is being given.
+
+## UC-382 — Uncovered time is stated beneath the bars and is never one of them
+- Area: statistics
+- Requirement: 12.5
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: read below the breakdown's divider
+- Expected: `Bez popisu` renders as a plain figure in `--accent`, separated from the
+  project rows by a divider, with **no** bar of its own. It is not a project and must not
+  appear among them; adding it as a bar would make the shares stop summing to the covered
+  total.
+
+## UC-383 — The Day_Rhythm_Strip draws where in the day the work actually fell
+- Area: statistics
+- Requirement: 12.6
+- Design_Contract: artboard `Stats`
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: choose `Týden`, read the panel and compare one day's segments with that day's
+  covered intervals from `GET /api/days?include=intervals`
+- Expected: a panel headed `Kam v čase práce padla` with one 22 px strip of radius 5 per
+  `Logical_Day` on a shared axis running `DAY_START_HOUR → DAY_START_HOUR`, each strip in
+  a 58 px day-label gutter with the day's total in a 62 px right gutter. Each covered
+  interval is drawn as an SVG `<rect>` at the position the work actually fell, in the
+  `Palette_Slot` of the `projectId` that interval carries — not in a colour looked up in
+  the browser. The strip is inline SVG rather than positioned `<div>` elements, because
+  percentage offsets would be inline styles the CSP forbids.
+
+## UC-384 — The strip's axis is read from the server's DAY_START_HOUR
+- Area: statistics
+- Requirement: 12.7
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK, run once with `DAY_START_HOUR=3` and once with `5`
+- Steps: read the sub-line and the five axis labels in each configuration
+- Expected: with 3 the sub-line reads `každý řádek je jeden logický den, 03:00 → 03:00`
+  and the axis reads `03:00 · 09:00 · 15:00 · 21:00 · 03:00`; with 5 it reads
+  `05:00 → 05:00` and `05:00 · 11:00 · 17:00 · 23:00 · 05:00`. Both ends carry the
+  configured hour and the three interior ticks are even divisions of the span. The
+  artboard's `08:00 / 14:00 / 20:00` interior labels are a drawing convenience; even
+  divisions is the rule.
+
+## UC-385 — Today is marked, and a day with no work is an empty strip with an em dash
+- Area: statistics
+- Requirement: 12.8
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK (includes one day with no work, and today)
+- Steps: read the row for today and the row for the idle day
+- Expected: today's day label is drawn in `--accent` and its strip carries
+  `inset 0 0 0 1px rgba(209,138,106,0.30)`. The idle day's strip is empty — no segments,
+  no hatch — and its total gutter shows an em dash rather than `0 min`.
+
+## UC-386 — Activating a strip opens that day
+- Area: statistics
+- Requirement: 12.9
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: activate a strip by pointer, then reach another by keyboard and press Enter
+- Expected: both navigate to `/day/<that date>` as a client-side navigation. Each strip is
+  a control with the accessible name `<date>, odpracováno <worked>`, so the target and its
+  figure are readable without seeing the picture.
+
+## UC-387 — The rhythm panel gives five figures for a multi-day range
+- Area: statistics
+- Requirement: 12.10
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: choose `Týden` and read the panel
+- Expected: `Dnů s prací`, `Průměr na pracovní den` (averaged over days holding at least
+  one `Work_Session`, not over every day in the range), `Nejdelší den`,
+  `Nejdelší blok v kuse` (`max(longestBlockSeconds)`) and `Bloků práce celkem`
+  (`Σ sessionCount`). Every figure comes from the range payload's summary fields.
+
+## UC-388 — The evening figure lives in the rhythm panel and names the configured hour
+- Area: statistics
+- Requirement: 12.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK (includes a session after 21:00)
+- Steps: read the panel's evening row; then restart the server with `EVENING_HOUR=20` and
+  read it again
+- Expected: `Po 21:00` over `Σ eveningSeconds` for the range, and after the change
+  `Po 20:00` with a figure that grew accordingly. The hour is taken from the server, never
+  assumed, and it is the same hour that marks a `noční` block on the day page.
+
+## UC-389 — An empty range shows an empty state rather than an empty chart
+- Area: statistics · empty states
+- Requirement: 12.12
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/stats` and try each of the three ranges
+- Expected: a centred empty state — `V tomhle období nic není` over
+  `Vyber jiný rozsah nebo spusť timer.` with one filled accent pill — replaces the
+  panels. Not a zero-height bar chart, not an axis with nothing on it, not a strip of
+  empty rows.
+
+## UC-390 — Every chart's numbers are present as text
+- Area: statistics · accessibility
+- Requirement: 12.13, 14.11
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: render the page in greyscale (or read only its text content) and try to answer:
+  how long was each project, what share, how long was each day, what is the described
+  share
+- Expected: every one of those answers is available as text — the breakdown prints
+  duration and share beside each bar, each rhythm row prints its day total in its gutter
+  and carries an accessible name, the coverage meter is accompanied by its percentage.
+  No information depends on reading a colour or a length.
+
+## UC-391 — Archived projects holding time in the range are included
+- Area: statistics
+- Requirement: 12.14
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK with one of the projects archived after its work was logged
+- Steps: read the breakdown and check the per-project figures against the range total
+- Expected: the archived project appears with its duration and share, so the per-project
+  figures reconcile with the `Covered_Time` total. Excluding it would make the rows sum
+  to less than the total with no explanation on the page.
+
+## UC-392 — A suggested window is shown when it differs from the configured one
+- Area: statistics
+- Requirement: 12.15, 12.19
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK replaced by a night-owl pattern (work 22:00 → 04:00 daily), so
+  the server's `suggestedWindow` differs from `GAUGE_START`/`GAUGE_END` by more than
+  30 minutes at an end
+- Steps: read the panel, and look for any control that would apply the suggestion
+- Expected: the suggestion renders as
+  `Podle posledních týdnů sedí okno 22:00 – 04:00. Nastav GAUGE_START a GAUGE_END v
+  konfiguraci serveru a restartuj ho.` — the two values to put in the configuration,
+  followed by a restart. There is **no** button that applies it, because the
+  `Gauge_Window` has no write endpoint and a control that looked applicable would break
+  the moment it was pressed. When the difference is 30 minutes or less at both ends, or
+  `suggestedWindow` is `null`, nothing is shown.
+
+## UC-393 — An omitted interval list is a success, not a failure
+- Area: statistics
+- Requirement: 12.16
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK; the branch is provoked by requesting a range wider than
+  `MAX_INTERVAL_RANGE_DAYS` (62 days) directly, since the interface never asks for more
+  than a month
+- Steps: force a response carrying `intervalsIncluded: false` and load the page
+- Expected: the `KPI_Row`, the breakdown and the rhythm panel render in full from the
+  summary fields; **no** `Day_Rhythm_Strip` is drawn and its absence is explained in
+  place (`Pás se kreslí do 62 dnů.`); and the response is treated as a success — no
+  error page, no toast, no retry. The page owns this branch, so `DayRhythm` never has to
+  defend itself against missing intervals.
+
+## UC-394 — Uncovered intervals are hatched, so a described day looks different
+- Area: statistics
+- Requirement: 12.17
+- Design_Contract: artboard `Stats` — a 6 × 6 SVG pattern rotated 45°, one 3 px accent
+  bar at `fill-opacity: 0.5`, **with no fill beneath it**
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK (one day worked but never described)
+- Steps: compare that day's strip with a fully described day's
+- Expected: the undescribed day's intervals are drawn in the same geometry with a 45°
+  hatch — 3 px of accent, 3 px bare — and the bare half is what makes it read as partly
+  described. A solid fill under the hatch closes the texture back up and is wrong. It is
+  an SVG `<pattern>` rather than a CSS gradient because the strip is inline SVG.
+
+## UC-395 — The rhythm panel closes with exactly one observation line, or none
+- Area: statistics
+- Requirement: 12.18
+- Design_Contract: `DESIGN.md` § 10 — three templates, first match wins
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: three variants of FIX-UI-WEEK — (a) at least one day with
+  `eveningSeconds > 0`; (b) no night work but a `longestBlockSeconds` of at least two
+  hours; (c) neither, but at least one day with `trackedSeconds === 0`; (d) none of the
+  three
+- Steps: read the last line of the rhythm panel in each variant
+- Expected: (a) `Práce po 21:00 padla na 2 dny z 5.`; (b)
+  `Nejdelší nepřerušený úsek: 4 h 30 min, pátek.`; (c) `Bez práce: 1 den.`; (d) the line
+  is **omitted entirely** — not replaced with filler text and not left as blank space
+  where it would have been. Exactly one line renders in (a) to (c), never two. Each
+  countable noun goes through the Czech plural form and no template puts a verb after a
+  number.
+
+## UC-396 — A one-day range drops both rhythm panels and collapses to one column
+- Area: statistics
+- Requirement: 12.20
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: choose `Den` and read the whole page
+- Expected: the `Day_Rhythm_Strip` and the rhythm panel are both absent — a one-row strip
+  says nothing the day page does not, and *days worked*, *average per working day* and
+  the observation line have nothing to compare. The remaining panels — the `KPI_Row` and
+  the project breakdown — lay out in a single column. Both return when `Týden` or
+  `Měsíc` is chosen.
+
+## UC-397 — Statistics never offers a range the strip cannot draw
+- Area: statistics
+- Requirement: 12.1, 12.16
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: try to reach a longer range through the control, through the URL
+  (`?range=year`, `?range=quarter`) and through the browser history
+- Expected: the control offers only the three; an unrecognised `range` value falls back to
+  `week` rather than erroring or requesting a year. The interface therefore never trips
+  `MAX_INTERVAL_RANGE_DAYS` itself, and never trips `RANGE_TOO_LARGE`. Known deviation:
+  because no range picker can produce one, `RANGE_TOO_LARGE` is unreachable through this
+  interface — noted in the phase-1 report as a MEDIUM finding, and handled in one place
+  anyway because `/api/days` is a public route with other callers.
+
+## UC-398 — Every user-facing string exists in both languages
+- Area: i18n
+- Requirement: 13.1
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: compare the key sets of `messages/cs.json` and `messages/en.json`; compare both
+  against the Message Catalogue in `design.md`; confirm every key `messageKeyFor` and
+  `fieldMessageKeyFor` can emit is present in both
+- Expected: identical key sets, no key in one file only, and no key the server can emit
+  that is missing from either. The catalogue is the source: a string that is not in it
+  does not appear on screen. `fields_invalid` in particular must exist, being the
+  fallback an unmapped issue falls through to.
+
+## UC-399 — No user-facing literal text lives outside the message files
+- Area: i18n
+- Requirement: 13.2
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: search every `.svelte` file under `src/` for a user-facing string literal outside
+  a message call
+- Expected: none. Every visible label, heading, button, placeholder, `aria-label`,
+  `title` and error string comes from `m.<key>()`. A literal that happens to be English
+  is the same defect as a literal that happens to be Czech.
+
+## UC-400 — The language is resolved by the server, and the interface never negotiates
+- Area: i18n
+- Requirement: 13.3
+- Preconditions: no cookies
+- Data needed: FIX-UI-DAY
+- Steps: request a page with `Accept-Language: en-GB` and no `worklog_locale`; then with
+  `Accept-Language: de-DE`; then with `worklog_locale=cs` and `Accept-Language: en-GB`;
+  then search `src/` outside `src/hooks.server.ts` for any language negotiation
+- Expected: English in the first case, **Czech** in the second (the final fallback is
+  Czech, not the base locale), Czech in the third — the cookie wins over the header. The
+  interface seeds its rune from `locals.locale` and runs no negotiation of its own
+  anywhere, `+layout.server.ts` included; two negotiations would disagree and the one
+  filling `lang` would not be the interface's.
+
+## UC-401 — Switching language is instant, keeps the scroll, and persists
+- Area: i18n
+- Requirement: 13.4, 13.5
+- Preconditions: logged in on `/day/<TODAY>`, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window`, scroll a few hundred pixels down, open the
+  `Settings_Menu`, choose `English`; check the marker, the scroll position, the URL and
+  the cookie; then close the browser, reopen and load the page again
+- Expected: the text changes to English with no document reload (the marker survives), no
+  visible flash, and the scroll position unchanged. The URL is unchanged — no locale
+  prefix is added. `worklog_locale=en` is written (a year, `SameSite=Lax`, not
+  `HttpOnly`), and the next visit renders English server-side from the first bytes.
+  Known deviation: `tests/e2e/locale.spec.ts` currently reads `scrollY = 0` after the
+  switch — either a real regression against this criterion or a stale expectation; it is
+  unresolved, see ISSUES.md "`locale.spec.ts`'s scroll assertion reads `scrollY = 0`".
+
+## UC-402 — The document's lang attribute follows the active language
+- Area: i18n · accessibility
+- Requirement: 13.6, 13.14
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read `document.documentElement.lang` on load with `worklog_locale=cs`; switch to
+  English and read it again without reloading; then reload and read the raw HTML
+- Expected: `cs`, then `en` immediately after the switch, and the reloaded document's
+  first bytes already carry `lang="en"` — server-rendered from the language the server
+  resolved, so hydration never switches the language visibly. A screen reader is told the
+  right language for the whole SSR pass, not only after hydration.
+
+## UC-403 — Dates, times and durations are formatted for the active language
+- Area: i18n · formatting
+- Requirement: 13.7
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read the hero readout, a block's duration, the mobile hero, a preview delta and a
+  day heading, in Czech and then in English
+- Expected: four duration forms, each used only where the specification names it — the
+  running clock (`5:12:08`) on the hero and the tab title; the full duration
+  (`2 h 14 min`, under a minute as `< 1 min`) everywhere else; the unit-less short form
+  (`14 h 15`) on the mobile hero and the three mobile timer figures only; and the compact
+  signed form (`−2 h 00 min`) in the `Change_Preview` only. Day labels take the right one
+  of `relative` / `long` / `short` for their surface. The clock form is the only one that
+  is not localised.
+
+## UC-404 — A server error renders as the translation of its message key
+- Area: i18n · errors
+- Requirement: 13.8, 13.11
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: provoke `ACTIVITY_OVERLAP`, `PROJECT_EXISTS` and `SESSION_OVERLAP` in Czech, then
+  repeat the same three in English
+- Expected: each renders the translation of the `messageKey` the envelope carried, with
+  its placeholders filled from `details` — `Překrývá se se záznamem Alpha (08:00 –
+  10:15).` and `This overlaps Alpha (08:00 – 10:15).` The raw `error` code never appears
+  on screen in either language, and neither does the envelope's English `message` field,
+  which exists for shell output.
+
+## UC-405 — No URL carries a language prefix
+- Area: i18n
+- Requirement: 13.9
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: in each language, visit every page and read the URL; then check for a `reroute`
+  hook or a `deLocalizeUrl` call in the source
+- Expected: `/`, `/day/<date>`, `/projects`, `/stats`, `/login`, `/offline` — identical in
+  both languages, with no `/cs` or `/en` segment. There is no `src/hooks.ts`, no
+  `reroute` and no locale prefix: the language lives in a cookie, and a prefix would be a
+  second source of truth that could disagree with it.
+
+## UC-406 — The Locale_Switcher shows which language is active
+- Area: i18n
+- Requirement: 13.10, 14.18
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open the `Settings_Menu` in Czech, read the switcher; switch to English and read
+  it again; then reach it by keyboard
+- Expected: two items, `Čeština` and `English`, the active one drawn on
+  `--segment-active` with accent text at 500 and marked as the checked `radio` of a
+  `radiogroup` — so the state is exposed to assistive technology and not carried by
+  colour alone. Tab reaches the group once; the arrow keys move between the two.
+
+## UC-407 — Czech plural forms are selected correctly at one, few and many
+- Area: i18n
+- Requirement: 13.12
+- Preconditions: logged in
+- Data needed: variants producing counts of 1, 2, 3, 5 and 0 for each counting message
+- Steps: exercise `preview_total` (1 / 2 / 5 entries), `preview_parts` (2 / 5 parts),
+  `day_segment_part` (part 2 of 3), `projects_meta` (1 / 3 / 8 active),
+  `errors_project_in_use` (1 / 3 / 7 entries), `session_delete_body` (0 / 1 / 2 / 5),
+  `stats_observation_nights` and `stats_observation_idle` (1 / 3 / 6 days)
+- Expected: Czech selects one / few (2–4) / other (5+) correctly for every one —
+  `1 záznam`, `2 záznamy`, `5 záznamů`; `část 2 ze 3`; `6 ze 7 dnů`. English takes its
+  trivial two-way case. This breaks silently if only English is checked, which is why
+  Czech is the language the case is written in.
+
+## UC-408 — No message puts a verb after a number
+- Area: i18n
+- Method: inspection
+- Requirement: 13.13
+- Preconditions: none
+- Data needed: none
+- Steps: read every message in `messages/cs.json` carrying a `{n, plural, …}` selector and
+  check what follows the interpolated count
+- Expected: every one is a noun phrase — `Nejdelší nepřerušený úsek: {duration}`, never
+  `Nejdelší úsek trval {duration}`. A verb after a number makes Czech agreement depend on
+  the count as well as the noun, turning one plural choice into two coupled ones. A new
+  message that breaks this is a defect even if it reads correctly at the value it was
+  written against.
+
+## UC-409 — A boolean-selected message picks the right branch
+- Area: i18n
+- Requirement: 13.12, 15.15
+- Preconditions: logged in
+- Data needed: FIX-UI-RUNNING and FIX-UI-SPLIT
+- Steps: read the `Day_Gauge`'s `aria-label` with the timer running and with it stopped;
+  read a split segment's `aria-label` and an unsplit one's
+- Expected: with the timer running the gauge label ends `· timer běží`; stopped, it does
+  not. A split segment's label ends `· část 2 ze 3`; an unsplit one's does not. Known
+  deviation: these `select` messages were converted to Paraglide's native array form and
+  their selectors now compare against the **string** `"true"`, so a call site passing a
+  JavaScript boolean falls silently through to the other branch — see ISSUES.md
+  "Paraglide plural/select messages use the plugin's native array form".
+
+## UC-410 — Both languages fit every surface they are drawn on
+- Area: i18n · layout
+- Requirement: 13.1, 14.1
+- Preconditions: logged in
+- Data needed: FIX-UI-WEEK
+- Steps: walk every page in English at `VP-DESKTOP`, `VP-MOBILE` and `VP-NARROW`, then
+  repeat in Czech, looking for clipped, wrapped-badly or ellipsised text
+- Expected: nothing is truncated with an ellipsis and nothing overflows its surface in
+  either language. English is usually shorter but not always — `not described` against
+  `bez popisu`, `Longest unbroken block` against `Nejdelší blok v kuse` — so a surface
+  too narrow for one of them uses its own short key in **both** languages rather than
+  relying on one happening to fit.
+
+## UC-411 — The language survives a logout and a new session
+- Area: i18n
+- Requirement: 13.5
+- Preconditions: logged in with `worklog_locale=en`
+- Data needed: FIX-UI-DAY
+- Steps: log out, read the login page, log back in
+- Expected: the login page renders in English, and the application returns in English
+  after logging back in. The locale cookie is independent of the session cookie, so
+  logging out does not reset the language.
+
+## UC-412 — Nothing scrolls horizontally from 320 pixels upwards
+- Area: responsiveness
+- Requirement: 14.1
+- Preconditions: logged in, `VP-NARROW` (320 × 720)
+- Data needed: FIX-UI-WEEK, FIX-UI-DAY, FIX-UI-ORPHAN
+- Steps: at 320 px visit `/`, `/day/<TODAY>`, `/projects`, `/stats`, `/login` and
+  `/offline`, in both themes and both languages, and compare
+  `document.documentElement.scrollWidth` with `clientWidth`; open each dialog and the
+  settings sheet and repeat
+- Expected: `scrollWidth <= clientWidth` everywhere — no page scrolls sideways at any
+  width from 320 up. Wide content (the rhythm strip, a long project name, a preview's
+  before-and-after grid) scrolls inside its own container or wraps. Known deviation: `/`
+  measures 330 px and `/day/<date>` 362 px against a 320 px viewport today — see
+  ISSUES.md "Horizontal overflow at 320px". This case fails until they fit.
+
+## UC-413 — Every control has a 44 by 44 activation area, whatever it is drawn at
+- Area: accessibility · interaction
+- Requirement: 14.2
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: for every interactive control on every page, measure the **activation** area —
+  the bounding box including padding and any transparent pseudo-element — not the drawn
+  shape
+- Expected: at least 44 × 44 for every one. The drawn shape may be smaller and the
+  `Design_Contract` deliberately draws chips at 30, close and icon buttons at 32, day
+  controls and segmented items at 34, and dialog buttons at 42 — each of those must reach
+  44 through padding or a pseudo-element. The two exceptions are the `Segment_Block`
+  elements and the `Session_Rail` edges, which take criterion 14.3 instead.
+
+## UC-414 — The timeline's two exceptions are exceptions, and are bounded
+- Area: accessibility · day timeline
+- Requirement: 14.3, 4.20
+- Design_Contract: `DESIGN.md` § 9 row 5 — an explicit exception, not an oversight
+- Preconditions: logged in
+- Data needed: FIX-UI-MANY
+- Steps: measure a floored `Segment_Block` at both densities; measure a `Session_Rail`
+  edge; then reduce a block below 60 px and look for the edges
+- Expected: a `Segment_Block` is at least `MIN_BLOCK_PX` (36 desktop, 26 mobile) tall and
+  spans the **full width** of its column, so the target is wide even where it is short.
+  The rail edges take the same exception. **Below a block height of 60 px the edges are
+  not rendered at all** and the rail is one target — three stacked targets inside 36 px is
+  a lottery, and the `Session_Dialog` is one activation away on the block itself. At
+  44 px a fourteen-hour day would stretch past any viewport, which is why the exception
+  exists.
+
+## UC-415 — Hover, active and disabled follow one rule across the whole interface
+- Area: interaction
+- Requirement: 14.4
+- Design_Contract: design.md *Interaction States* — the rule is binding because the
+  artboards draw resting states only
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: sample a chip, a ghost pill, a panel row, a `Segment_Block` and a filled accent
+  control; measure the resting, hover and active surface values and the text token
+- Expected: hover raises the surface alpha by **+0.03** and moves the text one level
+  brighter (`faint → dim → text`); active raises it by **+0.06** and the element takes
+  `transform: none`; a disabled control is the whole element at `opacity: 0.4` with no
+  hover, no pointer cursor and `aria-disabled`. On a filled accent control hover is
+  `--accent-hover` and active is `--accent-hover` with the halo dropped to 0.06 — there is
+  no alpha to raise. On a `Segment_Block` hover raises `--pj-tint` by half again. Every
+  interactive element shows the pointer cursor. Known deviation: the alpha derivation is
+  implemented two ways — named tokens in `theme.css` and inline `rgb(from … / calc(…))` in
+  `src/lib/ui/elements/` — see ISSUES.md "Two different mechanisms for hover/active
+  surface-alpha derivation".
+
+## UC-416 — Everything is reachable by keyboard and the focus ring is always visible
+- Area: accessibility
+- Requirement: 14.5
+- Design_Contract: design.md *The Focus Ring* —
+  `0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)`
+- Preconditions: logged in, no pointer used at any point
+- Data needed: FIX-UI-DAY
+- Steps: Tab through every page in both themes; specifically check the `Timer_Control`,
+  the FAB, a primary pill, a `Segment_Block` and a `Palette_Slot` swatch
+- Expected: every action is reachable and operable by keyboard alone, and each focused
+  element shows an inner ring of its **surrounding** background before the accent ring —
+  so the indicator stays visible on an accent-filled control and on a `--pj-tint` in both
+  themes. `--focus-gap` is set per surface: `--bg` on the page, `--dialog` inside a dialog
+  or the settings menu, `--panel` inside a panel, and the block's own tint on a
+  `Segment_Block`.
+
+## UC-417 — Every icon is an inline SVG taken from the artboards
+- Area: interaction · design
+- Requirement: 14.6, 14.19
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: list every icon the interface renders and compare its geometry with the artboard
+  that draws it; check for any icon font, sprite sheet or icon package dependency
+- Expected: every icon is inline SVG from the project's own registry, and no icon package
+  is installed or imported. The artboards are the source of truth for geometry and no
+  icon set is substituted. Known deviation: four glyphs — `search`, `sun`, `moon`,
+  `check` — were drawn as fallbacks because no artboard contains them, which contradicts
+  this criterion and needs a `.design/` decision rather than a local one; see ISSUES.md
+  "Four `Icon.svelte` glyphs have no artboard source".
+
+## UC-418 — Spacing, sizes and radii come from the Design_Contract
+- Area: design
+- Requirement: 14.7
+- Method: inspection plus browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: sample the computed radius of every rounded surface and compare against the
+  closed list; sample the heights of a field, a dialog button, a segmented item, the
+  quick-log pill, the header, the bottom nav, the FAB, a rhythm strip, a meter and a
+  breakdown bar; check the day-page side column and the projects content width
+- Expected: every radius is one of 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 20, 9999 — **the
+  list is closed and a radius outside it is a defect**. Heights are field 44, dialog
+  button 42, segmented item 36, quick-log pill 50, header 84 desktop / 56–60 mobile,
+  bottom nav 66–68, FAB 54, rhythm strip 22, meter 4, breakdown bar 8. Widths are side
+  column 290 and projects content max 940. The contract's off-scale values — 7, 9, 11, 13,
+  14, 18, 22, 26, 30, 56, 84, 290, 940 — win wherever it speaks; the 4/8/12/16/24/32/48/64
+  scale governs only surfaces the artboards do not cover.
+
+## UC-419 — Hover animates over about 200 ms and panels over about 300 ms
+- Area: motion
+- Requirement: 14.8
+- Preconditions: logged in, `VP-DESKTOP`, reduced motion **not** requested
+- Data needed: FIX-UI-DAY
+- Steps: read the computed `transition-duration` and `transition-timing-function` of a
+  hover state, a dialog entrance, the scrim, the settings sheet, a toast, a coverage
+  meter and the gauge's arc sweep
+- Expected: colour, background, border, shadow and tint transition over `--dur-hover`
+  (200 ms) with `--ease-standard`; anything changing size or position over `--dur-panel`
+  (300 ms), leaving with `--ease-exit`; the press scale of the FAB and `Timer_Control` at
+  100 ms; the skeleton shimmer at 1.2 s linear. Two curves and three durations, and
+  nothing else. The gauge sweeps its arcs once per page load and **never** on the
+  per-second tick. The theme swap is deliberately unanimated.
+
+## UC-420 — Reduced motion removes everything that moves or repeats
+- Area: motion · accessibility
+- Requirement: 14.9
+- Preconditions: logged in with `prefers-reduced-motion: reduce` emulated
+- Data needed: FIX-UI-DAY
+- Steps: open every dialog, the settings sheet and a toast; trigger a skeleton, a meter
+  change and a page load with the gauge; press the FAB and the `Timer_Control`; then
+  check that hover colour changes still happen
+- Expected: every `transform`- and `opacity`-based entrance and exit becomes an instant
+  state change with a duration of `0s` and no transform; the skeleton shimmer becomes a
+  flat `--panel` fill; the gauge draws its arcs at full length with no sweep; meter and
+  bar widths jump; the press scale is dropped. What **survives** is colour — the
+  `--dur-hover` transitions of hover, active and focus — because those signal state
+  rather than movement, and removing them makes the interface feel broken rather than
+  calm. Verify across surfaces, not on one panel.
+
+## UC-421 — Body text clears 4.5 to 1 in both themes
+- Area: accessibility · theming
+- Requirement: 14.10, 17.3
+- Preconditions: logged in
+- Data needed: FIX-UI-WEEK
+- Steps: run an automated contrast pass over `/`, `/day/<TODAY>`, `/projects` and `/stats`
+  in both themes, then hand-measure `--text-dim` and `--text-faint` against `--bg` and
+  against `--dialog` in each
+- Expected: every body-text surface reaches at least 4.5:1. The measured token pairs are
+  dark 0.62 → 6.44:1 and 0.50 → 4.63:1 on `#0F1319`; light 0.78 → 6.84:1 and 0.66 →
+  4.69:1 on `#F3EEE6`. The one deliberate exception is the `Day_Gauge`'s numerals, which
+  are specified below body-text contrast (UC-466) — everything else must clear it. Known
+  deviation: three real violations stand today — the day page's `Work_Block` and timeline
+  text in **both** themes, and the light-theme active range pill on `/stats` (`#a5522e`
+  on `#e0cec2`, 3.58:1) — see ISSUES.md "Three real WCAG color-contrast violations". This
+  case fails until they are fixed, and the fix is a token decision, not a local override.
+
+## UC-422 — No information is carried by colour alone
+- Area: accessibility
+- Requirement: 14.11, 17.12
+- Preconditions: logged in
+- Data needed: FIX-UI-SPLIT, FIX-UI-RUNNING, FIX-UI-NINE
+- Steps: render every page in greyscale and answer: which project is which; which stretch
+  is undescribed; which block is running, capped or continuing; which entry is split;
+  which control is destructive; which segmented item is selected; which day is today
+- Expected: every one is answerable from text or shape. Projects carry names; uncovered
+  time is a **dashed outline** against a primary action's **filled** shape, both in
+  accent; running / capped / continuing each carry their own string as well as their rail
+  treatment; a split entry carries `část 2 ze 3`; a segmented item is a checked radio;
+  today's rhythm row carries an inset outline as well as an accent label. Nothing needs a
+  hue to be read.
+
+## UC-423 — The interface is mobile-first with exactly one breakpoint
+- Area: responsiveness
+- Method: inspection
+- Requirement: 14.12
+- Preconditions: none
+- Data needed: none
+- Steps: search the stylesheets for every media query width and confirm which direction
+  they are written in
+- Expected: one width appears — 768 px — and the queries are `min-width` (mobile-first),
+  not a scatter of `max-width` breakpoints. There is no tablet tier, no 1024 and no 1280.
+  The single breakpoint is what makes `VP-MOBILE` and `VP-NARROW` behave identically
+  apart from available width.
+
+## UC-424 — Required fields are marked required
+- Area: forms · accessibility
+- Requirement: 14.13
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: inspect every field of the `Activity_Dialog` in all three modes, the
+  `Session_Dialog`, the project create and rename fields, and the login passphrase field
+- Expected: each required field carries the `required` attribute (or `aria-required`) and
+  is marked visibly, and the marking follows the active mode — `od` and `do` are required
+  in `Explicit_Mode` and not offered at all in the other two, and the duration is
+  required only in `Duration_Mode`. The description is never required.
+
+## UC-425 — Leaving a form with unsaved input asks first
+- Area: forms
+- Requirement: 14.14
+- Preconditions: logged in on `/day/<TODAY>`
+- Data needed: FIX-UI-DAY
+- Steps: open the `Activity_Dialog`, type a description, then try to navigate away using
+  the top-bar navigation; cancel; try again and accept
+- Expected: a confirmation appears — `Zahodit rozepsané?` over
+  `Máš rozepsaný formulář, který se neuložil.` — before the navigation happens.
+  Cancelling leaves the dialog open with the typed text intact; accepting navigates and
+  discards it. This is the criterion the scrim rule (UC-435) exists to protect.
+
+## UC-426 — Below 768 the write dialogs fill the screen
+- Area: dialogs · responsiveness
+- Requirement: 14.15
+- Design_Contract: artboard `AddTaskMobile` (390 × 844)
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: open the `Activity_Dialog` and the `Session_Dialog` and measure the header, the
+  body, the fields, the segmented items and the footer
+- Expected: the dialog **is** the viewport — no scrim behind it and no radius, because
+  nothing shows through. Header 58 px tall with `padding: 0 20px` and a 34 px close
+  button; body `0 20px`, scrolling; fields one per row at 48 px and 15 px type,
+  `gap: 14`; caps labels 10; segmented items 40 at 12.5 px; description field 62; footer
+  pinned to the bottom edge at `padding: 14px 20px 24px` over a `--divider` hairline,
+  with its buttons **stacked** — primary 50 px on top, `Zrušit` 46 px beneath,
+  `gap: 10`. The `Change_Preview` keeps its **full** form, policy control included: it is
+  the reason the dialog exists.
+
+## UC-427 — The viewport cookie makes the server-rendered day deterministic
+- Area: responsiveness · day timeline
+- Requirement: 14.16
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: request `/day/<TODAY>` with no `worklog_viewport` cookie and read the rendered
+  density and block heights from the HTML **before** any script runs; then repeat with
+  `worklog_viewport=390x844`
+- Expected: with no cookie the server assumes **1440 × 900**, resolving to
+  `density: 'desktop'` and `availablePx = 900 − 84 − 56 − 48 = 712`, and the served HTML
+  already carries desktop block heights from the `tl-h-*` ladder. With the mobile cookie
+  it serves mobile density. The first paint is decided on the server in both cases, not
+  corrected afterwards.
+
+## UC-428 — The client relays out only when its measurement differs
+- Area: responsiveness
+- Requirement: 14.17
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: load `/day/<TODAY>` at exactly 1440 × 900 with the matching cookie and watch for
+  a relayout or a cookie write; then load at 1280 × 800 with the same cookie and watch
+  again
+- Expected: at the matching size **nothing happens** — no cookie write, no second layout
+  pass, no visible shift; a returning desktop user sees no relayout at all. At the
+  differing size the client writes `worklog_viewport=1280x800` (path `/`, one year,
+  `SameSite=Lax`) and lays the page out again with the new budget.
+
+## UC-429 — Every segmented control is a radio group
+- Area: accessibility · forms
+- Requirement: 14.18
+- Preconditions: logged in
+- Data needed: FIX-UI-WEEK
+- Steps: inspect the `Theme_Switcher`, the `Locale_Switcher`, the activity mode control,
+  the `Untracked_Policy` control and the statistics range control; reach each by keyboard
+- Expected: each is `role="radiogroup"` holding `role="radio"` items with `aria-checked`.
+  Tab reaches the group **once** and the arrow keys move between its options — not one
+  tab stop per option. The selected item is exposed as checked, so its state does not
+  depend on the `--segment-active` fill being seen.
+
+## UC-430 — Every dialog declares itself a modal dialog labelled by its own heading
+- Area: accessibility · dialogs
+- Requirement: 14.20
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: inspect the `Activity_Dialog`, the `Session_Dialog`, the delete-entry
+  confirmation, the delete-session confirmation, the unsaved-changes confirmation and the
+  mobile `Settings_Menu` sheet
+- Expected: each carries `role="dialog"`, `aria-modal="true"` and an `aria-labelledby`
+  pointing at its own heading element. This is asserted here rather than inherited: the
+  ported `Modal` happens to implement most of it, which is a fact about the template and
+  not a contract — without an assertion it can be lost silently.
+
+## UC-431 — Opening a dialog moves focus into it and Tab stays inside
+- Area: accessibility · dialogs
+- Requirement: 14.21
+- Preconditions: logged in, no pointer used
+- Data needed: FIX-UI-DAY
+- Steps: open the dialog five ways — from `+ Přidat úkol`, from a `Segment_Block`, from a
+  rail **start** edge, from an `Uncovered_Marker`, and from `Quick_Log` with no project —
+  and read `document.activeElement` each time; then Tab and Shift+Tab past both ends
+- Expected: focus lands on the field the action named — the first control for a plain
+  open, `začátek` (selected) from a start edge, the description from an uncovered
+  stretch, the `Project_Picker` from a projectless `Quick_Log` — and otherwise on the
+  first focusable control. Tab and Shift+Tab wrap **inside** the dialog and never reach
+  the page beneath, in either direction.
+
+## UC-432 — Escape closes every dialog and returns focus to its opener
+- Area: accessibility · dialogs
+- Requirement: 14.22, 6.15
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: for each of the two write dialogs, each confirmation and the `Settings_Menu`,
+  note the opener, open it, press Escape, read `document.activeElement`
+- Expected: all of them close on Escape and focus returns to the exact control that
+  opened them. A dialog that closes but drops focus to `document.body` fails this case.
+
+## UC-433 — The scrim dismisses a confirmation but never a write dialog
+- Area: dialogs
+- Requirement: 14.23, 14.14
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: open the `Activity_Dialog`, type a description, click the scrim; open the
+  `Session_Dialog`, change a time, click the scrim; open a delete confirmation and click
+  the scrim; open the `Settings_Menu` and click outside it
+- Expected: the two **write** dialogs do nothing at all on a scrim activation — they hold
+  unsaved input and criterion 14.14 forbids losing it to a stray click. The confirmation
+  and the `Settings_Menu` both close, because neither holds anything.
+
+## UC-434 — While a modal surface is open, everything beneath it is unreachable
+- Area: accessibility · dialogs
+- Requirement: 14.24
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: with each of a write dialog, a confirmation and the mobile settings sheet open,
+  try to scroll the page behind, Tab past the surface's last control, click a control
+  behind the scrim, and inspect the page root's attributes
+- Expected: `document.body` carries `overflow: hidden` so nothing scrolls behind; the page
+  root carries `inert`, so pointer, keyboard **and** screen reader all reach only that
+  surface. The `inert` is also what stops the bottom navigation being tabbable underneath
+  a sheet, which no `z-index` can fix.
+
+## UC-435 — Statistics and projects have their own mobile layouts
+- Area: responsiveness
+- Requirement: 14.25
+- Design_Contract: design.md *Statistics and Projects, Mobile* — binding in place of an
+  artboard, because neither page has one
+- Preconditions: logged in, `VP-MOBILE`
+- Data needed: FIX-UI-WEEK
+- Steps: read `/stats` and `/projects` at 390 px, then at 320 px
+- Expected: on `/stats` the `KPI_Row` becomes `repeat(2, 1fr)` with `gap: 12`, panels
+  padded `14px 16px`, the figure at 22/300 and the caps label at 10; the range control
+  spans the full width with 36 px items; the breakdown and rhythm panel **stack** at one
+  column; a breakdown row wraps onto two lines with its 8 px bar beneath both; and the
+  `Day_Rhythm_Strip` axis carries **three** labels — the day-start hour at each end plus
+  one interior tick at 50 % — rather than five, keeping the same even-division rule. On
+  `/projects` each row is two lines inside `padding: 12px 14px` — icon box, name and any
+  archived badge on the first; the thirty-day total, the share bar and a single 32 px
+  overflow control on the second — with the three row actions behind that control, and
+  the colour strip still expanding inside the row it changes, as two rows of four.
+
+## UC-436 — Both densities are reachable from one build without a reload
+- Area: responsiveness
+- Requirement: 14.12, 14.17
+- Preconditions: logged in on `/day/<TODAY>` at `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: resize the window across 768 in both directions without reloading, watching the
+  navigation, the timeline density, the side panels and the create actions
+- Expected: crossing 768 downwards swaps the centred navigation for the bottom bar, moves
+  the side panels below the timeline and switches the timeline to mobile density; crossing
+  upwards reverses it. No reload happens, no layout is left half-converted, and the
+  `worklog_viewport` cookie is updated once per settled size rather than on every resize
+  frame.
+
+## UC-437 — A client-side navigation shows a skeleton shaped like the content
+- Area: feedback · loading
+- Requirement: 15.1
+- Preconditions: logged in, the server's response artificially delayed
+- Data needed: FIX-UI-WEEK
+- Steps: navigate between two days with the previous-day control; switch the statistics
+  range; trigger an `invalidate` by writing an entry; then reload the page from scratch
+  and watch the first paint
+- Expected: the first three show a skeleton in the **shape and radius** of the block it
+  stands in, on `--panel`, with a 1.2 s shimmer sweeping left to right — never a spinner.
+  The full reload shows **no** skeleton at all: a server-rendered first load arrives
+  complete, and nothing renders a skeleton on mount. Skeletons have exactly three callers
+  and those are they.
+
+## UC-438 — A submitted action disables its control and shows progress on it
+- Area: feedback · loading
+- Requirement: 15.2
+- Preconditions: logged in, the server's response artificially delayed
+- Data needed: FIX-UI-DAY
+- Steps: submit the `Activity_Dialog`, the `Session_Dialog`'s confirm, a project rename
+  and the start action, watching each control during the flight
+- Expected: the submit control is disabled for the whole flight and shows progress on
+  itself, so a second press cannot double-submit. It re-enables when the action settles,
+  in success or failure.
+
+## UC-439 — A success is confirmed briefly and dismisses itself
+- Area: feedback
+- Requirement: 15.3
+- Design_Contract: design.md *Toast* — bottom right on desktop, bottom centre on mobile
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: save an entry, delete an entry, rename a project; watch each confirmation
+- Expected: a toast appears — `--dialog` at radius 14 with the dialog shadow,
+  `padding: 12px 16px`, text 13.5, a 15 px leading icon, `max-width: 420` — carrying
+  `Uloženo` or `Smazáno`, with **no** action and no close button, and it dismisses itself
+  after about four seconds. The user is never made to acknowledge a success.
+
+## UC-440 — A failure shows the reason, keeps the input, and stays until dismissed
+- Area: feedback · errors
+- Requirement: 15.4
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: submit a write that the server refuses; read the message, the form and the toast;
+  wait ten seconds
+- Expected: the reason renders as the translation of the server's `messageKey`, every
+  field keeps what was typed, and focus moves to the field concerned when the failure
+  names one. A failure toast carries a text action in `--accent` and **never**
+  auto-dismisses — a message the user did not see is the same as no message.
+
+## UC-441 — An overlap conflict names the records and offers to open one
+- Area: feedback · errors
+- Requirement: 15.5, 8.5
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: create an entry overlapping the Alpha entry and submit; then make a session
+  change that overlaps another session
+- Expected: the conflicting record is named — the project and the interval for an
+  activity, the interval for a session — and the interface offers `Otevřít záznam`, which
+  opens the conflicting entry so the user can resolve it. Nothing is written in either
+  case.
+
+## UC-442 — A write that lost part of itself says so rather than claiming success
+- Area: feedback
+- Requirement: 15.6
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: save a `Duration_Mode` entry longer than the tracked time available, with the
+  policy left at `Zahodit`; then save an entry whose remainder falls under
+  `MIN_INTERVAL_SECONDS`
+- Expected: the confirmation is qualified, not plain — `Uloženo, ale 2 h 00 min se
+  nevešlo` — naming what did not fit and offering to open the affected range. A write
+  reporting `discarded` intervals, `unplacedMinutes` or dropped `slivers` is never shown
+  as an unqualified success.
+
+## UC-443 — An unreachable server says so and lets the user retry without losing anything
+- Area: feedback · errors
+- Requirement: 15.7
+- Preconditions: logged in, `Activity_Dialog` open with a description typed
+- Data needed: FIX-UI-DAY
+- Steps: stop the server, submit, read what happens; restart it and use the retry
+- Expected: the failure surfaces where the user is — a toast with a retry action, the
+  dialog still open and every typed value intact. The retry re-submits the same input and
+  succeeds. The interface does **not** navigate to `/offline` from here; that is reserved
+  for a page `load` that fails, where there is no input to lose.
+
+## UC-444 — Every destructive action is confirmed by naming what is lost
+- Area: feedback
+- Requirement: 15.8
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY, FIX-UI-ORPHAN, FIX-PROJECTS
+- Steps: attempt to delete an `Activity_Entry`, a `Work_Session`, an `Orphaned_Entry` and
+  a `Project`; read each confirmation
+- Expected: each names the record **and** what disappears with it — the entry's project,
+  interval and duration; the session's interval and how many entries lose time; the
+  project's name and that nothing disappears with it. Never a bare "are you sure". Every
+  confirm pill for a destructive action is filled in `--destructive` with
+  `--ink-on-accent` text, never in the accent.
+
+## UC-445 — Every error code the server can emit has a defined behaviour
+- Area: errors
+- Requirement: 15.9
+- Preconditions: logged in
+- Data needed: whatever provokes each code
+- Steps: provoke each code the interface can reach and record where it surfaces:
+  `VALIDATION_ERROR`, `INVALID_INTERVAL`, `ACTIVITY_OVERLAP`, `SESSION_OVERLAP`,
+  `OUTSIDE_TRACKED_TIME`, `NO_PLACEMENT_ANCHOR`, `SESSION_ALREADY_RUNNING`,
+  `NO_SESSION_RUNNING`, `PROJECT_EXISTS`, `PROJECT_IN_USE`, `PROJECT_ARCHIVED`,
+  `FUTURE_TIMESTAMP`, `INTERVAL_TOO_SHORT`, `STALE_PREVIEW`, `NOTHING_TO_LOG`,
+  `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `RATE_LIMITED`, `INTERNAL_ERROR`, `UNAUTHORIZED`,
+  `SERVICE_UNAVAILABLE`, `RANGE_TOO_LARGE`
+- Expected: each surfaces where the design's error table says and behaves as it says —
+  field-level messages beside the field with the input kept; `ACTIVITY_OVERLAP` naming
+  the conflict and offering to open it; `OUTSIDE_TRACKED_TIME` shown with the
+  `Untracked_Policy` choice; `STALE_PREVIEW` recomputing and re-asking;
+  `PROJECT_IN_USE` offering archiving; `RATE_LIMITED` as a toast carrying the retry
+  delay; `INTERNAL_ERROR` as a toast with a retry action that keeps the input and quotes
+  the `requestId`; `UNAUTHORIZED` navigating to login with `reason=session_expired`;
+  `SERVICE_UNAVAILABLE` sending a page load to `/offline` and a later request to a
+  retryable toast carrying `Retry-After`. `AMBIGUOUS_MODE`, `METHOD_NOT_ALLOWED` and
+  `IDEMPOTENCY_KEY_REUSED` cannot occur through this interface and are treated as
+  internal errors if they do; `RANGE_TOO_LARGE` is likewise unreachable (UC-397) and is
+  handled anyway.
+
+## UC-446 — The projects page has an empty state
+- Area: feedback · empty states
+- Requirement: 15.10
+- Preconditions: logged in
+- Data needed: FIX-UI-EMPTY
+- Steps: open `/projects`
+- Expected: as UC-376 — a centred empty state with an icon, a line and one filled accent
+  pill as the next step. Every empty state in this interface has a next step: start the
+  timer, create the first project, pick another range.
+
+## UC-447 — An uncaught client error uses the same surface as a failed request
+- Area: errors
+- Requirement: 15.11
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: force a client-side exception during rendering or in an event handler
+- Expected: `hooks.client.ts` catches it and the interface's own error page renders,
+  never a blank page and never an unhandled console trace with a broken layout. The page
+  shows no stack trace, no file path and no framework internals.
+
+## UC-448 — A field rejection renders the server's key, not the validator's English
+- Area: errors · forms
+- Requirement: 15.12
+- Preconditions: logged in with the interface in Czech
+- Data needed: FIX-UI-DAY
+- Steps: submit a description over the length limit, a malformed date, a malformed time
+  and an unknown field; read each message
+- Expected: each renders the translation of the key the server supplied in
+  `details.fields[name]` — `Nejvíc 500 znaků.`, `Zadej datum ve tvaru RRRR-MM-DD.`,
+  `Zadej čas ve tvaru HH:MM.`, `Tohle pole sem nepatří.` The shared Zod schema's own
+  English sentence — written deliberately for a REST caller's shell output — never
+  reaches the screen. An issue with no mapping falls back to `Tahle hodnota nesedí.`
+  rather than rendering nothing.
+
+## UC-449 — The toast container is a live region before any toast exists
+- Area: accessibility · feedback
+- Requirement: 15.13
+- Method: browser plus screen reader
+- Preconditions: logged in with a screen reader running
+- Data needed: FIX-UI-DAY
+- Steps: load the page and inspect the DOM **before** any toast is triggered; then trigger
+  a success and then a failure, listening each time
+- Expected: two containers are present and empty at first paint in the root layout —
+  `role="status"` with `aria-live="polite"` for success and `role="alert"` with
+  `aria-live="assertive"` for failure, each toast `aria-atomic="true"`. Both messages are
+  announced. A live region created at the moment its first message arrives is not
+  announced by most screen readers, which is the failure this criterion exists to
+  prevent, and it is invisible unless a screen reader is actually running.
+
+## UC-450 — The Change_Preview announces its outcome once, and not its intermediate states
+- Area: accessibility · preview
+- Requirement: 15.14
+- Method: browser plus screen reader
+- Preconditions: logged in with a screen reader running, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: type a time in five quick keystrokes and listen through the debounce and the
+  round trip
+- Expected: the preview body is `aria-live="polite"` and carries `aria-busy` while the
+  `Dry_Run` is in flight, so the intermediate renders of the debounced sequence are
+  suppressed. Exactly **one** polite announcement of the settled headline outcome is
+  heard, not one per keystroke.
+
+## UC-451 — No ticking value is ever announced
+- Area: accessibility · timer
+- Requirement: 15.15
+- Method: browser plus screen reader
+- Preconditions: logged in with a screen reader running
+- Data needed: FIX-UI-RUNNING
+- Steps: sit on the timer page for thirty seconds and listen; then move to the day page
+  and listen to the `Running_Indicator`; then stop the timer and listen
+- Expected: silence while the digits advance. The hero readout, the `Running_Indicator`
+  and the tab title sit in **no** live region and have their digits `aria-hidden="true"`;
+  none has a live-region ancestor. The state of the timer is carried instead by the
+  `Timer_Control`'s accessible name and by the `Day_Gauge`'s text alternative, both of
+  which change only when the timer starts or stops — and that change **is** announced.
+
+## UC-452 — Twenty-four hours map onto the full circle at a fixed fifteen degrees an hour
+- Area: gauge
+- Requirement: 16.1, 16.18; design Property 1
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY and FIX-UI-NIGHT
+- Steps: read the drawn angle of a known instant on two different days and compare;
+  compute the angular difference between two instants an hour apart, and between two a
+  full day apart
+- Expected: `angle(t) = 45 + minutesSinceMidnight × 0.25` — one hour is exactly 15°, the
+  mapping is strictly increasing and uniform, and 06:00 lands at 135°, 09:00 at 180°,
+  15:00 at the top and 21:00 at the right on **every** day. Two days can therefore be
+  compared by shape alone. Note the wording trap: `design.md`'s Property 1 says a 24-hour
+  difference "SHALL equal exactly 360", while the DST-safe implementation returns 0 —
+  see ISSUES.md "design.md's Property 1 wording contradicts `angleOf`'s required
+  periodicity". The code is right and the sentence is the defect.
+
+## UC-453 — The track covers the window and the gap carries nothing at all
+- Area: gauge
+- Requirement: 16.2, 16.9; design Property 3
+- Design_Contract: `DESIGN.md` § 5
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY, with `GAUGE_START=06:00` and `GAUGE_END=00:00`
+- Steps: read every graduation, numeral and groove the gauge emits and test each against
+  `((angle − trackStart) mod 360) ≤ ((trackEnd − trackStart) mod 360)`; repeat with a
+  window that crosses midnight differently, such as `08:00 → 02:00`
+- Expected: a 270° track and a 90° bare gap with the default window. Every mark and label
+  lies on the track; **nothing** — no groove, no tick, no numeral — falls inside the gap,
+  under any window the server can report. The wrapping test is the correct one: a naive
+  `trackStart ≤ angle ≤ trackEnd` describes an empty interval whenever the window crosses
+  midnight.
+
+## UC-454 — The gap sits at the bottom of the circle
+- Area: gauge
+- Requirement: 16.3
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read where the track begins and ends on screen
+- Expected: with the default window the opening is centred on 03:00 at the bottom, so the
+  reading runs from a visible start on one side to a visible end on the other rather than
+  wrapping through a hidden seam.
+
+## UC-455 — Two arcs at fixed radii, the inner one coloured by project
+- Area: gauge
+- Requirement: 16.4
+- Design_Contract: artboards `GaugeNormal`, `GaugeOverrun`, `GaugeNonstop` — geometry is
+  read from these three and placement from `Main`; `Demo` and `DemoSideBySide` shrink the
+  gauge for a teaching layout and are **not** geometric references
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read the emitted SVG attributes of the outer and inner arcs
+- Expected: box 340 × 340 (mobile 300), `viewBox="-22 -22 364 364"`, centre 160/160. The
+  outer arc for `Work_Session` records is at radius **138** with a stroke of **10**; the
+  inner arc for `Activity_Segment` records is at radius **118** with a stroke of **6**,
+  each in the `--pj` of its project's slot. Both grooves are drawn over the window only —
+  `--groove-outer` at 10 and `--groove-inner` at 6, round-capped.
+
+## UC-456 — The accent marks a running timer, not overtime
+- Area: gauge
+- Requirement: 16.5
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY (all closed) then FIX-UI-RUNNING
+- Steps: read the outer arc colours in both fixtures
+- Expected: every closed `Work_Session` draws in `--arc-closed`
+  (`rgba(230,234,242,0.34)` dark). Only the `Open_Session` draws in `--accent`, and it is
+  emitted **after** the closed arcs so it is never painted over. With no session open —
+  `GaugeNormal`'s state — no accent appears on the outer ring at all, however much
+  overtime the day holds.
+
+## UC-457 — Uncovered time is a dashed accent stroke on the inner arc
+- Area: gauge
+- Requirement: 16.6
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read the emitted stroke, dash pattern and cap of the uncovered arcs, and their
+  paint order
+- Expected: `--uncovered-dash` (accent at 65 %, light theme 75 %) at a 6 px stroke with
+  `stroke-dasharray="3 6"` and `stroke-linecap="round"`. The dashes are emitted **last of
+  all** on the inner ring, so a floored segment can never hide undescribed time — which
+  is the thing the page exists to surface.
+
+## UC-458 — The dial is graduated at three levels, each with its own weight
+- Area: gauge
+- Requirement: 16.7
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: measure every graduation's length, width and ink
+- Expected: three levels, not two — hourly at length 4, width 1.1, `--dial-hour`;
+  three-hourly (09, 15, 21) at 8, 1.3, `--dial-3h`; six-hourly (06, 12, 18, 00) at 10,
+  1.5, `--dial-6h`. All run outward from r = 146, to 150, 154 and 156 respectively.
+
+## UC-459 — Numerals are two-digit hours, every third hour, and 03 is never drawn
+- Area: gauge
+- Requirement: 16.8
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: read every text element the gauge emits
+- Expected: exactly `06 09 12 15 18 21 00` — two-digit hours with no minutes, outside the
+  graduations, three-hourly at r = 166 and six-hourly at r = 168 (tick end plus 12 in both
+  cases), each baseline-shifted by +0.35 em. `03` is **never** drawn, because it falls in
+  the gap.
+
+## UC-460 — Work outside the window hangs in the gap without rescaling anything
+- Area: gauge
+- Requirement: 16.10
+- Design_Contract: artboard `GaugeOverrun`
+- Preconditions: logged in
+- Data needed: FIX-UI-OVERRUN (05:00–06:30 before the window, 23:00–01:30 past it)
+- Steps: read the arcs and compare the position of a 09:00 instant with the same instant
+  under FIX-UI-DAY
+- Expected: **two** `Overtime_Arc` stretches are drawn in the gap — one before
+  `GAUGE_START` and one after `GAUGE_END` — at the same stroke widths as the track's
+  arcs. Nothing is clipped, nothing is rescaled and no graduation is added: the 09:00
+  instant sits at exactly the same angle in both fixtures. Work in the gap reads as
+  leaving the expected window rather than continuing along a scale.
+
+## UC-461 — Each overtime arc marks where it left the track and labels its far end
+- Area: gauge
+- Requirement: 16.11
+- Preconditions: logged in
+- Data needed: FIX-UI-OVERRUN
+- Steps: read the dots and the labels
+- Expected: a filled `r=4` accent dot at each `Gauge_Track` end an arc left, and one
+  12/500 accent label at r = 162 on each arc's far end — the earlier arc labels its
+  **start**, the later one its **end**, since those are the two instants the gap cannot
+  be read against. One dot and one label per arc, so a two-overrun day carries two of
+  each.
+
+## UC-462 — A full day closes the circle and the gap stays bare
+- Area: gauge
+- Requirement: 16.12
+- Design_Contract: artboard `GaugeNonstop` — redrawn for exactly this, `DESIGN.md` § 9
+  row 8 is the one row where the spec won
+- Preconditions: logged in
+- Data needed: FIX-UI-NONSTOP
+- Steps: read the outer ring's emitted element and every graduation
+- Expected: the outer arc is emitted as a `<circle>`, not an arc back to its own start
+  point — that path is degenerate and paints nothing. The ring is complete, and the gap
+  still carries no groove, no graduation and no numeral. The reason the gap is bare does
+  not stop applying when the day happens to be full. Known deviation: `arc()` is scoped to
+  single-day spans and silently floors a ≥24 h span to 1.5°, so the component must detect
+  the degenerate case itself rather than delegating — see ISSUES.md
+  "`gauge-geometry.ts`'s `arc()` is scoped to single-day spans".
+
+## UC-463 — The control sits at the exact centre with clear space around it
+- Area: gauge
+- Requirement: 16.13
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: measure the control's centre against the arc centre, its diameter against the
+  gauge box, its icon and its halo, at both densities
+- Expected: the control's centre coincides with the arc centre (160/160 in `viewBox`
+  units). It is **104 px with a 42 px icon** on desktop and **98 / 40** on mobile, with a
+  halo at **11 % of its own diameter** in `rgba(accent,0.09)` — `0 0 0 12px` and
+  `0 0 0 11px`. The rule is a **ratio, not a distance**: the diameter stays at or below
+  **0.31 of the gauge box** (104/340 and 98/300). The clear space that leaves — about
+  66 px at 340 and about 48 px at 300 — is a consequence of the box size, and quoting 66
+  as an absolute would make the correct mobile gauge look broken. The control was
+  deliberately reduced from 132 and must not be enlarged past the ratio.
+
+## UC-464 — The elapsed time is above the circle, never inside it
+- Area: gauge
+- Requirement: 16.14
+- Preconditions: logged in
+- Data needed: FIX-UI-RUNNING
+- Steps: locate the hero readout relative to the gauge's bounding box
+- Expected: the readout sits above the circle in the page's flow, outside the SVG. The
+  centre of the circle holds the `Timer_Control` and nothing else — no digits, no
+  caption, no second figure.
+
+## UC-465 — The dial reads as background orientation, not as data
+- Area: gauge · design
+- Requirement: 16.15
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: measure the numerals' contrast against the page ground in both themes, and their
+  rendered CSS size
+- Expected: `--dial-numeral` measures about **1.5:1** — deliberately far below the 4.5:1
+  demanded of body text — and a 12-unit numeral renders at about **11.2 CSS px** on
+  desktop and **9.9** on mobile, because the 364-unit box is painted into 340 and 300.
+  This is the one place the interface is required **not** to reach AA, and an automated
+  contrast pass must be told so rather than "fixed".
+
+## UC-466 — Hovering an inner arc names its project and its times
+- Area: gauge
+- Requirement: 16.16
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: hover an inner arc and read the label; check where it is anchored
+- Expected: a tooltip naming the `Project` and the arc's times, anchored at
+  `pointAt(midAngle, 118)` in the gauge's coordinate space converted to page coordinates
+  — an SVG `<path>` has no layout box, so the component positions it itself. This is an
+  **enhancement over** the `Project_Legend`, which is what carries project identity in
+  text; on a touch device with no hover, nothing is lost.
+
+## UC-467 — The Gauge_Window comes from the server
+- Area: gauge
+- Requirement: 16.17
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY, run once with `GAUGE_START=06:00 GAUGE_END=00:00` and once
+  with `08:00 → 22:00`
+- Steps: read the track's extent, the graduations and the numerals in each configuration
+- Expected: the track, the gap, the graduations and the numerals all follow the
+  configured window, which the interface reads from the `Health_Endpoint` and never
+  assumes. With `08:00 → 22:00` the track is 210°, the gap is 150°, and `06:00` is no
+  longer numbered because it now falls in the gap.
+
+## UC-468 — The gauge is one image with a summary, and its arcs are decorative
+- Area: gauge · accessibility
+- Requirement: 16.19
+- Preconditions: logged in with a screen reader running
+- Data needed: FIX-UI-RUNNING then FIX-UI-DAY
+- Steps: read the gauge's role and label; Tab through the page; read each arc's
+  attributes
+- Expected: the whole gauge is a single `role="img"` whose `aria-label` summarises the
+  day — `Den <date>: odpracováno <worked>, popsáno <covered>, chybí popis <uncovered> ·
+  timer běží` — with the running clause present only while a session is open. Every arc
+  inside carries `aria-hidden`, and no arc is a tab stop: an SVG `<path>` is not focusable
+  and thirty individually announced arcs would be unusable even if it were. Project
+  identity is carried by the `Project_Legend` below, which is why the legend is not
+  optional.
+
+## UC-469 — A one-minute segment is still visible on the inner arc
+- Area: gauge
+- Requirement: 16.4, 16.6
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY plus one `Activity_Entry` of exactly two minutes
+- Steps: read the emitted arc for that segment and compare its sweep with the true
+  duration; then compare the durations printed in the legend and the three figures
+- Expected: an arc whose true sweep is under **1.5°** (six minutes) is drawn *at* 1.5°,
+  centred on its true midpoint, so a round-capped 6 px stroke does not swallow the mark
+  it caps. `MIN_INTERVAL_SECONDS` defaults to 60, so this case is reachable rather than
+  theoretical. The floor is **cosmetic and never changes a number**: the legend, the three
+  figures and the gauge's text alternative all report the true duration. Floored arcs may
+  overlap, and paint order settles it — inner arcs in chronological order of their
+  interval start, uncovered dashes last.
+
+## UC-470 — The gauge draws the same picture the day page draws
+- Area: gauge · day timeline
+- Requirement: 16.1, 4.1
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY
+- Steps: put the timer page and `/day/<TODAY>` side by side and reconcile: the number of
+  sessions, their bounds, which project covers what, and the three totals
+- Expected: the two readings agree on every fact even though they give up different
+  things — the gauge keeps time proportional everywhere and sacrifices legibility of
+  short entries; the timeline keeps entries legible and sacrifices proportionality across
+  breaks. Neither may be "fixed" by making it behave like the other, but a disagreement
+  about **what happened** is a defect in one of them.
+
+## UC-471 — Both themes define the complete token set
+- Area: theming
+- Requirement: 17.1
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: read the `[data-theme='dark']` and `[data-theme='light']` blocks in
+  `theme.css` and compare their key sets against each other and against the design's
+  token tables
+- Expected: both define every token — background, text, dim text, faint text, accent,
+  accent hover, ink on accent, panel, dialog, scrim, field, active field, divider and
+  destructive — plus every surface token (`--chip`, `--menu-border`, `--menu-shadow`,
+  `--dialog-shadow`, `--grabber`, `--group`, `--segment-active`, `--footer`, `--row`,
+  `--track`, `--meter-track`, `--hairline`) and every gauge token (`--rail`,
+  `--arc-closed`, the two grooves, the three dial levels, `--dial-numeral`,
+  `--uncovered-dash`). No key exists in one theme only, and every value matches the
+  design table exactly.
+
+## UC-472 — Every colour is drawn from a custom property, never from a literal
+- Area: theming
+- Requirement: 17.2
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: search every `.svelte` and `.css` file under `src/` for a hex, `rgb()` or
+  `hsl()` literal outside `theme.css` and the generated `palette.css`
+- Expected: none. Every colour the interface draws resolves through a custom property, so
+  a theme swap is one attribute write. A literal at a point of use is a defect even when
+  it happens to equal the dark theme's value — it will be wrong the moment the light
+  theme renders.
+
+## UC-473 — The light theme uses its own higher dim and faint opacities
+- Area: theming · accessibility
+- Requirement: 17.3, 14.10
+- Method: inspection plus measurement
+- Preconditions: none
+- Data needed: none
+- Steps: read the four values and measure each against its own ground
+- Expected: dark 0.62 / 0.50 on `#0F1319` → 6.44:1 and 4.63:1; light **0.78 / 0.66** on
+  `#F3EEE6` → 6.84:1 and 4.69:1. The light pair is **not** the dark pair, and neither set
+  may be copied onto the other or "unified". Both started lower and were raised after
+  measurement — the light pair computed to 4.17 and 2.99, and dark faint sat at 3.38:1
+  while carrying every block time, break label and caps label.
+
+## UC-474 — The Theme_Switcher offers three values and defaults to system
+- Area: theming
+- Requirement: 17.4
+- Preconditions: logged in with no `worklog_theme` cookie
+- Data needed: FIX-UI-DAY
+- Steps: open the `Settings_Menu` and read the switcher's checked item
+- Expected: three items — `Systém`, `Světlý`, `Tmavý` — with `Systém` checked, because
+  that is the default `Theme_Preference`. What is persisted is the **preference**, not the
+  theme it resolves to.
+
+## UC-475 — While the preference is system, the theme follows the browser live
+- Area: theming
+- Requirement: 17.5
+- Preconditions: logged in with `worklog_theme=system`
+- Data needed: FIX-UI-DAY
+- Steps: emulate `prefers-color-scheme: dark`, read `data-theme`; flip to `light` without
+  reloading and read it again; then emulate *no preference* and read it once more
+- Expected: `dark`, then `light` immediately and with no reload, then `dark` again —
+  when the browser expresses no preference the resolution is `dark`. The store listens to
+  `matchMedia('(prefers-color-scheme: dark)')` and re-resolves when the browser flips at
+  dusk, which a stored `dark` would not do.
+
+## UC-476 — Choosing a theme swaps it instantly and writes exactly one cookie
+- Area: theming
+- Requirement: 17.6
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: set a marker on `window`; choose `Světlý`; check the marker, `data-theme`, both
+  theme cookies and whether anything animated
+- Expected: `data-theme` becomes `light` with no reload — the marker survives — and
+  `worklog_theme=light` is written. `worklog_theme_resolved` is **not** touched: the
+  switcher is the only writer of the preference cookie and it writes nothing else, ever.
+  The swap is deliberately unanimated: a 300 ms colour transition across every surface at
+  once reads as a fault, and the gauge's SVG presentation attributes would not follow it
+  anyway, so half the page would fade and half would jump.
+
+## UC-477 — The resolved theme is written back while the preference is system
+- Area: theming
+- Requirement: 17.7
+- Preconditions: logged in with `worklog_theme=system`
+- Data needed: FIX-UI-DAY
+- Steps: load with `prefers-color-scheme: light` and read `worklog_theme_resolved`; flip
+  the media query and read it again; then set the preference to `Tmavý` and flip the
+  media query once more
+- Expected: `light`, then `dark` — rewritten by the client on every change of the media
+  query while the preference is `system`. With the preference set to `dark` the media
+  query no longer drives anything and the preference cookie stays `dark`. Two cookies
+  exist precisely because one cannot hold both: writing a resolved `light` into the
+  preference would lose `system` and stop the browser's dusk switch being followed.
+
+## UC-478 — The server renders the right theme in the first bytes
+- Area: theming
+- Requirement: 17.8
+- Preconditions: none
+- Data needed: none
+- Steps: `curl` a page four times — with `worklog_theme=light`; with `worklog_theme=dark`;
+  with `worklog_theme=system` and `worklog_theme_resolved=light`; with
+  `worklog_theme=system` and `worklog_theme_resolved=dark` — and read the raw HTML
+- Expected: `data-theme` is `light`, `dark`, `light`, `dark` respectively, present in the
+  first bytes before any script runs. The server prefers the preference cookie and
+  consults the resolved one **only** when the preference says `system`.
+
+## UC-479 — A first visit takes the one permitted flash and never repeats it
+- Area: theming
+- Requirement: 17.9
+- Preconditions: a browser with no cookies at all and `prefers-color-scheme: light`
+- Data needed: FIX-UI-DAY
+- Steps: load a page and watch the first paint; then reload and watch again
+- Expected: the first load renders `DEFAULT_RENDER_THEME` (`dark`) and hydration corrects
+  it to light once — this is the only flash the interface permits, and there is no way
+  around it, because a server cannot know a system preference the browser has never
+  reported. That same hydration writes `worklog_theme_resolved`, so the **second** load is
+  correct in its first byte with no flash at all.
+
+## UC-480 — Nothing that decides the first paint lives in localStorage
+- Area: theming
+- Requirement: 17.10
+- Method: browser plus inspection
+- Preconditions: logged in, having exercised every setting
+- Data needed: FIX-UI-DAY
+- Steps: set a theme, a language and a viewport, then dump `localStorage` and
+  `sessionStorage`; search the source for either API
+- Expected: both are empty of anything affecting the first paint. The
+  `Theme_Preference`, the resolved `Theme`, the active language and the viewport width
+  are all **cookies** — `worklog_theme`, `worklog_theme_resolved`, `worklog_locale`,
+  `worklog_viewport` — because the server has to read them to render `<html lang>`,
+  `data-theme` and the timeline's density and budget. A pre-paint script could not repaint
+  the gauge's SVG attributes anyway.
+
+## UC-481 — Destructive and the pink palette slot are never confused
+- Area: theming
+- Requirement: 17.11
+- Method: browser plus inspection
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY with a project on `Palette_Slot` 1 (pink)
+- Steps: read the computed colour of every destructive control — `Odhlásit se`, the
+  session delete link, every destructive confirm pill — and of the pink project's swatch,
+  tint and border; then recolour that project and re-read the destructive controls
+- Expected: destructive controls resolve to `--destructive` (`#E06A5E` dark, `#A8321F`
+  light) and never to a `Palette_Slot`; the pink swatch resolves to slot 1 and never to
+  `--destructive`. Recolouring a project changes nothing about any delete control — the
+  bug this separation exists to prevent. A project that happens to be pink is not a
+  warning.
+
+## UC-482 — The accent's two jobs are told apart by shape
+- Area: theming
+- Requirement: 17.12, 14.11
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: put a primary action and an `Uncovered_Marker` side by side and compare, in both
+  themes and in greyscale
+- Expected: both draw from `--accent`, and both are legitimate. A primary action is a
+  **filled** pill or circle in `--accent` with `--ink-on-accent` text; uncovered time is a
+  **dashed outline** with an accent title on a 6 % accent fill. The two are never told
+  apart by colour, and the distinction survives greyscale.
+
+## UC-483 — There is no inline style attribute anywhere
+- Area: theming · security
+- Requirement: 17.13
+- Method: inspection plus browser
+- Preconditions: the **built** server, so the production CSP is in force
+- Data needed: FIX-UI-WEEK
+- Steps: search every `.svelte` file under `src/` for a `style=` attribute; then load
+  every page, open every dialog and switch every theme with the console open, watching
+  for CSP violations
+- Expected: no `style=` attribute exists in the source and no CSP violation is reported at
+  runtime. The production policy carries `style-src 'self' 'nonce-…'` with no
+  `unsafe-inline`, and a nonce does **not** cover an inline attribute — it is simply
+  forbidden. SVG presentation attributes (`d`, `stroke`, `stroke-width`,
+  `stroke-dasharray`, `fill`, `x`, `y`) are not CSS and are unaffected, which is why the
+  gauge may compute its geometry per render.
+
+## UC-484 — Colours and block heights are applied through precompiled classes
+- Area: theming
+- Requirement: 17.14
+- Method: inspection plus browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-DAY and FIX-UI-MANY
+- Steps: read the class list of several `Segment_Block` elements; check that
+  `palette.css` and `timeline-heights.css` are committed and regenerate without a diff;
+  find a block taller than 320 px and read its class
+- Expected: each block carries one `pj-<n>` class and one `tl-h-<n>` class from the 2 px
+  ladder — `tl-h-26` … `tl-h-320`, of which every drawn height (26, 36, 38, 44, 48, 58,
+  60, 62, 74, 96, 98, 106) is a member by construction. A block taller than 320 px takes
+  **`tl-h-fill`** instead and absorbs what the flex column has left; a block column
+  contains at most one such block and `layOutDay` marks it. `layOutDay` does the
+  quantising and returns a height already on the ladder — the component only picks the
+  class, so rounding happens in one place. Both stylesheets are generated from
+  `palette.ts` and the ladder constants, committed, and `bun run check` fails if
+  regenerating produces a diff.
+
+## UC-485 — Every text style and every numeric readout matches the contract
+- Area: typography
+- Requirement: 17.15
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-UI-WEEK
+- Steps: measure family, weight, size, letter spacing, case and line height for each role
+  in the design's two typography tables; then check `font-variant-numeric` on every
+  numeric readout
+- Expected: hero 68/300/`-0.035em` at line height 1 (mobile 56); stats KPI 30/300/`-0.03em`
+  at 1.1; timer figure 26/300/`-0.02em` (mobile 19); page heading 20/500 at 1.3 (mobile
+  15); dialog heading 17/500; brand 15/600; summary value 15/500; nav, fields and project
+  rows 14 at 1.4; project name in a block 14/500 (mobile 13); buttons 13.5 with primary
+  at 600; block head time 13/500 (mobile 12); description and preview prose 12.5 at 1.55;
+  times, legend and gauge numerals 12 (mobile 10.5–11); short break label 11.5/400
+  `--text-faint`; long break label 12/500 `--text-dim`; caps label 11 with
+  `letter-spacing: 0.16em`, uppercase, `--text-faint` (mobile 10). **Every** numeric
+  readout carries `font-variant-numeric: tabular-nums`, so digits do not jitter as the
+  timer ticks. Line height is part of the contract because `layOutDay` budgets against
+  it: changing a head's size or leading changes `BLOCK_HEAD_PX` and must change that
+  constant with it.
+
+## UC-486 — Artboard conformance: `Main` (timer, dark, 1440 × 940)
+- Area: visual conformance
+- Requirement: 17.16, 14.7
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, viewport 1440 wide
+- Data needed: FIX-UI-RUNNING
+- Steps: render `$APP/` at the artboard's frame size and put it beside
+  `.design/screens/Main.png`
+- Expected: the arrangement matches — top bar, hero, caption, gauge with the control at
+  its centre, three figures, quick-log pill, legend — and so do the relative proportions
+  and the palette. Copy, example data and exact pixel heights are **not** compared. Any
+  deviation is recorded as a defect against this spec or against the `Design_Contract`,
+  never resolved as a local decision. Note this artboard is the reference for the gauge's
+  **placement**; its geometry comes from the three gauge artboards.
+
+## UC-487 — Artboard conformance: `TimerLight` (timer, light, 1440 × 940)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `light`, Czech, viewport 1440 wide
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/TimerLight.png`
+- Expected: the same arrangement as `Main` in the light palette — `#F3EEE6` ground,
+  `#2B2420` text, `#A5522E` accent — with the light theme's own dim and faint opacities
+  rather than the dark theme's.
+
+## UC-488 — Artboard conformance: `TimerMobile` (timer, mobile, 390 × 844)
+- Area: visual conformance
+- Requirement: 17.16, 14.25
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-MOBILE`
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/TimerMobile.png`
+- Expected: top bar 56–60 with brand and gear chip and **no** `Running_Indicator`; gauge
+  at 300 with a 98 px control and an `0 0 0 11px` halo; three figures spread full width at
+  19/300 with short labels; quick-log pill without its remaining-time suffix; bottom
+  navigation of four tabs with the active one in `--accent`.
+
+## UC-489 — Artboard conformance: `DayCollapsed` (day, dark, 1440 × 1260)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, viewport 1440 wide
+- Data needed: FIX-UI-DAY plus an orphaned entry, so all three side panels are drawn
+- Steps: as UC-486 against `.design/screens/DayCollapsed.png`
+- Expected: heading line with date, meta and the two create pills; timeline left with
+  rail, blocks and a collapsed `Break_Marker`; a **290 px** side column holding
+  `souhrn dne`, `tvar dne` and `mimo výkaz`. The artboard draws its top bar at 88 and its
+  `.sesshead` with no line height — both are drawing slips: **84** is the bar height and
+  `BLOCK_HEAD_PX` is the computed 29. Block heights illustrate the algorithm and are not
+  compared.
+
+## UC-490 — Artboard conformance: `DayCollapsedLight` (day, light, 1440 × 1080)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `light`, Czech, viewport 1440 wide
+- Data needed: FIX-UI-DAY
+- Steps: as UC-486 against `.design/screens/DayCollapsedLight.png`
+- Expected: the same arrangement in the light palette, with the break rule at
+  `rgba(0,0,0,0.20)` — deliberately **higher** than the dark theme's 0.14, exactly as the
+  text tokens are — and the uncovered border at 0.52 rather than 0.45.
+
+## UC-491 — Artboard conformance: `DayMobile` (day, mobile, 390 × 844)
+- Area: visual conformance
+- Requirement: 17.16, 1.5
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-MOBILE`
+- Data needed: FIX-UI-DAY
+- Steps: as UC-486 against `.design/screens/DayMobile.png`
+- Expected: a 44 px date row — 34 px back button, date 15/500 centred over the meta at
+  10 px, forward button at `opacity: 0.3` on today; blocks at radius 9, `padding: 8px
+  11px`, rail 6; the two side panels **below** the timeline; and a 54 px accent FAB 18
+  from the right and 12 above the bottom bar with its own `0 0 0 10px` halo. Known
+  deviation: the FAB has no entry point in the current build (UC-305), so this artboard
+  cannot pass until that is closed.
+
+## UC-492 — Artboard conformance: `AddTask` (activity dialog, dark, 820 × 780)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-DESKTOP`, dialog open in `Jen délka`
+- Data needed: FIX-UI-DAY
+- Steps: as UC-486 against `.design/screens/AddTask.png`
+- Expected: scrim over the page; dialog at radius 20 on `--dialog` with
+  `0 28px 70px rgba(0,0,0,0.6)`; header `22px 26px 18px` with a 17/500 title and a 32 px
+  close button; the three-mode segmented control; the field row at `1fr 1fr 1.2fr` (the
+  layout the artboard draws); the tinted inference note; the live preview panel headed by
+  an eye icon and `uloží se takto`; the `Untracked_Policy` control; footer `16px 26px` on
+  `--footer` with the hint and two 42 px pills.
+
+## UC-493 — Artboard conformance: `AddTaskLight` (activity dialog, light, 820 × 780)
+- Area: visual conformance
+- Requirement: 17.16, 17.1
+- Method: artboard
+- Preconditions: logged in, `light`, Czech, `VP-DESKTOP`, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: as UC-486 against `.design/screens/AddTaskLight.png`
+- Expected: the same dialog on `#FBF7F1`. This artboard is why **no token is derived any
+  more** — dialog, scrim, field, active field, divider and destructive are painted values
+  measured on the surface they sit on. Check each against the light table:
+  `--scrim rgba(43,36,32,0.38)`, `--field rgba(0,0,0,0.05)`, active field
+  `rgba(165,82,46,0.10)` with an inset `1px rgba(165,82,46,0.45)`,
+  `--divider rgba(0,0,0,0.07)`, `--destructive #A8321F` at 6.26:1 on this ground.
+
+## UC-494 — Artboard conformance: `AddTaskMobile` (activity dialog, mobile, 390 × 844)
+- Area: visual conformance
+- Requirement: 17.16, 14.15
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-MOBILE`, dialog open
+- Data needed: FIX-UI-DAY
+- Steps: as UC-486 against `.design/screens/AddTaskMobile.png`
+- Expected: the dialog **is** the viewport — no scrim, no radius. Header 58 tall with a
+  34 px close button; fields one per row at 48 / 15 px; segmented items 40 at 12.5 px with
+  the shortened label `Od–do`; description 62; the `Change_Preview` at **full** form,
+  policy control included; footer pinned with the primary 50 px above `Zrušit` at 46,
+  `gap: 10`.
+
+## UC-495 — Artboard conformance: `SessionEdit` (session dialog, 820 × 720)
+- Area: visual conformance
+- Requirement: 17.16, 9.6
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-DESKTOP`, session dialog in its
+  confirmation state
+- Data needed: FIX-UI-DAY with a change removing 30 min from one entry and pushing 1 h 30
+  of uncovered time out of the frame
+- Steps: as UC-486 against `.design/screens/SessionEdit.png`
+- Expected: two 44 px time fields with the changed one showing the old value struck
+  through; the consequence panel at radius 14 on `rgba(209,138,106,0.07)` with a
+  `1px solid rgba(209,138,106,0.28)` border; one headline total at 15/500 accent
+  (`−2 h 00 min`) with `preview_total_split` directly beneath it; one row per affected
+  entry with a 3 × 18 slot tick and a `1fr 20px 1fr` *teď* → *po úpravě* grid; the
+  uncovered row last, in prose, with a `rgba(209,138,106,0.6)` tick; an inline
+  `--destructive` delete link; the server-computed footer hint. **The artboard's closing
+  count is wrong** — it says *2 záznamy* over one entry plus one uncovered row, and the
+  rule is entries only. The implementation must say *1 záznam*, and the artboard is the
+  thing being corrected.
+
+## UC-496 — Artboard conformance: `Projects` (1440 × 900)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, viewport 1440 wide
+- Data needed: FIX-UI-WEEK
+- Steps: as UC-486 against `.design/screens/Projects.png`
+- Expected: content capped at **940**; rows of `padding: 16px 18px` separated by 1 px
+  dividers, each with a 32 px icon box of radius 9 tinted from the slot carrying a 13 px
+  rounded swatch, the name, the thirty-day total, a share bar and the row actions. The
+  artboard draws the eight-swatch strip as a standalone panel to show all eight at once —
+  that is a presentation of the control, **not** its placement: in the implementation the
+  strip expands inside the row it changes.
+
+## UC-497 — Artboard conformance: `Stats` (1440 × 980)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, viewport 1440 wide, range `Týden`
+- Data needed: FIX-UI-WEEK
+- Steps: as UC-486 against `.design/screens/Stats.png`
+- Expected: heading row with the range control and the resolved range; a four-panel
+  `KPI_Row`; the `Day_Rhythm_Strip` panel with its sub-line, 58 px label gutter, 22 px
+  strips, hatched uncovered intervals, accent-marked today and a five-label axis; then
+  breakdown and rhythm panel at `1.4fr 1fr`, closing with the observation line. Two known
+  corrections to the drawing: the bars are **shares of the range total** (59/32/9 %), not
+  scaled to the largest project (100/54/14 %); and the interior axis labels are even
+  divisions (`09:00 · 15:00 · 21:00`), not the drawn `08:00 / 14:00 / 20:00`. Known
+  deviation: the strip's heading carries no project legend in the current build, which
+  `design.md` asks for — recorded in the phase-1 report as a deliberate simplification.
+
+## UC-498 — Artboard conformance: `Settings` (settings menu, desktop dark, 1440 × 560)
+- Area: visual conformance
+- Requirement: 17.16, 1.16
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, viewport 1440 wide, menu open
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/Settings.png`
+- Expected: a 30 px round gear chip on `--chip` holding a 16 px gear at
+  `stroke-width: 1.7`; a 268 px menu anchored under it with `padding: 16`, `gap: 16`,
+  radius 14 and the menu border and shadow; the four rows in order with 34 px items at
+  radius 9 inside radius-11 groups. The artboard draws the `Running_Indicator` beside the
+  chip because it is demonstrating the menu, **not** because the timer page carries one.
+
+## UC-499 — Artboard conformance: `SettingsLight` (settings menu, desktop light, 1440 × 560)
+- Area: visual conformance
+- Requirement: 17.16, 17.1
+- Method: artboard
+- Preconditions: logged in, `light`, Czech, viewport 1440 wide, menu open
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/SettingsLight.png`
+- Expected: the same menu with the painted light values this artboard confirms — chip
+  `rgba(0,0,0,0.06)`, menu border `rgba(0,0,0,0.08)`, shadow
+  `0 18px 44px rgba(43,36,32,0.18)`, group `rgba(0,0,0,0.04)`, active segment
+  `rgba(165,82,46,0.14)` (lower than the dark theme's 0.16, because the light accent is
+  the darker colour), divider `rgba(0,0,0,0.07)`, surface `#FBF7F1`.
+
+## UC-500 — Artboard conformance: `SettingsMobile` (settings sheet, mobile dark, 390 × 844)
+- Area: visual conformance
+- Requirement: 17.16, 1.17, 1.19
+- Method: artboard
+- Preconditions: logged in, `dark`, Czech, `VP-MOBILE`, sheet open
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/SettingsMobile.png`
+- Expected: a 32 px chip; a sheet at radius `20px 20px 0 0` with `padding: 10px 22px 26px`
+  and `gap: 20`, opened by a 38 × 4 grabber of radius 9999 in `rgba(255,255,255,0.14)`
+  centred at the top; rows at 44 tall with radius-10 items in radius-13 groups, the
+  logout icon at 17 and its label at 14.5. The scrim covers the bottom navigation and the
+  sheet paints above it, with no `opacity` on either layer.
+
+## UC-501 — Artboard conformance: `SettingsMobileLight` (settings sheet, mobile light, 390 × 844)
+- Area: visual conformance
+- Requirement: 17.16
+- Method: artboard
+- Preconditions: logged in, `light`, Czech, `VP-MOBILE`, sheet open
+- Data needed: FIX-UI-RUNNING
+- Steps: as UC-486 against `.design/screens/SettingsMobileLight.png`
+- Expected: the light half of UC-500, on `#FBF7F1`. `--grabber` is the one value in this
+  whole surface with no light drawing — `rgba(0,0,0,0.16)` follows the same ladder and is
+  binding as written.
+
+## UC-502 — A description at and beyond the length limit behaves predictably
+- Area: edge cases · validation
+- Requirement: 15.12, 6.7, 1.15
+- Preconditions: logged in, `Activity_Dialog` open
+- Data needed: FIX-UI-DAY
+- Steps: paste a description of exactly the limit and save; then one of ten thousand
+  characters and save; then read the resulting block, its tooltip and its `aria-label`
+- Expected: the first saves. The second is refused with `Popis je moc dlouhý.` beside the
+  description field (or `Nejvíc {max} znaků.` from the field namespace), with the text
+  kept so it can be trimmed. A long description that did save wraps inside its block or is
+  clipped by the block's own overflow — it never widens the timeline column or the page.
+
+## UC-503 — A very long project name does not break any surface that draws it
+- Area: edge cases · layout
+- Requirement: 14.1, 11.11
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY plus a project whose name is 120 characters with no spaces
+- Steps: view that project on the projects page, the `Project_Legend`, a `Segment_Block`,
+  the `Project_Picker`, the statistics breakdown and the rhythm legend, at `VP-DESKTOP`
+  and `VP-NARROW`
+- Expected: every surface wraps, truncates within its own box, or scrolls inside its own
+  container. Nothing widens the page, and `document.scrollWidth` never exceeds
+  `clientWidth` at 320 px. The name remains readable in full somewhere — a tooltip or the
+  projects page — since colour cannot carry identity on its own.
+
+## UC-504 — Rate limiting surfaces as a toast carrying the delay
+- Area: edge cases · errors
+- Requirement: 15.9
+- Preconditions: logged in
+- Data needed: FIX-UI-DAY
+- Steps: drive enough requests past `RATE_LIMIT_PER_MINUTE` to be limited — for example by
+  typing continuously in a previewed field with the debounce defeated — and read what
+  appears; then repeat with failed logins past `LOGIN_ATTEMPT_LIMIT`
+- Expected: a toast rendering `Moc požadavků. Zkus to za {n} s.` with the delay from the
+  envelope, and on the login page `Moc pokusů o přihlášení. Zkus to za {n} s.` — two
+  different keys chosen from `details.scope`, never a sentence composed in the browser.
+  Nothing is lost and the action can be repeated after the delay.
+
+## UC-505 — The interface works with JavaScript disabled as far as it claims to
+- Area: edge cases · progressive enhancement
+- Requirement: 2.2, 1.11
+- Preconditions: JavaScript disabled in the browser
+- Data needed: FIX-UI-DAY
+- Steps: log in at `/login`; start and stop the timer; open `/day/<TODAY>`, `/projects`
+  and `/stats`; try a project rename; visit `/logout` directly
+- Expected: the login form, the timer's start and stop, the project form actions and the
+  logout confirmation all work, because each is a real form action — that is why reads are
+  load functions and writes are form actions rather than `fetch`. What needs JavaScript —
+  the `Change_Preview`, the `Project_Picker`'s inline creation, the ticking clock, the
+  theme and locale switchers — degrades to an inert or absent control rather than to a
+  broken page or a silent no-op.
+
+## UC-506 — Two tabs on the same day do not show contradictory state
+- Area: edge cases · consistency
+- Requirement: 3.12, 9.14
+- Preconditions: logged in, the same day open in two tabs
+- Data needed: FIX-UI-DAY
+- Steps: in tab A start the timer and add an entry; switch to tab B and back to it
+- Expected: tab B refreshes on `visibilitychange` and shows the running timer and the new
+  entry together. A write attempted in tab B against its stale view is refused with
+  `STALE_PREVIEW` and recomputed rather than silently overwriting tab A's work.
+
+## UC-507 — A day spanning a DST transition renders without a shifted dial
+- Area: edge cases · time
+- Requirement: 16.1, 1.12
+- Preconditions: logged in
+- Data needed: FIX-DST-SPRING (a 23-hour `Logical_Day`) and FIX-DST-AUTUMN (25 hours)
+- Steps: open each day's page and the gauge for it, and read the block times, the
+  graduations and the numerals
+- Expected: not a single graduation moves in either case, because the mapping is a
+  function of the wall clock and the transition falls between 02:00 and 03:00 — inside the
+  bare gap. Block times render in the server's zone with the correct offset on each side
+  of the transition, and the day's totals match what the API reports for it.
+
+## UC-508 — The E2E suite runs on a machine that is not this one
+- Area: test infrastructure
+- Requirement: — (process, not a criterion)
+- Method: inspection
+- Preconditions: a clean checkout on a different machine
+- Data needed: none
+- Steps: read `tests/e2e/a11y.spec.ts` and `scripts/test-e2e.sh` for absolute paths and
+  for the passphrase the suite logs in with; then try to run `bun run test:e2e:local`
+- Expected: no committed file names a session-specific directory, and the suite's
+  passphrase is supplied by the script rather than by an out-of-repo wrapper. Known
+  deviation: `tests/e2e/a11y.spec.ts` hardcodes a `/tmp/claude-1000/…/scratchpad` path as
+  its `storageState` directory, and `scripts/test-e2e.sh` never sets
+  `WORKLOG_PASSPHRASE_HASH`, so as committed the accessibility suite cannot run anywhere
+  else and every login fails — see ISSUES.md "The E2E suite is not runnable from a clean
+  checkout".
+
+---
+
+## Requirement coverage — `002-worklog-ui`
+
+Every acceptance criterion of `.kiro/specs/002-worklog-ui/requirements.md`, and the use
+case (or cases) that exercise it. Nothing in the specification is left without a home.
+
+**Requirement 1 — Application Shell and Navigation**
+1.1 UC-238 · 1.2 UC-238 · 1.3 UC-239 · 1.4 UC-240 · 1.5 UC-241, UC-334 ·
+1.6 UC-238, UC-249 · 1.7 UC-242 · 1.8 UC-242 · 1.9 UC-237 · 1.10 UC-244 ·
+1.11 UC-243, UC-505 · 1.12 UC-245, UC-507 · 1.13 UC-245 · 1.14 UC-247 ·
+1.15 UC-248, UC-502 · 1.16 UC-249, UC-498 · 1.17 UC-250, UC-500 · 1.18 UC-251 ·
+1.19 UC-250, UC-500 · 1.20 UC-250 · 1.21 UC-252 · 1.22 UC-253 · 1.23 UC-254 ·
+1.24 UC-255 · 1.25 UC-246, UC-275
+
+**Requirement 2 — Authentication**
+2.1 UC-256 · 2.2 UC-257, UC-505 · 2.3 UC-258 · 2.4 UC-257 · 2.5 UC-259, UC-253 ·
+2.6 UC-260 · 2.7 UC-261
+
+**Requirement 3 — Timer Page**
+3.1 UC-262 · 3.2 UC-263 · 3.3 UC-263 · 3.4 UC-264 · 3.5 UC-264 · 3.6 UC-264 ·
+3.7 UC-264 · 3.8 UC-265 · 3.9 UC-266 · 3.10 UC-267 · 3.11 UC-268 ·
+3.12 UC-269, UC-506 · 3.13 UC-270 · 3.14 UC-271 · 3.15 UC-272 · 3.16 UC-273 ·
+3.17 UC-274 · 3.18 UC-275, UC-246 · 3.19 UC-262 · 3.20 UC-262
+
+**Requirement 4 — Day Timeline**
+4.1 UC-276, UC-470 · 4.2 UC-277 · 4.3 UC-277 · 4.4 UC-278 · 4.5 UC-279 ·
+4.6 UC-280, UC-324 · 4.7 UC-281 · 4.8 UC-282 · 4.9 UC-283 · 4.10 UC-284 ·
+4.11 UC-285 · 4.12 UC-286 · 4.13 UC-287 · 4.14 UC-288 · 4.15 UC-289 · 4.16 UC-290 ·
+4.17 UC-291 · 4.18 UC-276 · 4.19 UC-292 · 4.20 UC-293, UC-414 · 4.21 UC-294 ·
+4.22 UC-295 · 4.23 UC-296 · 4.24 UC-297 · 4.25 UC-298
+
+**Requirement 5 — Day Navigation**
+5.1 UC-299 · 5.2 UC-300 · 5.3 UC-301 · 5.4 UC-302 · 5.5 UC-303 · 5.6 UC-304
+
+**Requirement 6 — Activity Creation**
+6.1 UC-305 · 6.2 UC-306 · 6.3 UC-307 · 6.4 UC-308 · 6.5 UC-309 · 6.6 UC-310 ·
+6.7 UC-311, UC-502 · 6.8 UC-312 · 6.9 UC-313 · 6.10 UC-314, UC-307 · 6.11 UC-315 ·
+6.12 UC-316 · 6.13 UC-317, UC-271 · 6.14 UC-318 · 6.15 UC-319, UC-432 · 6.16 UC-320 ·
+6.17 UC-317 · 6.18 UC-321 · 6.19 UC-322, UC-308, UC-310
+
+**Requirement 7 — Activity Editing and Deletion**
+7.1 UC-323, UC-276 · 7.2 UC-324, UC-280 · 7.3 UC-325 · 7.4 UC-326, UC-285 ·
+7.5 UC-327 · 7.6 UC-328 · 7.7 UC-329 · 7.8 UC-330 · 7.9 UC-331 · 7.10 UC-332 ·
+7.11 UC-333
+
+**Requirement 8 — Timer Frame Editing**
+8.1 UC-334, UC-241 · 8.2 UC-335 · 8.3 UC-336 · 8.4 UC-337 · 8.5 UC-338, UC-441 ·
+8.6 UC-339 · 8.7 UC-340 · 8.8 UC-341 · 8.9 UC-342 · 8.10 UC-343
+
+**Requirement 9 — Change Preview**
+9.1 UC-344, UC-309 · 9.2 UC-345 · 9.3 UC-346 · 9.4 UC-347 · 9.5 UC-348, UC-343 ·
+9.6 UC-349, UC-495 · 9.7 UC-350 · 9.8 UC-351, UC-343 · 9.9 UC-352 ·
+9.10 UC-353, UC-346 · 9.11 UC-354, UC-320 · 9.12 UC-355 · 9.13 UC-356, UC-352 ·
+9.14 UC-357, UC-506 · 9.15 UC-358 · 9.16 UC-359, UC-315
+
+**Requirement 10 — Uncovered Time Guidance**
+10.1 UC-360 · 10.2 UC-281, UC-323 · 10.3 UC-287, UC-362 · 10.4 UC-298 · 10.5 UC-361 ·
+10.6 UC-264 · 10.7 UC-362 · 10.8 UC-363
+
+**Requirement 11 — Project Management**
+11.1 UC-364 · 11.2 UC-365 · 11.3 UC-366 · 11.4 UC-367 · 11.5 UC-368 · 11.6 UC-369 ·
+11.7 UC-370 · 11.8 UC-371 · 11.9 UC-373, UC-279 · 11.10 UC-372 ·
+11.11 UC-374, UC-265 · 11.12 UC-375 · 11.13 UC-376, UC-321, UC-312 · 11.14 UC-377
+
+**Requirement 12 — Statistics**
+12.1 UC-378, UC-397 · 12.2 UC-379 · 12.3 UC-380 · 12.4 UC-381, UC-377 · 12.5 UC-382 ·
+12.6 UC-383 · 12.7 UC-384 · 12.8 UC-385 · 12.9 UC-386 · 12.10 UC-387 · 12.11 UC-388 ·
+12.12 UC-389 · 12.13 UC-390 · 12.14 UC-391 · 12.15 UC-392 · 12.16 UC-393, UC-397 ·
+12.17 UC-394 · 12.18 UC-395 · 12.19 UC-392 · 12.20 UC-396
+
+**Requirement 13 — Internationalization**
+13.1 UC-398, UC-410 · 13.2 UC-399 · 13.3 UC-400 · 13.4 UC-401 · 13.5 UC-401, UC-411 ·
+13.6 UC-402 · 13.7 UC-403, UC-302 · 13.8 UC-404, UC-258 · 13.9 UC-405 · 13.10 UC-406 ·
+13.11 UC-404 · 13.12 UC-407, UC-409 · 13.13 UC-408 · 13.14 UC-402, UC-254
+
+**Requirement 14 — Responsiveness, Interaction and Accessibility**
+14.1 UC-412, UC-503 · 14.2 UC-413 · 14.3 UC-414, UC-293 · 14.4 UC-415 ·
+14.5 UC-416, UC-272, UC-289 · 14.6 UC-417 · 14.7 UC-418, UC-486 · 14.8 UC-419 ·
+14.9 UC-420 · 14.10 UC-421, UC-473 · 14.11 UC-422, UC-390 ·
+14.12 UC-423, UC-239, UC-436 · 14.13 UC-424, UC-307 · 14.14 UC-425, UC-433 ·
+14.15 UC-426, UC-494 · 14.16 UC-427 · 14.17 UC-428, UC-436 ·
+14.18 UC-429, UC-306, UC-406 · 14.19 UC-417 · 14.20 UC-430 · 14.21 UC-431, UC-340 ·
+14.22 UC-432, UC-319 · 14.23 UC-433, UC-252 · 14.24 UC-434, UC-250 ·
+14.25 UC-435, UC-488
+
+**Requirement 15 — Feedback, Loading and Error States**
+15.1 UC-437 · 15.2 UC-438, UC-355 · 15.3 UC-439 · 15.4 UC-440, UC-314, UC-270 ·
+15.5 UC-441, UC-338 · 15.6 UC-442 · 15.7 UC-443, UC-247 ·
+15.8 UC-444, UC-329, UC-336 · 15.9 UC-445, UC-504, UC-260 ·
+15.10 UC-446, UC-376, UC-290 · 15.11 UC-447 · 15.12 UC-448, UC-502 · 15.13 UC-449 ·
+15.14 UC-450 · 15.15 UC-451, UC-268
+
+**Requirement 16 — Day Gauge**
+16.1 UC-452, UC-507, UC-470 · 16.2 UC-453 · 16.3 UC-454 · 16.4 UC-455, UC-469 ·
+16.5 UC-456 · 16.6 UC-457, UC-469 · 16.7 UC-458 · 16.8 UC-459 · 16.9 UC-453 ·
+16.10 UC-460 · 16.11 UC-461 · 16.12 UC-462 · 16.13 UC-463 · 16.14 UC-464 ·
+16.15 UC-465 · 16.16 UC-466 · 16.17 UC-467 · 16.18 UC-452 · 16.19 UC-468, UC-265
+
+**Requirement 17 — Visual Design and Theming**
+17.1 UC-471, UC-493, UC-499 · 17.2 UC-472 · 17.3 UC-473 · 17.4 UC-474 · 17.5 UC-475 ·
+17.6 UC-476 · 17.7 UC-477 · 17.8 UC-478, UC-254 · 17.9 UC-479 · 17.10 UC-480 ·
+17.11 UC-481 · 17.12 UC-482, UC-422 · 17.13 UC-483 · 17.14 UC-484, UC-279 ·
+17.15 UC-485 · 17.16 UC-486 … UC-501 (one case per compared artboard)
+
+**Correctness Properties of `002-worklog-ui/design.md`**
+P1 UC-452 · P2 UC-277, UC-293, UC-296 · P3 UC-453
+
+**Not a criterion, verified anyway**
+UC-503 (long project name) · UC-504 (rate limiting) · UC-505 (no JavaScript) ·
+UC-506 (two tabs) · UC-507 (DST days) · UC-508 (the E2E suite off this machine)
