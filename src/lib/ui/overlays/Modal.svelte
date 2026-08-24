@@ -53,8 +53,15 @@
 	let dialogEl: HTMLElement | undefined = $state();
 	let returnFocusEl: HTMLElement | null = null;
 
+	// input:not([disabled]):not([type="hidden"]) -- a hidden input is never a focusable
+	// area per the HTML spec (confirmed against jsdom's own isFocusableAreaElement), so
+	// .focus() on one silently no-ops. Callers place hidden mirror inputs (e.g. a mode
+	// field mirrored for a future native form submission) wherever suits the form's own
+	// structure, often first in DOM order -- without this exclusion, defaultFocusTarget()
+	// could pick one of those as "the first focusable control" and focus would never
+	// actually move into the dialog at all, silently breaking Requirement 14.21.
 	const FOCUSABLE_SELECTOR =
-		'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+		'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 	/** Every focusable element in the dialog, in DOM order — used by the Tab trap,
 	 * which must cycle through the close button too. */
