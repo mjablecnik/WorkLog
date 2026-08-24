@@ -60,6 +60,9 @@ export type SessionPreview = {
 	reclipped: {
 		entryId: string;
 		projectName: string;
+		/** Joined, read-only — restored from the server's `ReclipOutcome` (Requirement 11.9)
+		 * so `ChangePreview` can draw the slot-coloured tick beside each affected entry. */
+		colorIndex: number;
 		description: string;
 		before: Interval[];
 		after: Interval[];
@@ -222,6 +225,7 @@ function toSessionPreview(raw: WireSessionChangePreview): SessionPreview {
 		reclipped: raw.reclipped.map((r) => ({
 			entryId: r.entryId,
 			projectName: r.projectName,
+			colorIndex: r.colorIndex,
 			description: r.description,
 			before: reviveIntervals(r.before),
 			after: reviveIntervals(r.after),
