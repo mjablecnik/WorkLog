@@ -10,6 +10,15 @@ test('switching to English mid-page changes text with no reload and no lost scro
 }) => {
 	await login(page, { locale: 'cs' });
 
+	// A short viewport, not the default ~720px tall one: the assertion below needs
+	// `/projects` to actually have more content than fits on screen, or
+	// `window.scrollTo(0, 120)` is a no-op and `scrollY` reads 0 regardless of
+	// whether the locale switch preserves scroll position or not — confirmed live
+	// once `src/app.css` started actually applying (a real page fits comfortably in
+	// 720px with only a couple of seeded projects). A fixed short height guarantees
+	// overflow regardless of how many projects a given run happens to have seeded.
+	await page.setViewportSize({ width: 1280, height: 400 });
+
 	await page.goto('/projects');
 	await expect(page.getByRole('link', { name: 'Projekty', exact: true })).toBeVisible();
 
