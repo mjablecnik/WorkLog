@@ -7,6 +7,7 @@
 import type { Interval } from '$lib/contracts/models';
 import type { DayWindow } from '../store/aggregates';
 import { createDayResolver, materializeWallClock, type DayResolver } from '../domain/logical-day';
+import { NoPlacementAnchorError, resolveAnchor } from '../domain/clipping';
 import type { Config } from '../core/config';
 
 /** Every `Logical_Day` window intersecting `[range.start, range.end)`, with its date. */
@@ -64,4 +65,28 @@ export function eveningStartFor(
 
 export function buildDayResolver(config: Pick<Config, 'timezone' | 'dayStartHour'>): DayResolver {
 	return createDayResolver(config.timezone, config.dayStartHour);
+}
+
+/**
+ * `Quick_Log`'s own `Placement_Anchor` (the timer/day pages' `load` functions need
+ * this to seed `quickLog` without a client round trip): `resolveAnchor(null, ...)`,
+ * with a day that has "nothing to place against yet" reported as `null` rather than
+ * thrown — a `load` function has no request body to validate against, so
+ * `NoPlacementAnchorError` here just means "no Quick_Log suggestion today," not a
+ * client error. Keeps `$lib/server/domain/clipping` out of route files entirely
+ * (Requirements 6.1, 6.2's module-boundary rule — routes reach `lib/server` only
+ * through `services`/`store`), both the timer page's and the day page's own `load`
+ * call this instead of `resolveAnchor` directly.
+ */
+export function resolveQuickLogAnchor(
+	daySegments: Interval[],
+	daySessions: Interval[],
+	date: string
+): Date | null {
+	try {
+		return resolveAnchor(null, daySegments, daySessions, date);
+	} catch (err) {
+		if (err instanceof NoPlacementAnchorError) return null;
+		throw err;
+	}
 }

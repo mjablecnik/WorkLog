@@ -40,9 +40,9 @@ import { ApiError, assertNotTooFarInFuture, messageKeyFor } from '$lib/server/co
 import {
 	buildDayResolver,
 	eveningStartFor,
-	gaugeWindowFor
+	gaugeWindowFor,
+	resolveQuickLogAnchor
 } from '$lib/server/services/day-aggregation';
-import { NoPlacementAnchorError, resolveAnchor } from '$lib/server/domain/clipping';
 import { startSession, stopSession } from '$lib/server/services/sessions';
 import { createActivity } from '$lib/server/services/activities';
 import {
@@ -98,26 +98,22 @@ async function loadTimerData(date: string, bounds: Interval): Promise<TimerPageD
 		// always ends at `now` — unlike day/[date]'s load, there is no "a day in the
 		// past ends at its last session" branch to consider here.
 		let quickLog: DayResponse['quickLog'] = null;
-		try {
-			const start = resolveAnchor(null, daySegments, daySessions, date);
-			if (start.getTime() < now.getTime()) {
-				const source: 'last-segment' | 'first-session' =
-					daySegments.length > 0 ? 'last-segment' : 'first-session';
-				const dayLastEntry = entries[entries.length - 1] ?? null;
-				const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
-				if (projectSource !== null) {
-					quickLog = {
-						start: start.toISOString(),
-						end: now.toISOString(),
-						anchorSource: source,
-						projectId: projectSource.projectId,
-						projectName: projectSource.projectName,
-						colorIndex: projectSource.colorIndex
-					};
-				}
+		const start = resolveQuickLogAnchor(daySegments, daySessions, date);
+		if (start !== null && start.getTime() < now.getTime()) {
+			const source: 'last-segment' | 'first-session' =
+				daySegments.length > 0 ? 'last-segment' : 'first-session';
+			const dayLastEntry = entries[entries.length - 1] ?? null;
+			const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
+			if (projectSource !== null) {
+				quickLog = {
+					start: start.toISOString(),
+					end: now.toISOString(),
+					anchorSource: source,
+					projectId: projectSource.projectId,
+					projectName: projectSource.projectName,
+					colorIndex: projectSource.colorIndex
+				};
 			}
-		} catch (err) {
-			if (!(err instanceof NoPlacementAnchorError)) throw err;
 		}
 
 		const dayLastEntry = entries[entries.length - 1] ?? null;

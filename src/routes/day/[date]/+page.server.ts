@@ -31,9 +31,9 @@ import { getConfig } from '$lib/server/core/config';
 import {
 	buildDayResolver,
 	eveningStartFor,
-	gaugeWindowFor
+	gaugeWindowFor,
+	resolveQuickLogAnchor
 } from '$lib/server/services/day-aggregation';
-import { NoPlacementAnchorError, resolveAnchor } from '$lib/server/domain/clipping';
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
@@ -105,26 +105,22 @@ async function loadDayData(date: string, config: ReturnType<typeof getConfig>): 
 		const daySessions = await trackedIntervals(tx, [bounds], now);
 
 		let quickLog: DayResponse['quickLog'] = null;
-		try {
-			const start = resolveAnchor(null, daySegments, daySessions, date);
-			const end = isToday ? now : lastSessionEndWithin(daySessions, bounds, now);
-			if (start.getTime() < end.getTime()) {
-				const source: 'last-segment' | 'first-session' = daySegments.length > 0 ? 'last-segment' : 'first-session';
-				const dayLastEntry = entries[entries.length - 1] ?? null;
-				const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
-				if (projectSource !== null) {
-					quickLog = {
-						start: start.toISOString(),
-						end: end.toISOString(),
-						anchorSource: source,
-						projectId: projectSource.projectId,
-						projectName: projectSource.projectName,
-						colorIndex: projectSource.colorIndex
-					};
-				}
+		const start = resolveQuickLogAnchor(daySegments, daySessions, date);
+		const end = isToday ? now : lastSessionEndWithin(daySessions, bounds, now);
+		if (start !== null && start.getTime() < end.getTime()) {
+			const source: 'last-segment' | 'first-session' = daySegments.length > 0 ? 'last-segment' : 'first-session';
+			const dayLastEntry = entries[entries.length - 1] ?? null;
+			const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
+			if (projectSource !== null) {
+				quickLog = {
+					start: start.toISOString(),
+					end: end.toISOString(),
+					anchorSource: source,
+					projectId: projectSource.projectId,
+					projectName: projectSource.projectName,
+					colorIndex: projectSource.colorIndex
+				};
 			}
-		} catch (err) {
-			if (!(err instanceof NoPlacementAnchorError)) throw err;
 		}
 
 		const dayLastEntry = entries[entries.length - 1] ?? null;
