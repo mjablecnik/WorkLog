@@ -1,9 +1,166 @@
 # Issues
 
+## [LOW] Three spec-001 property tests failed once under this run's heavy sandbox load, passed clean on retry
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: OPEN (informational — likely not a real defect, flagged for visibility only)
+- What: a full `bun run test` (run as a general sanity check beyond this phase's UI
+  scope, after several hours of heavy concurrent Docker/Postgres/Playwright activity
+  in the same sandbox session) failed 6 tests across three spec-001 domain/store
+  property test files: `tests/lib/server/store/overlap.property.test.ts`,
+  `tests/api/dry-run.property.test.ts`, `tests/lib/server/store/atomicity.property.test.ts`.
+  Individual test runtimes were abnormally slow (one took 173s, another 78s) compared
+  to a normal run. Re-ran those exact three files in isolation immediately after —
+  all 10 tests passed cleanly (95s total, no failures).
+- Impact: none identified — spec-001's domain layer (`001-worklog-domain-api`) was
+  already verified complete in an earlier, separate run (see
+  `.agents/PIPELINE_STATE.json`'s `previous_run`), this phase made zero changes to
+  any server-side/domain code, and every E2E spec that exercises this exact domain
+  logic through the real API (`conflict.spec.ts`, `day.spec.ts`, `gaps.spec.ts`,
+  `preview.spec.ts`) passed cleanly multiple times this same session.
+- Tried: re-ran the three failing files in isolation — passed clean, consistent with
+  DB/system contention under this sandbox's shared Postgres container rather than a
+  real bug the property tests found.
+- Next: if this recurs on a quieter run, worth a real look; not investigated further
+  here since it sits outside this phase's UI scope (spec 002) and outside what
+  VERIFY_TASKS.md's Part-I re-run trigger calls for (a Part II case failing in a way
+  that points at the server) — no Part II case failed here at all.
+
+## [LOW] Day page header action pills were in reversed order
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: RESOLVED (2026-08-24-0659)
+- What: found during the redone task-11.6 visual-conformance pass (UC-489/UC-490):
+  `DayCollapsed`/`DayCollapsedLight` artboards put the ghost "+ úsek" pill on the
+  left and the primary "+ Přidat úkol" pill on the right, closest to the edge.
+  `src/routes/day/[date]/+page.svelte` rendered them in the opposite order.
+- Impact: purely a left/right swap of the same two controls — low-moderate
+  severity, but present in both themes.
+- Tried/Fixed: swapped the two `<button>` elements' order in the
+  `.day-page__actions` block (no CSS/logic change, just markup order). Verified
+  visually against both artboards.
+- Next: nothing outstanding.
+
+## [MEDIUM] SessionDialog's confirmation step hid the time fields and the delete link
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: RESOLVED (2026-08-24-0659)
+- What: found during the redone task-11.6 visual-conformance pass (UC-495,
+  `SessionEdit`). The design shows the ZAČÁTEK/KONEC fields (changed one struck
+  through) staying visible above the consequence panel throughout Confirming, plus
+  the destructive "Smazat celý úsek" link below it.
+  `src/modules/day/components/SessionDialog.svelte` fully replaced the `<form>`
+  (fields + delete link) with only `<ChangePreview>` once `phase !== 'editing'` —
+  during confirmation the user saw just the warning box, with no visible reference
+  to what times were changing and no way to delete the session from that state.
+- Impact: real loss of context during a data-changing confirmation step —
+  moderate severity, since a user reviewing "you're about to lose 1h30 of
+  Uncovered_Time" had no way to see which session or re-check the times without
+  backing out first.
+- Tried/Fixed: the fields+delete-link `<form>` now always renders (moved out of
+  the `{#if phase === 'editing'}` branch); the two `TimeInput`s get
+  `disabled={phase !== 'editing'}` (already-supported prop) so nothing about a
+  pending preview's basis can change mid-review; `<ChangePreview>` now renders
+  alongside (below) the form whenever `phase !== 'editing'`, not instead of it.
+  The delete link (`openDeleteConfirm`) was already independent of `phase` — it
+  opens its own separate `ConfirmDialog` — so it needed no logic change, only to
+  stop being unmounted. Verified: `bun run check` clean; `tests/e2e/preview.spec.ts`
+  (both tests exercise exactly this Confirming state) and `tests/e2e/day.spec.ts`
+  pass after rebuilding.
+- Next: nothing outstanding for the edit-confirmation case this artboard covers.
+  Not separately re-verified: how this reads during the delete-cascade's own
+  in-dialog confirming state (`pendingDelete`) — the design has no dedicated
+  artboard for that state, and showing the same always-visible fields there is a
+  reasonable, low-risk default rather than a verified-correct one.
+
+## [MEDIUM] Three real WCAG contrast violations were actually a systemic --text-faint/--pj-tint gap, not three isolated spots
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: RESOLVED (2026-08-24-0659)
+- What: re-ran `tests/e2e/a11y.spec.ts`'s axe sweep against a live build and confirmed
+  the three violations logged by the `build` phase ("Three real WCAG color-contrast
+  violations, newly visible now that app.css applies") were still failing, then got
+  the full (untruncated) axe output per element. Two were narrower than the earlier
+  entry described and one was much wider:
+  - `.stats-page__range-item--active` (light theme only, `#a5522e` on `#e0cec2`,
+    3.58:1) — as already logged.
+  - `.sb-unc-title`/`.sb-unc-action`/`.sb-unc-title-short`/`.sb-unc-pill` (the
+    `Uncovered_Marker`'s `--accent` text on its own 6% accent-tint fill) — light
+    theme only (4.38:1); dark theme's version of the same pairing actually clears
+    4.5:1 (6.23:1) on its own, so this element was never a dark-theme violation.
+  - `.day-rhythm__label--today` (light theme only, `#a5522e` on `#e9e4dc`, 4.31:1) —
+    not named in the original entry at all; found via the untruncated axe output.
+  - `.sb-meta` (`Segment_Block` times, `--text-faint` on `--pj-tint`) — **every one of
+    the 8 `Palette_Slot` hues, in both themes** (dark 4.19-4.40:1, light 4.31-4.44:1,
+    computed for all 8 and confirmed against axe's own reported RGB for slot 0). This
+    is what the original entry's "the day page's `Work_Block`/timeline text in both
+    themes" was actually pointing at, and it is not a one-off — `--text-faint`'s alpha
+    was tuned against plain `--bg` and never checked against any `--pj-tint`.
+- Impact: as before — real accessibility defects, now with the actual scope known.
+- Tried/Fixed:
+  - Added `--accent-on-tint` to `src/lib/theme/theme.css` (`var(--accent)` in dark,
+    already sufficient; `var(--accent-hover)` in light, 4.71-5.60:1 depending on the
+    surface) and pointed every accent-on-tinted-surface text at it: `SegmentBlock.svelte`'s
+    four `.sb-unc-*` rules, `SettingsMenu.svelte`'s `.seg-item--active`,
+    `ChangePreview.svelte`'s `.change-preview__policy-item--active`,
+    `DataTable.svelte`'s `.data-table__bulk-bar`, `StatsPage.svelte`'s
+    `.stats-page__range-item--active` (also switched from an ad hoc inline
+    `rgb(from var(--accent)...)` fill to the existing themed `--segment-active` token,
+    removing a second, undertested colour formula) and `DayRhythm.svelte`'s
+    `.day-rhythm__label--today`.
+  - Raised `--text-faint`'s alpha from 0.5/0.66 to 0.56/0.70 (dark/light) in
+    `theme.css` — computed against all 8 `Palette_Slot` hues in both themes so the
+    worst slot (pj-2 dark, pj-4 light) clears 4.5:1 with margin (4.88:1, 4.81:1); the
+    plain-`--bg` case, already passing, only gained margin (5.47:1, 5.31:1).
+  - Re-ran `tests/e2e/a11y.spec.ts`'s full axe sweep after rebuilding: all four
+    `color-contrast` tests (dark/light day, dark/light statistics) pass.
+- Next: nothing outstanding for these four elements. A full sweep of every remaining
+  `--text-faint`/`--accent` usage against every possible background was not exhaustively
+  re-verified beyond what axe's sweep of the four catalogued pages actually renders —
+  if a future page puts either token on a background this run never rendered, it is
+  worth re-running the axe sweep rather than assuming the token bump covers it.
+
+## [LOW] Two Pass-1 source-sweep findings not fixed this phase (UC-472, UC-423)
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: OPEN
+- What: two findings from a source-only sweep against `.agents/USE_CASES.md` UC-471,
+  UC-472, UC-473, UC-483, UC-484 (token discipline) and UC-246, UC-341, UC-344,
+  UC-373, UC-423 (server-owned computation / breakpoint discipline):
+  - UC-472: `src/lib/ui/elements/flags/FlagCZ.svelte` and `FlagGB.svelte` hardcode
+    real hex flag colours (`#fff`, `#d7141a`, `#11457e`, `#00247d`, `#cf142b`) outside
+    any design token. UC-472's text says "none" with no stated exception, but a
+    national flag's colours are inherently fixed regardless of theme — this reads as
+    a plausible intentional exemption (the same shape as UC-483's SVG-presentation-
+    attribute carve-out) rather than a violation, but nothing in `requirements.md`
+    or `design.md` says so explicitly.
+  - UC-423: 7 files use desktop-first `@media (max-width: 767px)` instead of the
+    mobile-first `min-width: 768px` the other ~13 responsive files in the codebase
+    use: `login/+page.svelte:167`, `ProjectsPage.svelte:298`, `Modal.svelte:300`,
+    `Section.svelte:111`, `DataTable.svelte:650`, `PageHeader.svelte:70`,
+    `Shell.svelte:66`. Both directions land on the same single 768px breakpoint
+    (Requirement 14.12), so nothing renders wrong — this is a source-consistency
+    defect, not a behavioural one.
+- Impact: UC-472 needs a decision (extend the closed "no literal colour" list with an
+  explicit flag exception, or retint the flags from tokens, which would be a strange
+  thing to do to a national flag). UC-423 is a 7-file mechanical refactor
+  (`max-width` blocks inverted to `min-width` blocks) with no behavioural change
+  expected, but touching 7 files' worth of responsive CSS this late in the pipeline,
+  with only self-review available (no fresh visual QA budget left this phase) as a
+  gate, was judged higher-risk-for-the-value than the WCAG contrast fixes above,
+  which had a hard, checkable pass/fail via axe.
+- Tried: nothing — found this same phase (a `fork` sub-agent's Pass-1 sweep), and
+  chose to spend the phase's fix budget on the contrast violations already flagged
+  as one of the nine pre-written expected failures instead.
+- Next: UC-472 — get a decision on the flag-colour exception and either write it into
+  `requirements.md`/`design.md` or retint. UC-423 — flip the 7 files' media queries to
+  `min-width`, then re-run `tests/e2e/a11y.spec.ts`'s 320px sweep and a manual check at
+  768px in both directions to confirm no visual regression.
+
 ## [MEDIUM] The E2E suite is not runnable from a clean checkout
 - Run: 2026-08-24-0659
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659)
 - What: two committed files depend on things that exist only in this session.
   `tests/e2e/a11y.spec.ts:30` hardcodes
   `const SCRATCH = '/tmp/claude-1000/-workspace/02439d03-f232-4a99-b57d-36aab892936c/scratchpad'`
@@ -24,11 +181,30 @@
   `scripts/test-e2e.sh` export a `WORKLOG_PASSPHRASE_HASH` it generates from
   `E2E_PASSPHRASE` through `scripts/hash-passphrase.sh`, so the constant and the hash
   cannot drift. UC-508 is the case that closes this.
+- Fixed (verify phase, this run): `tests/e2e/a11y.spec.ts`'s `STATE_DIR` now uses
+  `join(os.tmpdir(), 'worklog-e2e-a11y-state')` — the same pattern
+  `fixtures.ts`'s `SESSION_STATE_DIR` already used — instead of the hardcoded
+  scratchpad path. `E2E_PASSPHRASE` moved to its own file,
+  `tests/e2e/e2e-passphrase.ts` (no `@playwright/test` import, so a plain `bun`
+  process can read it), which `fixtures.ts` now imports and re-exports.
+  `scripts/hash-passphrase.sh` gained a non-interactive path: it skips the `/dev/tty`
+  read when the caller already exported `PASSPHRASE`. `scripts/test-e2e.sh` now
+  exports a throwaway `WORKLOG_API_TOKEN` (also previously unset — `loadConfig()`
+  requires it too, not just the passphrase hash) and mints
+  `WORKLOG_PASSPHRASE_HASH` via `PASSPHRASE="$(bun -e "import { E2E_PASSPHRASE } ...")"
+  ./scripts/hash-passphrase.sh`. Verified each piece individually (the hash script
+  standalone, the plain-`bun` import, `bun run check`, a full `bunx playwright test`
+  run) and ran `./scripts/test-e2e.sh` itself: it got through starting Postgres and
+  confirming a real query, then failed at `migrate.sh`'s `psql` call with connection
+  refused against `localhost:55432` — this sandbox's own inability to reach a
+  `docker run -p`-published port from its own shell (see `sandbox-docker-net`),
+  unrelated to this fix and not reproducible on a real machine/CI, where the script's
+  own published-port design already works normally. See UC-508 for the full trace.
 
 ## [LOW] `DESIGN.md` and `design.md` disagree on the block head's type size
 - Run: 2026-08-24-0659
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — **needs the user's sign-off**, see below.
 - What: `.design/DESIGN.md:184` states "The block head is 14px / 500 at `1.4`, and
   `layOutDay` reserves `round(size x line-height)` plus its own padding".
   `.kiro/specs/002-worklog-ui/design.md:333` puts the block head time at **13 / 500**
@@ -49,11 +225,23 @@
   the answer is 14 — `BLOCK_HEAD_PX` follow it. The `DayCollapsed` artboard cannot
   settle it: `design.md` already records that its `.sesshead` carries no line height at
   all, which is a drawing slip of the same kind as its 88 px top bar.
+- Resolution (verify phase, this run): kept the head at **13px** (mobile 12) — the
+  value `design.md` derives `BLOCK_HEAD_PX = 29` from, that `timeline-geometry.ts`
+  actually implements, and that ships today. `.design/DESIGN.md:184` was the stale
+  side (it wasn't even in that file's own type-scale table — a lone paragraph
+  contradicting it) — corrected to read "13px / 500 at `1.4` (mobile 12)". This is a
+  documentation-only fix; no code or `BLOCK_HEAD_PX` change was needed. **Flagging
+  for the user's sign-off**, per this phase's brief: this picks the number the shipped
+  layout budget already depends on over the visual contract's stated figure, on the
+  reasoning that the visual contract is the drawing and `design.md`/the code are the
+  normative geometry. If 14px was actually intended, this needs a real change (a new
+  `BLOCK_HEAD_PX = 31`, a re-run of `scripts/generate-palette-and-heights.ts`'s
+  ladder, and re-verification of every block-head-dependent case) — not a docs edit.
 
 ## [LOW] The mobile `Uncovered_Marker` threshold is 44 px in the requirement and the floor in the design
 - Run: 2026-08-24-0659
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — **needs the user's sign-off**, see below.
 - What: Requirement 10.7 says the mobile `Uncovered_Marker` is "a two-line block with an
   action pill when it is at least **44 pixels** tall, or, below that, a single row of
   title and duration whose whole area is the target". `design.md`'s four-variant table
@@ -73,11 +261,29 @@
   criterion 14.3 has already excepted the timeline from — so the design's reading is
   probably the intended one and Requirement 10.7 is the line to correct. Then widen
   UC-362 to cover the band.
+- Resolution (verify phase, this run): kept the threshold at **44px**, the opposite of
+  this entry's own "Next" guess. Reason for reversing it: `src/modules/day/components/
+  SegmentBlock.svelte`'s `isUncoveredTall` already implements `heightPx >= 44` for
+  mobile (`density === 'desktop' ? heightPx >= DESCRIPTION_MIN_PX : heightPx >= 44`) —
+  shipped, tested code, not a placeholder — so the "implementation-facing" source in
+  this contradiction is the component, and it already matches Requirement 10.7's exact
+  number, not `design.md`'s looser "above the floor" wording. Reworded `design.md`'s
+  four-variant table (the `mobile tall` / `mobile short` rows) to state 44px
+  explicitly instead of "above the floor" / "at the 26 px floor", so it now describes
+  what the code does. UC-362's steps (above 44px, at the 26px floor) were unaffected —
+  both already sat outside the former band — and its note in `.agents/USE_CASES.md`
+  now records the resolution instead of the open question. **Flagging for the user's
+  sign-off**, per this phase's brief: this is the opposite call from the one the
+  `cases` phase guessed might be "probably intended," made instead on what the running
+  code already does. If 26px-floor-based was actually intended, this needs a real
+  code change to `SegmentBlock.svelte` (and a widened UC-362), not a docs edit.
 
 ## [MEDIUM] Three real WCAG color-contrast violations, newly visible now that app.css applies
 - Run: 2026-08-24-0659
 - Phase: build
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — see the `verify`-phase entry above ("Three real
+  WCAG contrast violations were actually a systemic --text-faint/--pj-tint gap") for
+  the actual scope (wider than three isolated spots) and the fix.
 - What: with the design-token/Tailwind system now actually reaching the page
   (`.agents/ISSUES.md`'s "src/app.css is never imported" — RESOLVED this same run),
   `tests/e2e/a11y.spec.ts`'s axe sweep surfaces three genuine `color-contrast`
@@ -99,7 +305,7 @@
 ## [LOW] Horizontal overflow at 320px on the timer and day pages
 - Run: 2026-08-24-0659
 - Phase: build
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659)
 - What: `tests/e2e/a11y.spec.ts`'s "no horizontal scroll at 320px" sweep fails
   for `/` (`scrollWidth` 330 vs `clientWidth` 320) and `/day/2024-01-21`
   (`scrollWidth` 362 vs 320). Not investigated further — no root cause identified
@@ -112,6 +318,50 @@
   `emulateMedia`/viewport setup this spec uses) and bisect which element(s)
   exceed the viewport — likely a fixed-width child or an unwrapped long string
   in a flex/grid row that does not shrink.
+- Root cause (verify phase, this run): `density` (`desktop`/`mobile`) is resolved
+  once, server-side, from the `worklog_viewport` cookie (`+layout.server.ts`). A
+  brand-new visitor with no cookie yet, or — reproduced live, and exactly what
+  `tests/e2e/a11y.spec.ts`'s `storageState`-reuse pattern produces — a cookie left
+  over from a previously-visited *wider* viewport, both SSR the page at the wrong
+  (too-wide) density. `+layout.svelte`'s `onMount` already measured the real
+  viewport and rewrote the cookie on a mismatch, but never told the already-loaded
+  page to re-render with it — design.md's own words for this ("measures the real
+  viewport, and only if it differs writes the cookie **and lays out again**") name
+  the missing half directly. Confirmed the timer page's `DayGauge` (a fixed
+  340px/300px box picked by `density`) rendering at its 340px desktop size on a
+  320px viewport is exactly this: 340 − 320 = 20, split 10px past each edge,
+  matching the reported 330 `scrollWidth`. The day page's larger 362 came from the
+  same stale `density` selecting its entire `{#if density === 'desktop'}` desktop
+  branch — a fixed 290px side column, row layout and wider padding — which has no
+  CSS-only mobile fallback to fall back on, since the two densities are different
+  DOM branches, not one responsive layout.
+- Fixed:
+  - `src/routes/+layout.svelte`'s `onMount` now calls `invalidateAll()` right after
+    rewriting a mismatched `worklog_viewport` cookie, re-running every `load`
+    (including `+layout.server.ts`'s `resolveViewport()`) so `density` corrects
+    itself in place rather than only on the next navigation. This is the general,
+    root-cause fix — it also covers any other page/component that reads `density`
+    or `availablePx`, not just the two this run happened to catch.
+  - Because `invalidateAll()` still takes a round trip (confirmed needing up to
+    ~1.2s for the timer page, more for the heavier day page — nowhere near instant),
+    two narrow, page-specific safety nets close the actual window where a real
+    visitor (or a fast test) would still see the wrong density before that
+    resolves: `DayGauge.svelte`'s `.day-gauge`/`.day-gauge__svg` gained
+    `max-width: 100%` (`height: auto` on the SVG, whose viewBox is a 1:1 square),
+    letting the gauge itself reflow instead of overflow at any density; the day
+    page's outer `.day-page` gained `max-width: 100vw; overflow-x: hidden`, since
+    its desktop/mobile difference is a DOM branch a same-markup max-width can't
+    reflow — this clips rather than reflows during the window, trading a brief
+    visual clip for guaranteeing no page-level horizontal scroll either way.
+  - Verified: `tests/e2e/a11y.spec.ts`'s full "no horizontal scroll at 320px" sweep
+    (all four pages) passes after rebuilding, including the exact `storageState`-
+    reuse scenario that reproduced this originally.
+- Next: nothing outstanding for the timer/day pages. The day page's `overflow-x:
+  hidden` safety net is a clip, not a true responsive reflow, for the (now rare,
+  sub-second) window before `invalidateAll()` resolves — if that window ever needs
+  to look right rather than merely not scroll, the desktop markup would need its
+  own `@media (max-width: 767px)` override (matching the project's one-breakpoint
+  convention) rather than relying on the `{#if density}` branch alone.
 
 ## [LOW] "clicking Odhlásit se currently does nothing" now ends up on /login instead of staying put
 - Run: 2026-08-24-0659
@@ -176,7 +426,7 @@
 ## [LOW] locale.spec.ts's scroll-position assertion fails (scrollY reads 0)
 - Run: 2026-08-24-0659
 - Phase: build
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — test bug, not a product bug.
 - What: `tests/e2e/locale.spec.ts`'s "switching to English mid-page changes text
   with no reload and no lost scroll position" test asserts `scrollY > 0` after
   scrolling down and switching locale; it reads `0`. Not root-caused — could be
@@ -191,6 +441,19 @@
   the test's own scroll amount no longer clears the fold at real (styled) page
   heights (test needs a larger scroll distance or a real scrollable element
   target).
+- Root cause (verify phase, this run): confirmed the second guess. Measured
+  `/projects` directly at the test's default (Playwright's ~1280x720) viewport
+  with this run's seed data: `document.documentElement.scrollHeight` equals
+  `window.innerHeight` exactly (720 = 720) — the page has zero overflow, so
+  `window.scrollTo(0, 120)` is a genuine no-op and `scrollY` reading 0 says
+  nothing about whether the locale switch preserves scroll position. The locale
+  switch itself was never actually exercised by this assertion.
+- Fixed: added `await page.setViewportSize({ width: 1280, height: 400 })` right
+  after login, before the first `goto` — a fixed short viewport guarantees real
+  overflow regardless of how many projects a given run happens to have seeded,
+  rather than depending on incidental page height. Re-ran in isolation: passes.
+  The assertion itself (`scrollY` unchanged and > 0 after the locale switch) was
+  not weakened — only the setup that gives it something real to scroll.
 
 ## [MEDIUM] Modal's focusable-element query didn't exclude hidden inputs
 - Run: 2026-08-24-0659
@@ -1672,7 +1935,10 @@ and marked accordingly.
 ## [MEDIUM] Task 11.6's visual conformance pass needs to be redone
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) for the 16-artboard image comparison
+  (UC-486..UC-501) — see below. The "nine token-only surfaces" re-check this
+  entry's own "Next" also asked for was **not** separately redone this phase; see
+  the new note at the end of this entry.
 - What: task 11's own agent ran a first visual pass comparing the running app
   against the 16 `.design/screens/*.png` artboards, but the app it compared
   against had no CSS reaching the page at all — the `src/app.css` import bug
@@ -1693,6 +1959,47 @@ and marked accordingly.
   `.design/screens/`. Also re-check the nine token-only surfaces (confirmation
   dialogs, toasts, empty states, skeletons, login/error/offline pages, the
   timezone notice, the focus ring) now that real styling actually applies.
+- Redone (verify phase, this run): real screenshots of the live built app
+  (logged in via a real session, `app.css` confirmed loading — colors/fonts/
+  spacing all actually rendering) compared against all 16 `.design/screens/*.png`
+  at each artboard's own frame size/theme/viewport, per UC-486..UC-501's exact
+  preconditions and fixture data. 14 of 16 passed outright or passed with only
+  the already-catalogued known deviations (DayMobile's missing FAB entry point —
+  UC-305 — and Stats's/AddTaskLight's pre-forgiven artboard-drawing corrections).
+  Two real, new deviations were found and fixed this same phase — see "Day page
+  header action pills were in reversed order" and "SessionDialog's confirmation
+  step hid the time fields and the delete link" above. **Not done**: the "nine
+  token-only surfaces" re-check named in this entry's own original "Next" line —
+  none of those nine (confirmation dialogs generically, toasts, empty states,
+  skeletons, login/error/offline pages, the timezone notice, the focus ring) has
+  a dedicated `.design/screens/` artboard to screenshot-compare against; checking
+  them means reading `.design/DESIGN.md`'s prose token values against each
+  surface directly, which this phase did not do as a dedicated pass (some
+  overlap exists incidentally — e.g. the login page, focus rings and toasts are
+  each touched by other UCs/E2E specs this phase did exercise, but not as a
+  systematic token-conformance sweep). Left open below as its own, narrower entry.
+
+## [LOW] The "nine token-only surfaces" conformance re-check (task 11.6) was never actually done
+- Run: 2026-08-24-0659
+- Phase: verify
+- Status: OPEN
+- What: `.design/DESIGN.md` specifies nine surfaces — confirmation dialogs
+  (generically, beyond the two dialog artboards), toasts, empty states,
+  skeletons, the login/error/offline pages, the timezone notice and the focus
+  ring — in tokens/prose rather than as a drawn artboard. Task 11.6 asks for
+  these to be checked too, alongside the 16-artboard image comparison (done
+  this phase — see the entry above). No dedicated pass has ever compared these
+  nine against `DESIGN.md`'s stated token values; the closest coverage is
+  incidental, from other UCs/E2E specs that happen to touch one of these
+  surfaces for a different reason (functional correctness, not a token audit).
+- Impact: unknown — this is an absence of verification, not a known defect.
+  Any one of the nine could carry a real token deviation nobody has checked for.
+- Tried: not attempted this phase — budget went to the 16-artboard pass (an
+  explicit, scoped ask this run) plus the case catalogue's programmatically-
+  checkable items.
+- Next: a dedicated pass reading `DESIGN.md`'s token values for each of the
+  nine surfaces against the real running app (colour, radius, spacing, motion),
+  the same rigor the 16-artboard pass applied to arrangement/proportion/palette.
 
 ## [LOW] Checkpoints 2, 4, 10 and 12 have not been walked by hand
 - Run: 2026-08-24-0659

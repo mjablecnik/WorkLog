@@ -4184,11 +4184,13 @@ something to draw. A fixture on a fixed past date says the date explicitly.
   `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)`. Mobile short (at
   26 px): title and times on one row and **no** `doplnit` pill — the whole block is the
   target, so a pill would be a second affordance for the same tap.
-  **Undecided band:** the criterion puts the mobile threshold at 44 px while `design.md`
-  puts it at "above the floor" (26 px), so a mobile block between 26 and 44 px has no
-  defined variant. This case deliberately tests either side of the band and not inside
-  it — see ISSUES.md "The mobile `Uncovered_Marker` threshold is 44 px in the
-  requirement and the floor in the design".
+  **Resolved (run 2026-08-24-0659, verify phase):** the criterion's 44 px threshold and
+  `design.md`'s "above the floor" wording were in tension; `design.md`'s four-variant
+  table now states the 44 px threshold explicitly, matching Requirement 10.7 and the
+  already-shipped `SegmentBlock.svelte` implementation (`heightPx >= 44` on mobile) —
+  see ISSUES.md "The mobile `Uncovered_Marker` threshold is 44 px in the requirement
+  and the floor in the design" (now RESOLVED). No band remains undefined; this case's
+  steps (above 44 px, at the 26 px floor) both still hold under the resolved reading.
 
 ## UC-363 — The shape-of-the-day panel reads three figures from the day response
 - Area: uncovered guidance
@@ -4677,9 +4679,14 @@ something to draw. A fixture on a fixed past date says the date explicitly.
   visible flash, and the scroll position unchanged. The URL is unchanged — no locale
   prefix is added. `worklog_locale=en` is written (a year, `SameSite=Lax`, not
   `HttpOnly`), and the next visit renders English server-side from the first bytes.
-  Known deviation: `tests/e2e/locale.spec.ts` currently reads `scrollY = 0` after the
-  switch — either a real regression against this criterion or a stale expectation; it is
-  unresolved, see ISSUES.md "`locale.spec.ts`'s scroll assertion reads `scrollY = 0`".
+  Resolved (run 2026-08-24-0659, verify phase): the `scrollY = 0` reading was a test
+  setup bug, not a regression against this criterion — `/projects` at the test's
+  default viewport had zero scrollable overflow with this run's seed data, so
+  `window.scrollTo(0, 120)` was a no-op regardless of what the locale switch did.
+  Fixed by pinning a short viewport (`1280x700` height reduced to 400) before the
+  scroll, guaranteeing real overflow; the locale switch itself was not touched. See
+  ISSUES.md "`locale.spec.ts`'s scroll-position assertion fails (scrollY reads 0)"
+  (RESOLVED).
 
 ## UC-402 — The document's lang attribute follows the active language
 - Area: i18n · accessibility
@@ -4821,9 +4828,17 @@ something to draw. A fixture on a fixed past date says the date explicitly.
   settings sheet and repeat
 - Expected: `scrollWidth <= clientWidth` everywhere — no page scrolls sideways at any
   width from 320 up. Wide content (the rhythm strip, a long project name, a preview's
-  before-and-after grid) scrolls inside its own container or wraps. Known deviation: `/`
-  measures 330 px and `/day/<date>` 362 px against a 320 px viewport today — see
-  ISSUES.md "Horizontal overflow at 320px". This case fails until they fit.
+  before-and-after grid) scrolls inside its own container or wraps.
+  Resolved (run 2026-08-24-0659, verify phase): `/` (330px) and `/day/<date>` (362px)
+  both fixed — root cause and fix in ISSUES.md "Horizontal overflow at 320px" (RESOLVED).
+  Confirmed clean via `tests/e2e/a11y.spec.ts`'s automated sweep (`/`, `/day`,
+  `/projects`, `/stats`, dark+light) and, for the parts that sweep doesn't reach, a
+  direct check of `/login` (no cookie), `/offline`, and the settings sheet open, in
+  both themes, all at exactly 320x700 — all measured `scrollWidth === clientWidth ===
+  320`. Not separately re-checked: the English locale specifically (no reason to
+  expect it differs — the fix is layout/density-level, not copy-length-dependent) and
+  every individual dialog (`AddTask`/`SessionDialog` etc.) at 320px, which the
+  automated sweep also doesn't cover.
 
 ## UC-413 — Every control has a 44 by 44 activation area, whatever it is drawn at
 - Area: accessibility · interaction
@@ -4966,11 +4981,15 @@ something to draw. A fixture on a fixed past date says the date explicitly.
 - Expected: every body-text surface reaches at least 4.5:1. The measured token pairs are
   dark 0.62 → 6.44:1 and 0.50 → 4.63:1 on `#0F1319`; light 0.78 → 6.84:1 and 0.66 →
   4.69:1 on `#F3EEE6`. The one deliberate exception is the `Day_Gauge`'s numerals, which
-  are specified below body-text contrast (UC-466) — everything else must clear it. Known
-  deviation: three real violations stand today — the day page's `Work_Block` and timeline
-  text in **both** themes, and the light-theme active range pill on `/stats` (`#a5522e`
-  on `#e0cec2`, 3.58:1) — see ISSUES.md "Three real WCAG color-contrast violations". This
-  case fails until they are fixed, and the fix is a token decision, not a local override.
+  are specified below body-text contrast (UC-466) — everything else must clear it.
+  Resolved (run 2026-08-24-0659, verify phase): the "three violations" were actually a
+  wider `--text-faint`-on-`--pj-tint` gap across all 8 `Palette_Slot` hues in both
+  themes, plus the accent-on-tint pairing used by the `Uncovered_Marker`,
+  `Settings_Menu`, `ChangePreview`, `DataTable` and `DayRhythm` — see ISSUES.md "Three
+  real WCAG contrast violations were actually a systemic --text-faint/--pj-tint gap"
+  (RESOLVED) for the full scope and the token-level fix (`--text-faint` 0.5/0.66 →
+  0.56/0.7; new `--accent-on-tint` token). `tests/e2e/a11y.spec.ts`'s axe sweep over
+  all four pages in both themes now passes with zero `color-contrast` violations.
 
 ## UC-422 — No information is carried by colour alone
 - Area: accessibility
@@ -6140,12 +6159,24 @@ something to draw. A fixture on a fixed past date says the date explicitly.
 - Steps: read `tests/e2e/a11y.spec.ts` and `scripts/test-e2e.sh` for absolute paths and
   for the passphrase the suite logs in with; then try to run `bun run test:e2e:local`
 - Expected: no committed file names a session-specific directory, and the suite's
-  passphrase is supplied by the script rather than by an out-of-repo wrapper. Known
-  deviation: `tests/e2e/a11y.spec.ts` hardcodes a `/tmp/claude-1000/…/scratchpad` path as
-  its `storageState` directory, and `scripts/test-e2e.sh` never sets
-  `WORKLOG_PASSPHRASE_HASH`, so as committed the accessibility suite cannot run anywhere
-  else and every login fails — see ISSUES.md "The E2E suite is not runnable from a clean
-  checkout".
+  passphrase is supplied by the script rather than by an out-of-repo wrapper.
+  Resolved (run 2026-08-24-0659, verify phase): both fixed — see ISSUES.md "The E2E
+  suite is not runnable from a clean checkout" (RESOLVED) for the mechanism
+  (`tests/e2e/e2e-passphrase.ts` as the single source of truth for `E2E_PASSPHRASE`,
+  `scripts/hash-passphrase.sh` extended to accept a `PASSPHRASE` env var so
+  `test-e2e.sh` can mint the matching hash non-interactively, and `a11y.spec.ts`'s
+  `storageState` directory moved to `os.tmpdir()`). Verified: `PASSPHRASE=x
+  ./scripts/hash-passphrase.sh` works standalone; `bun -e "import {
+  E2E_PASSPHRASE } from './tests/e2e/e2e-passphrase.ts'"` resolves outside any
+  Playwright context; a full `./scripts/test-e2e.sh` run in this sandbox got past
+  starting Postgres, confirming it accepts a query, and reached `migrate.sh` before
+  failing — at that point on a **separate, pre-existing, unrelated** limitation:
+  this sandbox cannot reach a `docker run -p`-published port from its own shell
+  (`sandbox-docker-net` skill), so `migrate.sh`'s host-side `psql` gets connection
+  refused against `localhost:55432` even though the container itself is healthy
+  (confirmed via `docker exec` from the same script). This is a sandbox constraint,
+  not a defect in the script — a real machine or CI runner reaches its own
+  published ports normally, which `test-e2e.sh`'s design already assumes.
 
 ---
 
