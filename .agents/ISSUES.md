@@ -1,5 +1,56 @@
 # Issues
 
+## [MEDIUM] design.md's Property 1 wording contradicts angleOf's required periodicity
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: design.md's "Property 1: The gauge mapping is monotone and turns exactly once
+  per day" states literally that `angleOf(b) − angleOf(a)` "SHALL equal exactly 360
+  when `b − a` is 24 hours." Against the actual, correct implementation this is
+  false: `angleOf` is deliberately periodic — the same wall-clock time yields the
+  same angle on any calendar date, which is exactly what keeps a DST-affected
+  23-hour or 25-hour `Logical_Day` from moving a single graduation (see
+  `gauge-geometry.ts`'s own header comment and `001`'s design for why). Two instants
+  exactly 24 hours apart at the same wall-clock time therefore give a raw angle
+  difference of `0`, not `360`.
+- Impact: none on the running application — the implementation is correct and
+  required to behave this way. The property TEST (task 6.4, already committed)
+  re-encodes the "one turn per day" clause as `mod(diff, 360) === 0` instead of the
+  document's literal wording, which is what actually holds. Left as-is this is a
+  latent trap for anyone who reads design.md's Property 1 text literally and "fixes"
+  either the implementation or the test to match the wrong wording.
+- Tried: verified independently by two different sub-agents (the gauge-geometry unit
+  test and the property test), both reaching the same conclusion from different
+  angles.
+- Next: correct design.md's Property 1 wording to say the difference is "congruent
+  to 0 mod 360" (or equivalent), not "equals exactly 360" — a documentation fix, not
+  a code fix.
+
+## [LOW] gauge-geometry.ts's arc() is scoped to single-calendar-day spans only
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `arc(from, to, radius)` throws `RangeError` for an inverted/wrapping span and,
+  for a span of exactly or more than 24 hours at the same wall-clock start/end time,
+  silently returns a near-invisible 1.5°-floored arc (via the cosmetic minimum-arc
+  floor) rather than a full circle — because `angleOf` is periodic (see the Property
+  1 entry above), `angleOf(to) - angleOf(from)` is `0` for a 24h span, not `360`.
+- Impact: design.md's Requirement 16.12 ("`Tracked_Time` covers the whole
+  `Logical_Day`" → the outer arc closes into a complete circle, emitted as a
+  `<circle>` since an arc back to its own start point is degenerate) cannot be
+  satisfied by a single `arc()` call on a ≥24h span. `gauge-geometry.ts` itself
+  already handles the *window*-is-24h-wide case correctly (`graduations()` for a
+  full-day window returns 24 marks, no gap) — this is specifically about a *session
+  or coverage span* of ≥24h passed to `arc()`, which is a different caller (task 6.5,
+  `DayGauge.svelte`, not yet built).
+- Tried: confirmed via the gauge-geometry unit test's exploration of the 24h
+  boundary; not fixed since it's arguably out of `gauge-geometry.ts`'s documented
+  scope (its own JSDoc says it splits/handles single-day spans).
+- Next: when building task 6.5 (`DayGauge.svelte`), the component computing arcs from
+  session/coverage intervals must detect a ≥24h (or otherwise degenerate) span itself
+  and emit a `<circle>` directly rather than delegating to `arc()`, exactly as
+  Requirement 16.12's own text already anticipates.
+
 ## [LOW] Four Icon.svelte glyphs have no artboard source
 - Run: 2026-08-24-0659
 - Phase: impl
@@ -69,7 +120,8 @@
 ## [LOW] dry-run.ts drops colorIndex from SessionPreview.reclipped
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-24-0659) — restored in task 5.2, see the
+  `feat(day): build the ChangePreview panel` commit.
 - What: `src/modules/day/dry-run.ts` maps the server's `ReclipOutcome` (which carries
   `colorIndex`) into `SessionPreview.reclipped`, but design.md's literal type for that
   field omits `colorIndex`. The implementing agent followed the literal design.md

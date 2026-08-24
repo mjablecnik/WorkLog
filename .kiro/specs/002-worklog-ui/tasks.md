@@ -56,7 +56,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Author mobile-first with 768 pixels as the single breakpoint
     - _Requirements: 14.5, 14.7, 14.8, 14.9, 14.12, 17.1, 17.2, 17.3, 17.15_
 
-  - [ ] 1.5 Generate the palette and block-height stylesheets
+  - [x] 1.5 Generate the palette and block-height stylesheets
     - `src/lib/theme/palette.css`: eight classes `pj-0` … `pj-7` per theme, each carrying `--pj` (the slot hex) and `--pj-tint` — the same colour at **0.16 alpha in the dark theme and 0.13 in the light one** — generated from `src/lib/viz/palette.ts` rather than hand-written
     - `src/lib/theme/timeline-heights.css`: classes `tl-h-26` … `tl-h-320` in 2 pixel steps — a continuous ladder, so every height the artboards draw (26, 36, 38, 44, 48, 58, 60, 62, 74, 96, 98, **106**) is a member — plus **`tl-h-fill`** (`flex: 1 1 auto`) for a block over 320 pixels, which a day with a single entry easily is
     - Generate both files with a script under `scripts/`, **commit them**, and make `bun run check` fail when regenerating produces a diff — committed so a clean checkout renders, generated so the hexes live in one place
@@ -72,7 +72,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - No other inline script and no inline style goes into this file
     - _Requirements: 1.23, 17.5, 17.7, 17.8, 17.9, 17.10, 17.14_
 
-  - [ ] 1.7 Implement the theme store
+  - [x] 1.7 Implement the theme store
     - `src/lib/theme/theme.svelte.ts` with `ThemePreference` (`system` | `light` | `dark`), `Theme` (`dark` | `light`), `resolveTheme(preference)`, `setThemePreference()` and a `theme` rune exposing both the preference and the resolved theme
     - **Two cookies, never one.** `worklog_theme` holds the `Theme_Preference` and is written **only** when the user touches the switcher; `worklog_theme_resolved` holds the last resolved `light`/`dark` and is written by the client from `matchMedia('(prefers-color-scheme: dark)')`, and again whenever that query changes. Merging them destroys the preference the first time the client writes
     - Never `localStorage`: the server cannot read it
@@ -169,11 +169,11 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Export `MIN_BLOCK_PX`, `BLOCK_GAP_PX`, `BREAK_MARKER_PX` and `LONG_BREAK_SECONDS`; plain TypeScript with no DOM access
     - _Requirements: 4.2, 4.3, 4.8, 4.9, 4.17, 4.18, 4.19, 4.20, 4.21, 4.23, 4.25, 10.4_
 
-  - [ ] 3.2 Write unit tests for the day layout
+  - [x] 3.2 Write unit tests for the day layout
     - `tests/modules/day/components/timeline-geometry.test.ts`: one block per session; breaks between blocks become markers and a break of an hour or more is `long`; heights proportional within a block; a twenty-minute segment gets `MIN_BLOCK_PX` at both densities; `showsDescription` is true at 60 px desktop and false at 59, and false at every mobile height; an uncovered stretch of 2 minutes produces no block; a stale open session ends at `startedAt + MAX_OPEN_SESSION_HOURS`; a day of 08:00–03:00 with a four-hour break fits the available height; and the three extremes — fifty entries, one entry, one break — behave as the design's table says
     - _Requirements: 4.2, 4.3, 4.9, 4.18, 4.19, 4.21, 4.23, 4.25_
 
-  - [ ] 3.3 Write the day-layout property test
+  - [x] 3.3 Write the day-layout property test
     - `tests/modules/day/components/timeline-geometry.property.test.ts` with `fast-check`, tagged `Feature: worklog-ui, Property 2: Layout budget and clickable floor`
     - **Property 2: A laid-out day fits its budget and keeps every block clickable** — for any sessions and segments, and any `availablePx` of at least `MIN_BLOCK_PX × segments + BLOCK_HEAD_PX × blocks + HEAD_GAP_PX × blocks + BLOCK_GAP_PX × (segments − blocks) + BREAK_MARKER_PX × breaks + BLOCK_TO_BREAK_PX × 2 × breaks`, the sum of every height, head, marker and gap is at most `availablePx` **and** every segment height is at least `MIN_BLOCK_PX`
     - The premise must name all four terms: two segments in two sessions at `availablePx = 72` satisfies `MIN_BLOCK_PX × 2` and is still impossible, because two heads and a marker have to go somewhere — a generator built on the shorter premise fails on its first case for a reason that is not a defect
@@ -233,7 +233,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Debounce by 400 ms; treat a non-2xx response as a `rejection` carrying the server's `messageKey`, not as a transport failure; carry `previewToken` into the confirming write and recompute on `STALE_PREVIEW`
     - _Requirements: 9.1, 9.13, 9.14, 9.15_
 
-  - [ ] 5.2 Build `ChangePreview`
+  - [x] 5.2 Build `ChangePreview`
     - Render in order: what will be stored, what will be lost, what is unresolved — resulting segments and their count, discarded stretches with durations, unplaced minutes, and for a session change each affected entry with its segments now beside what they would become and the duration it loses
     - The headline total is **one** number, `removedSeconds + lostUncoveredSeconds`, broken into its two parts directly beneath it; any count of affected records counts `Activity_Entry` records only, because uncovered time is not a record. This is where the artboard's `−2 h 00 min` beside `2 záznamy` comes from
     - Render `slivers` beside `discarded`, with the minimum that caused them; an entry that would be emptied is described in prose rather than as a before-and-after pair; the server's `lostUncovered` stretch is rendered last with its duration, marked as `Uncovered_Time` rather than as an entry, described in prose, and ticked in the accent rather than in a `Palette_Slot`
@@ -314,11 +314,11 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Plain TypeScript with no DOM access
     - _Requirements: 16.1, 16.2, 16.3, 16.7, 16.8, 16.9, 16.10, 16.17, 16.18_
 
-  - [ ] 6.3 Write unit tests for the gauge geometry
+  - [x] 6.3 Write unit tests for the gauge geometry
     - `tests/modules/timer/components/gauge-geometry.test.ts`: one hour is exactly 15°; the same clock time gives the same angle on any date; the default `06:00 → 00:00` window yields a 270° track and a 90° gap centred on 03:00; the three graduation levels appear at the right hours with the right lengths; numerals are two-digit hours and `03` is never labelled; an instant past the window returns an angle beyond `trackEnd`; a 24-hour day closes the circle
     - _Requirements: 16.1, 16.2, 16.3, 16.7, 16.8, 16.9, 16.10, 16.12_
 
-  - [ ] 6.4 Write the gauge geometry property tests
+  - [x] 6.4 Write the gauge geometry property tests
     - `tests/modules/timer/components/gauge-geometry.property.test.ts` with `fast-check`
     - **Property 1: The gauge mapping is monotone and turns exactly once per day** — for any pair of instants in one day, the angular difference equals the elapsed minutes × 0.25, is strictly positive, and reaches exactly 360 over 24 hours; tagged `Feature: worklog-ui, Property 1: Gauge mapping`
     - **Property 3: The gap is never graduated** — for any window the server can report and any coverage up to a full 24 hours, `graduations()` returns only marks inside `[trackStart, trackEnd]`; tagged `Feature: worklog-ui, Property 3: Bare gap`
@@ -442,7 +442,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 12.2, 12.4, 12.6, 12.7, 12.8, 12.9, 12.11, 12.12, 12.13, 12.15, 12.17, 12.18, 12.19_
 
 - [ ] 9. Feedback, loading and error states
-  - [ ] 9.1 Build the feedback primitives
+  - [x] 9.1 Build the feedback primitives
     - Build these **before** the pages, so every page consumes one implementation instead of inventing its own and being rewritten later
     - `LoadingSkeleton` takes the shape and radius of the block it stands in, on `--panel` with a 1.2 s shimmer — never a bare spinner. It has exactly three callers, because every first load is server-rendered and arrives complete: a client-side navigation, an `invalidate` after a write or on `visibilitychange`, and the statistics range switch
     - `EmptyState`: a 20 pixel icon in `--text-faint`, a line at 14 `--text-dim`, one filled accent pill for the obvious next step, `padding: 48px 24px`, `gap: 12`
