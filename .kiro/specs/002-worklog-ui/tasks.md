@@ -9,21 +9,21 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
 ## Tasks
 
 - [ ] 1. Foundations — dependencies, tokens, themes, shell
-  - [ ] 1.1 Add the interface dependencies
+  - [x] 1.1 Add the interface dependencies
     - Runtime: `sveltekit-superforms` ^2.27 and its Zod adapter, `tailwindcss` ^4 with `@tailwindcss/vite`
     - Dev: `@testing-library/svelte` ^5, `@testing-library/jest-dom`, `jsdom`, `@axe-core/playwright`
     - `001` already declares `@sveltejs/kit`, `svelte`, `vite`, `zod`, `@inlang/paraglide-js`, `vitest`, `fast-check` and `@playwright/test` — do not duplicate or re-pin them
     - Commit the dependency change on its own, as `chore: add interface dependencies`
     - _Requirements: 6.10, 14.5, 14.10_
 
-  - [ ] 1.2 Self-host the Inter Tight faces
+  - [x] 1.2 Self-host the Inter Tight faces
     - Download the `woff2` files for weights 300, 400, 500 and 600, `latin` + `latin-ext` subset — `latin-ext` is what Czech diacritics need — into `static/fonts/`
     - Declare the four `@font-face` rules in `src/lib/theme/theme.css` with `font-display: swap` and the same family name the artboards use
     - Do **not** link `fonts.googleapis.com`: the CSP carries no third-party style or font host, so a linked webfont is blocked and the whole type scale silently falls back to `system-ui`. The artboards link it because they are previews opened from disk
     - Confirm with `001` that the served CSP includes `font-src 'self'`
     - _Requirements: 1.24, 17.13_
 
-  - [ ] 1.3 Port the `Design_System` subset into `src/lib/ui/`
+  - [x] 1.3 Port the `Design_System` subset into `src/lib/ui/`
     - Rewrite every token reference as you port: surface → `--panel`, elevated → `--dialog`, border → `--divider`, muted → `--text-dim`, subtle → `--text-faint`, primary → `--accent`, on-primary → `--ink-on-accent`, danger → `--destructive`, input → `--field`. No aliasing shim and no second vocabulary
     - `BottomNav`, `Fab`, `TimeInput` and `SettingsMenu` do not exist in the template — write them from the artboards. `Modal` exists but is desktop-only and gains the full-screen mobile behaviour, and the modality of Requirements 14.20–14.24 is asserted here rather than assumed from it
     - `TimeInput`: a text field accepting `HH:MM` with keyboard stepping, 44 px tall (48 on mobile), parsing through `parseTimeOfDay` in the server's zone
@@ -36,7 +36,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Take icons from the artboards — they are the source of truth for their geometry — and substitute no icon set
     - _Requirements: 14.2, 14.4, 14.6, 14.13, 14.18, 14.19_
 
-  - [ ] 1.4 Write the theme stylesheets and the Tailwind entry
+  - [x] 1.4 Write the theme stylesheets and the Tailwind entry
     - `src/lib/theme/theme.css` declares the `Design_Tokens` of the design's two token tables as CSS custom properties on `:root`, `[data-theme='dark']` and `[data-theme='light']` — background, text, dim, faint, accent, accent hover, ink on accent, panel, dialog, scrim, field, active field, divider, destructive, rail, arc, groove, dial and dash tokens
     - Each theme carries its own measured dim and faint opacities — dark **0.62 / 0.50**, light **0.78 / 0.66** — and neither pair is copied onto the other; the dark values were raised after faint measured 3.38:1, under the 4.5:1 the spec demands
     - Declare the surface tokens too — `--chip`, `--menu-border`, `--menu-shadow`, `--dialog-shadow`, `--grabber`, `--group`, `--segment-active`, `--footer`, `--row`, `--track`, `--meter-track`, `--hairline` — in both themes from the design's Surface Tokens table; no component may write a bare `rgba(255,255,255,…)`
@@ -89,7 +89,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Escape, an activation outside the container and choosing logout all close it, returning focus to the chip; the logout row submits the logout form action and is the only logout control in the interface
     - _Requirements: 1.6, 1.16, 1.17, 1.18, 1.19, 1.20, 1.21, 1.22, 2.5, 13.10, 17.4_
 
-  - [ ] 1.9 Set up Paraglide and the message files
+  - [x] 1.9 Set up Paraglide and the message files
     - Replace the `project.inlang/settings.json` scaffold `001` task 1.1 created: `baseLocale: "en"`, `locales: ["en","cs"]`, `pathPattern: "./messages/{locale}.json"`, the message-format and m-function-matcher plugins
     - Wire `paraglideVitePlugin` into `vite.config.ts` after `tailwindcss()` and `sveltekit()`, compiling into `src/lib/paraglide/`
     - **Do not resolve the locale at all.** `001`'s hook reads `worklog_locale`, falls back to `Accept-Language`, falls back again to Czech and puts the answer on `locals.locale`, which also fills `%lang%`. `002` seeds its rune from `locals.locale`; put no `Accept-Language` logic in `+layout.server.ts` — Czech is the single fallback in all three places, and `baseLocale: "en"` is only what Paraglide compiles message ids against, never a user-facing default
@@ -124,7 +124,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - Render `auth_session_expired` only when the login URL carries `reason=session_expired`; a redirect issued by the `Auth_Hook` carries the path alone and shows no message
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.7_
 
-  - [ ] 1.12 Implement the palette and formatting helpers
+  - [x] 1.12 Implement the palette and formatting helpers
     - `src/lib/viz/palette.ts` with `PROJECT_PALETTE` — the eight `Palette_Slot` values in both themes exactly as the design table lists them — plus `PALETTE_SIZE`, `projectSlotClass(colorIndex)` wrapping at eight, and `projectColor(colorIndex, theme)` for the `Day_Gauge`, which writes SVG attributes
     - Do not add `projectColorVar` or `labelInkOn`: the first writes an inline custom property the CSP forbids, and no text is ever placed on a filled slot
     - `src/lib/viz/format.ts` with **four** duration forms and one home each: `formatClock` (`5:12:08`, hero and tab title, not localised), `formatDuration` (`2 h 14 min`, everywhere else, `< 1 min` below a minute, never a bare decimal), `formatDurationShort` (`14 h 15`, mobile hero and mobile timer figures only) and `formatDelta` (`−2 h 00 min`, preview deltas only)
@@ -153,7 +153,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - Run `bun run check && bun run test tests/lib` and confirm the application starts, login works, the shell renders in both themes, the theme survives a reload without a flash, and the language switches without a reload
 
 - [ ] 3. Day timeline
-  - [ ] 3.1 Implement the day layout in `src/modules/day/components/timeline-geometry.ts`
+  - [x] 3.1 Implement the day layout in `src/modules/day/components/timeline-geometry.ts`
     - `layOutDay(sessions, entries, uncovered, availablePx, density, now, maxOpenSessionHours)` returns one block per `Work_Session` with its segments, plus the breaks between them
     - Follow the design's five-step algorithm exactly, because it is normative and the artboard heights are only illustrative: reserve the fixed rows — `BLOCK_HEAD_PX`, `HEAD_GAP_PX`, `BREAK_MARKER_PX`, `BLOCK_TO_BREAK_PX` **and** `BLOCK_GAP_PX`, since leaving the two gap constants out makes Property 2 false — distribute the remainder proportionally inside each block, lift anything under `MIN_BLOCK_PX` and repay the deficit from the unpinned segments in descending height order one step at a time, quantise each height **down** to `HEIGHT_STEP_PX` inside `layOutDay` and give each block's remainder to that block's tallest segment. Quantise in this one place only — the component reads `heightPx` and picks a class, it does not round
     - `availablePx` comes from the server's `viewport` cookie on first render and from the client's own measurement afterwards — a budget, not a limit: when every segment is pinned and the total still exceeds it, return the larger total and let the page scroll
@@ -224,7 +224,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
   - Seed a day with a break and an activity spanning it, then confirm the timeline draws two `Work_Block` groups with the `Break_Marker` between them, the split blocks carry the part counter, the uncovered stretch is drawn in place, and the summary panel's totals match what the timeline shows
 
 - [ ] 5. Writes and the change preview
-  - [ ] 5.1 Implement the dry-run client in `src/modules/day/dry-run.ts`
+  - [x] 5.1 Implement the dry-run client in `src/modules/day/dry-run.ts`
     - Five functions, because five writes can destroy something: `previewCreateActivity`, `previewPatchActivity`, `previewCreateSession`, `previewPatchSession` and `previewDeleteSession`. Each maps the response into `ActivityPreview` or `SessionPreview`, keeping the server's field names and holding the segments inside `entry`
     - `DELETE /api/sessions/{id}` has no body, so it carries `dryRun` and `previewToken` as **query parameters**
     - Carry `anchor` and `slivers` through from the successful response: the anchor is what the dialog displays as the inferred start, and a sliver is time that disappears — a preview that hides it lies by omission
@@ -299,14 +299,14 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 6.9, 6.10, 6.11, 6.15_
 
 - [ ] 6. Timer page and the day gauge
-  - [ ] 6.1 Implement the elapsed store in `src/modules/timer/elapsed.svelte.ts`
+  - [x] 6.1 Implement the elapsed store in `src/modules/timer/elapsed.svelte.ts`
     - A rune-based store holding **one** number — the elapsed seconds of the open session, which is exactly what `GET /api/sessions/current` returns — ticking once per second, with `sync()` replacing it from the server response, plus whether the session is stale
     - Do **not** keep `trackedSecondsToday` in the store: the endpoint does not return it, so nothing could refresh it. The day's totals come from the page data
     - Never treat the local count as truth: sync on load, on `visibilitychange` back to visible, and after every start and stop, and invalidate the page data on the same `visibilitychange` so the day's figures and the timer are fresh together
     - Schedule one timer for the end of `locals.today.bounds`, which the server supplied; on firing, invalidate the page data so the server hands back the new `Logical_Day`. The browser never computes the boundary itself
     - _Requirements: 3.3, 3.10, 3.12, 3.18_
 
-  - [ ] 6.2 Implement the gauge geometry in `src/modules/timer/components/gauge-geometry.ts`
+  - [x] 6.2 Implement the gauge geometry in `src/modules/timer/components/gauge-geometry.ts`
     - `createGaugeGeometry(window, date, timeZone, cx, cy)` maps twenty-four hours onto 360° — `angleOf(t) = 45 + minutesSinceMidnight × 0.25` — so one hour is 15° and a clock time always lands at the same angle on any date
     - `arc(from, to, r)` returns an SVG path; `pointAt(angle, r)` returns a point; `graduations()` returns marks **inside the window only**, each carrying its level 1, 3 or 6 and a two-digit label on every third hour, never a label for `03`
     - Place the gap at the bottom of the circle; an instant beyond the window returns an angle past `trackEnd` — never clamped, never rescaled
@@ -395,7 +395,7 @@ Reads are load functions and writes are form actions with `sveltekit-superforms`
     - _Requirements: 6.8, 11.6, 14.5, 14.11_
 
 - [ ] 8. Statistics
-  - [ ] 8.1 Build the statistics queries and range control
+  - [x] 8.1 Build the statistics queries and range control
     - `src/routes/stats/+page.server.ts` reads the day summaries from the store for the selected day, week or month range — **not** through `/api/days`, which exists for scripts — asking for the per-day intervals only when the `Day_Rhythm_Strip` will be drawn
     - Put the aggregation in `src/modules/stats/aggregate.ts` as pure functions over `DaySummary[]`, importing nothing from `lib/server/`; the load function passes data in
     - Offer three ranges and no more: day, week, month — each anchored on the current `Logical_Day` from context, the week beginning **Monday**

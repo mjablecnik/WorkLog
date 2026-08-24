@@ -1,5 +1,111 @@
 # Issues
 
+## [LOW] Four Icon.svelte glyphs have no artboard source
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `src/lib/ui/elements/Icon.svelte` was rewritten as an inline-SVG registry
+  sourcing real path geometry from `.design/artboards/*.dc.html` per Requirement
+  17.19/14.6 ("no icon set substitution"). Twelve icons were extracted verbatim. Four
+  — `search`, `sun`, `moon`, `check`/circle-check — are not drawn in any artboard (no
+  search affordance, no visible theme-switcher sun/moon, no success glyph), so the
+  implementing agent drew sober fallback geometry in the same stroke convention
+  (round caps, stroke-width 1.7–1.8) rather than inventing icons that look inconsistent.
+- Impact: these four icons are not literally taken from the Design_Contract, which
+  Requirement 17.19 requires. Cosmetic risk only — the fallback follows the same
+  visual language — but it is a real, not hypothetical, disagreement between the spec
+  and the artboards: `search` is needed by `SearchInput`/`ProjectPicker`, `sun`/`moon`
+  by the `Theme_Switcher` (spec text implies these appear in `Settings`/`SettingsMobile`
+  but the artboards use a "CS" text label there, not an icon), `check` by success toasts.
+- Tried: grepped every artboard's `<svg` blocks; confirmed absence.
+- Next: raise with whoever owns `.design/` — either the artboards are missing these
+  icons and should be extended, or the requirement should note they're out of scope.
+
+## [LOW] Two different mechanisms for hover/active surface-alpha derivation
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: task 1.4 (`src/lib/theme/theme.css`) computed explicit hand-derived tokens
+  (`--chip-hover`, `--panel-hover`, etc., alpha +0.03/+0.06 with the arithmetic shown
+  in comments) for the "one interaction-state rule" design.md requires. Task 1.3's
+  `elements/` port instead used CSS relative-color syntax (`rgb(from var(--field) r g
+  b / calc(alpha + 0.03))`) inline in component `<style>` blocks, written before
+  theme.css's tokens existed. Both implement the same +0.03/+0.06 rule but by two
+  different mechanisms in different files.
+- Impact: no functional bug (both compute the same visual result on modern browsers),
+  but it's an inconsistency that makes the "one rule, not thirty drawings" design
+  principle harder to audit — a future change to the hover rule has two places to
+  edit instead of one.
+- Tried: nothing yet; both pass `bun run check` and were accepted as-is to keep wave 1
+  moving.
+- Next: a later cleanup pass should pick one mechanism (the theme.css named-token
+  approach is more consistent with how the rest of the app applies tokens, and avoids
+  relying on CSS relative-color syntax browser support) and convert the other.
+
+## [MEDIUM] timeline-geometry.ts's `continues` flag uses a UTC-midnight approximation
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `layOutDay` (`src/modules/day/components/timeline-geometry.ts`) receives no
+  Logical_Day boundary (no `DAY_START_HOUR`, no time zone), so it cannot compute the
+  real day boundary to decide whether an open session's block "continues" past the
+  displayed day. It approximates with `session.startedAt`'s UTC calendar date versus
+  `now`'s UTC calendar date, documented inline. It also adds an undocumented
+  `fillsColumn: boolean` field to `LaidOutSegment` (design.md's literal type has no
+  such field) for the one-segment-per-column `.tl-h-fill` case.
+- Impact: the `continues` flag could be wrong near a Logical_Day boundary that isn't
+  UTC midnight (Worklog's default `DAY_START_HOUR` is not midnight) — a session
+  started just after the real day boundary but before UTC midnight, or vice versa,
+  could be flagged incorrectly.
+- Tried: nothing yet — flagged for the day-page load function (task 3.7) and
+  `DayTimeline`/`WorkBlock` (tasks 3.4/3.5), which have the real day bounds and can
+  either pass them into `layOutDay` (extending its signature) or override the flag
+  after the fact.
+- Next: when task 3.7 (day page) is implemented, check whether `layOutDay`'s
+  signature needs an explicit day-bounds parameter instead of inferring `continues`
+  internally, and reconcile `fillsColumn` with whatever `WorkBlock.svelte` (task 3.4)
+  expects for the tl-h-fill class.
+
+## [LOW] dry-run.ts drops colorIndex from SessionPreview.reclipped
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `src/modules/day/dry-run.ts` maps the server's `ReclipOutcome` (which carries
+  `colorIndex`) into `SessionPreview.reclipped`, but design.md's literal type for that
+  field omits `colorIndex`. The implementing agent followed the literal design.md
+  shape rather than silently adding a field.
+- Impact: `ChangePreview.svelte` (task 5.2) draws "a 3 × 18 slot-coloured tick" beside
+  each affected entry per design.md's own prose in the "Edit session" dialog
+  description — which needs a colour per reclipped entry. As written, the preview
+  client doesn't carry one.
+- Tried: nothing yet.
+- Next: when building task 5.2, either restore `colorIndex` to `SessionPreview.reclipped`
+  in `dry-run.ts` (one-line fix) or resolve the colour another way; the former is
+  almost certainly correct and should just be done at that point.
+
+## [LOW] Paraglide plural/select messages use the plugin's native array form, not literal ICU
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: design.md's Message Catalogue writes plural/select messages in classic ICU
+  MessageFormat syntax (`{count, plural, one {...} other {...}}`). The actually
+  installed `@inlang/plugin-message-format` does not parse that syntax from a plain
+  string — it requires a separate `[{ declarations, selectors, match }]` JSON array
+  per message. The ten affected keys (`timer_gauge_label`, `timer_stale_body`,
+  `day_segment_label`, `session_delete_body`, `preview_parts`, `preview_total`,
+  `projects_meta`, `stats_observation_nights`, `stats_observation_idle`,
+  `errors_project_in_use`) were converted to that native form, preserving every
+  wording and plural category exactly. Boolean-style selectors (`running`, `part`)
+  now compare against the literal string `"true"`, not a JS boolean.
+- Impact: none on correctness (verified by inspecting the compiled output), but any
+  future call site that passes `running: true` (a JS boolean) instead of `running:
+  'true'` (the string) will silently fall through to the `other`/`false` branch.
+- Tried: verified against compiled `src/lib/paraglide/messages/*.js`.
+- Next: whoever wires up call sites for these ten keys (timer page, day timeline,
+  session dialog, change preview, projects page, stats rhythm panel, projects-in-use
+  error) must remember to pass the string `'true'`/`'false'` for these selectors, not
+  a boolean. Worth a one-line comment at each call site.
+
 > The eighteen entries below the next section were opened by the `cases` phase, which
 > reads code and writes documents and executes nothing. Each was found by reading the
 > implementation against `requirements.md`. The `verify` phase (run 2026-08-23-2200)
