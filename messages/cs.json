@@ -1,29 +1,386 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"errors_validation_error": "Požadavek se nepodařilo ověřit.",
-	"errors_invalid_interval": "Neplatný časový interval.",
-	"errors_ambiguous_mode": "Požadavek zadává více než jeden způsob záznamu.",
-	"errors_range_too_large": "Požadované období je příliš dlouhé.",
-	"errors_unauthorized": "Pro tuto akci musíte být přihlášeni.",
-	"errors_not_found": "Záznam nebyl nalezen.",
-	"errors_method_not_allowed": "Tato metoda zde není povolena.",
-	"errors_session_already_running": "Časovač už běží.",
-	"errors_no_session_running": "Žádný časovač neběží.",
-	"errors_session_overlap": "To by se překrývalo s jinou seancí.",
-	"errors_activity_overlap": "To by se překrývalo s jinou aktivitou.",
-	"errors_outside_tracked_time": "To spadá mimo sledovaný čas.",
-	"errors_no_placement_anchor": "V tento den není proti čemu tento záznam umístit.",
+	"common_save": "Uložit",
+	"common_cancel": "Zrušit",
+	"common_delete": "Smazat",
+	"common_confirm": "Potvrdit",
+	"common_back": "Zpět",
+	"common_close": "Zavřít",
+	"common_retry": "Zkusit znovu",
+	"common_today": "dnes",
+	"common_yesterday": "včera",
+	"common_none": "—",
+	"common_of_total": "{value} z {total}",
+	"common_esc_hint": "Esc zavře · nic se neuloží, dokud nepotvrdíš",
+	"common_server_computed": "Počítá to server, ne prohlížeč — co vidíš, to se stane",
+	"nav_timer": "Timer",
+	"nav_day": "Den",
+	"nav_projects": "Projekty",
+	"nav_stats": "Statistiky",
+	"nav_brand": "Worklog",
+	"shell_settings_open": "Nastavení",
+	"shell_running_label": "Timer běží, {elapsed}",
+	"shell_timezone_notice": "Časy jsou v pásmu {timeZone}, ne v pásmu tvého zařízení",
+	"settings_theme_label": "motiv",
+	"settings_theme_system": "Systém",
+	"settings_theme_light": "Světlý",
+	"settings_theme_dark": "Tmavý",
+	"settings_language_label": "jazyk",
+	"settings_language_cs": "Čeština",
+	"settings_language_en": "English",
+	"settings_logout": "Odhlásit se",
+	"auth_title": "Worklog",
+	"auth_passphrase_label": "Heslo",
+	"auth_submit": "Odemknout",
+	"auth_session_expired": "Přihlášení vypršelo, přihlas se znovu",
+	"timer_start": "Spustit timer",
+	"timer_stop": "Zastavit timer",
+	"timer_running_since": "běží od {time}",
+	"timer_idle_caption": "timer neběží",
+	"timer_stopped_at": "zastaveno v {time}",
+	"timer_worked": "odpracováno",
+	"timer_covered": "popsáno",
+	"timer_uncovered": "chybí popis",
+	"timer_worked_short": "odprac.",
+	"timer_covered_short": "popsáno",
+	"timer_uncovered_short": "chybí",
+	"timer_legend_uncovered": "bez popisu",
+	"timer_gauge_label": [
+		{
+			"selectors": [
+				"running"
+			],
+			"match": {
+				"running=true": "Den {date}: odpracováno {worked}, popsáno {covered}, chybí popis {uncovered} · timer běží",
+				"running=*": "Den {date}: odpracováno {worked}, popsáno {covered}, chybí popis {uncovered}"
+			}
+		}
+	],
+	"timer_stale_title": "Timer běží od {start} a už se nezapočítává",
+	"timer_stale_body": [
+		{
+			"declarations": [
+				"local hoursPlural = hours: plural"
+			],
+			"selectors": [
+				"hoursPlural"
+			],
+			"match": {
+				"hoursPlural=one": "Po {hours} hodině server přestal čas počítat. Vyber, kdy skončil.",
+				"hoursPlural=few": "Po {hours} hodinách server přestal čas počítat. Vyber, kdy skončil.",
+				"hoursPlural=other": "Po {hours} hodinách server přestal čas počítat. Vyber, kdy skončil."
+			}
+		}
+	],
+	"timer_stale_stop": "Zastavit v tomto čase",
+	"timer_quicklog": "Zapsat {from} → teď",
+	"timer_quicklog_remaining": "{duration} bez popisu",
+	"timer_quicklog_open_dialog": "Otevřít dialog",
+	"timer_quicklog_no_project": "Nejdřív vytvoř projekt",
+	"day_prev": "Předchozí den",
+	"day_next": "Následující den",
+	"day_pick": "Vybrat datum",
+	"day_heading_meta": "{from} – {to} · odpracováno {worked}",
+	"day_add_activity": "Přidat úkol",
+	"day_add_session": "Přidat úsek timeru",
+	"day_empty_title": "Zatím nic",
+	"day_empty_body": "Spusť timer a den se začne plnit sám.",
+	"day_block_head": "{from} – {to}",
+	"day_block_duration": "{duration} v kuse",
+	"day_block_night": "noční",
+	"day_block_running": "běží",
+	"day_block_capped": "timer běží, ale už se nezapočítává",
+	"day_block_continues": "pokračuje do {time}",
+	"day_segment_label": [
+		{
+			"selectors": [
+				"part"
+			],
+			"match": {
+				"part=true": "{project}, {from} – {to}, {duration} · část {index} ze {count}",
+				"part=*": "{project}, {from} – {to}, {duration}"
+			}
+		}
+	],
+	"day_segment_part": "část {index} ze {count}",
+	"day_segment_part_short": "{index}/{count}",
+	"day_break": "pauza {duration} · {from} – {to}",
+	"day_break_short": "pauza {duration}",
+	"day_uncovered_title": "Zatím bez popisu",
+	"day_uncovered_title_short": "Bez popisu",
+	"day_uncovered_hint": "{from} – {to} · {duration} — klikni a doplň",
+	"day_uncovered_action": "doplnit",
+	"day_summary_label": "souhrn dne",
+	"day_summary_worked": "Odpracováno",
+	"day_summary_covered": "Popsáno",
+	"day_summary_uncovered": "Chybí popis",
+	"day_summary_share": "{percent} % odpracovaného času má popis",
+	"day_summary_complete": "Celý den je popsaný.",
+	"day_shape_label": "tvar dne",
+	"day_shape_blocks": "Bloky práce",
+	"day_shape_longest": "Nejdelší v kuse",
+	"day_shape_evening": "Po {eveningHour}",
+	"day_orphans_label": "mimo výkaz",
+	"day_orphans_body": "Zápisy, kterým po úpravě timeru nezbyl žádný čas. Na ose je nevidíš, protože nikde neleží.",
+	"day_orphans_row": "žádáno {from} – {to} · zbylo 0 min",
+	"day_orphans_reenter": "Přepsat čas",
+	"activity_add_title": "Přidat úkol",
+	"activity_edit_title": "Upravit úkol",
+	"activity_mode_label": "jak to zadáš",
+	"activity_mode_explicit": "Přesně od–do",
+	"activity_mode_explicit_short": "Od–do",
+	"activity_mode_duration": "Jen délka",
+	"activity_mode_open": "Od posledního",
+	"activity_field_day": "den",
+	"activity_field_from": "od",
+	"activity_field_to": "do",
+	"activity_field_duration": "jak dlouho",
+	"activity_field_project": "projekt",
+	"activity_field_description": "co jsi dělal",
+	"activity_anchor_note": "Začne se od {time} — konec posledního záznamu. Do {duration} se počítá jen čistá práce, pauzy se přeskakují.",
+	"activity_anchor_first_session": "Začne se od {time} — začátek prvního úseku timeru.",
+	"activity_requested_note": "žádáno {requested} · uloženo {stored}",
+	"activity_submit": "Uložit úkol",
+	"activity_delete_title": "Smazat úkol?",
+	"activity_delete_body": "{project}, {from} – {to} · {duration}. Zmizí z výkazu.",
+	"session_add_title": "Přidat úsek timeru",
+	"session_edit_title": "Upravit úsek timeru",
+	"session_field_start": "začátek",
+	"session_field_end": "konec",
+	"session_delete_link": "Smazat celý úsek {from} – {to}",
+	"session_delete_title": "Smazat úsek timeru?",
+	"session_delete_body": [
+		{
+			"declarations": [
+				"local entriesPlural = entries: plural"
+			],
+			"selectors": [
+				"entries",
+				"entriesPlural"
+			],
+			"match": {
+				"entries=0, entriesPlural=*": "Žádný záznam to neovlivní.",
+				"entries=*, entriesPlural=one": "Jeden záznam přijde o čas.",
+				"entries=*, entriesPlural=few": "{entries} záznamy přijdou o čas.",
+				"entries=*, entriesPlural=other": "{entries} záznamů přijde o čas."
+			}
+		}
+	],
+	"session_confirm_save": "Potvrdit a uložit",
+	"session_back_to_edit": "Zpět k úpravě",
+	"preview_label": "uloží se takto",
+	"preview_parts": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Uloží se {count} část kolem pauzy.",
+				"countPlural=few": "Uloží se {count} části kolem pauzy.",
+				"countPlural=other": "Uloží se {count} částí kolem pauzy."
+			}
+		}
+	],
+	"preview_unplaced": "{duration} se nevejde.",
+	"preview_unplaced_why": "Po {time} už timer neběžel, takže z {requested} se zapíše {stored}.",
+	"preview_sliver": "{duration} se zahodí — kratší úsek než {minimum} se neukládá.",
+	"preview_policy_label": "Se zbytkem:",
+	"preview_policy_clip": "Zahodit",
+	"preview_policy_extend": "Prodloužit timer",
+	"preview_loss_title": "Zkrácením přijdeš o zapsaný čas",
+	"preview_now": "teď",
+	"preview_after": "po úpravě",
+	"preview_entry_loss": "−{duration}",
+	"preview_emptied": "Úsek {from} – {to} zmizí celý — po zkrácení už nebude uvnitř běhu timeru.",
+	"preview_uncovered_row": "Zatím bez popisu",
+	"preview_total_split": "Z toho {entriesDuration} ze záznamů a {uncoveredDuration} nepopsaného času.",
+	"preview_total": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Celkem {count} záznam · {duration} zmizí z výkazu.",
+				"countPlural=few": "Celkem {count} záznamy · {duration} zmizí z výkazu.",
+				"countPlural=other": "Celkem {count} záznamů · {duration} zmizí z výkazu."
+			}
+		}
+	],
+	"preview_no_change": "Nic se neztratí.",
+	"projects_title": "Projekty",
+	"projects_meta": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} aktivní · za posledních 30 dní",
+				"countPlural=few": "{count} aktivní · za posledních 30 dní",
+				"countPlural=other": "{count} aktivních · za posledních 30 dní"
+			}
+		}
+	],
+	"projects_new": "Nový projekt",
+	"projects_show_archived": "Zobrazit archivované",
+	"projects_hide_archived": "Skrýt archivované",
+	"projects_name_label": "Název projektu",
+	"projects_rename": "Přejmenovat",
+	"projects_archive": "Archivovat",
+	"projects_unarchive": "Vrátit z archivu",
+	"projects_archived_badge": "archivovaný",
+	"projects_colour_label": "barva projektu",
+	"projects_colour_auto": "přiřazena automaticky",
+	"projects_colour_help": "Osm ověřených barev. Nový projekt dostane první volnou, ale přepsat ji můžeš kdykoliv.",
+	"projects_empty_title": "Zatím žádný projekt",
+	"projects_empty_body": "Založ první projekt a začni k němu psát čas.",
+	"projects_delete_title": "Smazat projekt?",
+	"projects_delete_body": "{project} nemá žádný záznam, takže po smazání nic nezmizí.",
+	"projects_picker_search": "Hledat projekt",
+	"projects_picker_create": "Vytvořit „{name}\"",
+	"projects_picker_empty": "Žádný projekt neodpovídá",
+	"stats_title": "Statistiky",
+	"stats_range_day": "Den",
+	"stats_range_week": "Týden",
+	"stats_range_month": "Měsíc",
+	"stats_kpi_worked": "odpracováno",
+	"stats_kpi_covered": "popsáno",
+	"stats_kpi_share": "podíl popsaného",
+	"stats_kpi_overtime": "mimo obvyklé hodiny",
+	"stats_kpi_overtime_share": "{percent} % rozsahu",
+	"stats_rhythm_title": "Kam v čase práce padla",
+	"stats_rhythm_sub": "každý řádek je jeden logický den, {from} → {to}",
+	"stats_breakdown_label": "podle projektu",
+	"stats_breakdown_uncovered": "Bez popisu",
+	"stats_panel_label": "rytmus období",
+	"stats_days_worked": "Dnů s prací",
+	"stats_average_day": "Průměr na pracovní den",
+	"stats_longest_day": "Nejdelší den",
+	"stats_longest_block": "Nejdelší blok v kuse",
+	"stats_total_blocks": "Bloků práce celkem",
+	"stats_evening": "Po {eveningHour}",
+	"stats_observation_nights": [
+		{
+			"declarations": [
+				"local nightsPlural = nights: plural"
+			],
+			"selectors": [
+				"nightsPlural"
+			],
+			"match": {
+				"nightsPlural=one": "Práce po {eveningHour} padla na {nights} den z {workdays}.",
+				"nightsPlural=few": "Práce po {eveningHour} padla na {nights} dny z {workdays}.",
+				"nightsPlural=other": "Práce po {eveningHour} padla na {nights} dnů z {workdays}."
+			}
+		}
+	],
+	"stats_observation_longest": "Nejdelší nepřerušený úsek: {duration}, {weekday}.",
+	"stats_observation_idle": [
+		{
+			"declarations": [
+				"local idleDaysPlural = idleDays: plural"
+			],
+			"selectors": [
+				"idleDaysPlural"
+			],
+			"match": {
+				"idleDaysPlural=one": "Bez práce: {idleDays} den.",
+				"idleDaysPlural=few": "Bez práce: {idleDays} dny.",
+				"idleDaysPlural=other": "Bez práce: {idleDays} dnů."
+			}
+		}
+	],
+	"stats_empty_title": "V tomhle období nic není",
+	"stats_empty_body": "Vyber jiný rozsah nebo spusť timer.",
+	"stats_rhythm_unavailable": "Pás se kreslí do {days} dnů.",
+	"stats_window_suggestion": "Podle posledních týdnů sedí okno {start} – {end}. Nastav `GAUGE_START` a `GAUGE_END` v konfiguraci serveru a restartuj ho.",
+	"feedback_saved": "Uloženo",
+	"feedback_deleted": "Smazáno",
+	"feedback_saved_partial": "Uloženo, ale {duration} se nevešlo",
+	"feedback_open_conflict": "Otevřít záznam",
+	"feedback_unsaved_title": "Zahodit rozepsané?",
+	"feedback_unsaved_body": "Máš rozepsaný formulář, který se neuložil.",
+	"offline_title": "Server neodpovídá",
+	"offline_body": "Zkus to za chvíli znovu. Nic, co jsi napsal, se neztratilo.",
+	"error_page_title": "Tady nic není",
+	"error_page_body": "Stránka, kterou hledáš, neexistuje.",
+	"error_page_home": "Zpět na timer",
+	"errors_validation_error": "Zkontroluj vyplněná pole.",
+	"errors_invalid_interval": "Konec musí být po začátku.",
+	"errors_ambiguous_mode": "Zadej buď konec, nebo délku — ne obojí.",
+	"errors_range_too_large": "Rozsah je moc velký, nejvíc {maxDays} dnů.",
+	"errors_unauthorized": "Přihlášení vypršelo, přihlas se znovu.",
+	"errors_not_found": "Záznam už neexistuje.",
+	"errors_session_already_running": "Timer už běží od {startedAt}.",
+	"errors_no_session_running": "Timer neběží.",
+	"errors_session_overlap": "Překrývá se s úsekem {from} – {to}.",
+	"errors_session_overlap_open": "Překrývá se s běžícím timerem od {from}.",
+	"errors_activity_overlap": "Překrývá se se záznamem {project} ({from} – {to}).",
+	"errors_outside_tracked_time": "{duration} je mimo běh timeru.",
+	"errors_no_placement_anchor": "{date} nemá žádný záznam ani úsek timeru, od kterého by se dalo začít.",
+	"errors_nothing_to_log_empty_interval": "Od posledního záznamu neuplynul žádný čas.",
+	"errors_nothing_to_log_no_tracked_time": "V tu dobu timer neběžel.",
+	"errors_nothing_to_log_all_slivers": "Zbývá jen kousek kratší než minuta.",
+	"errors_nothing_to_log_already_covered": "Ten čas už popsaný je.",
+	"errors_project_exists": "Projekt {projectName} už existuje.",
+	"errors_project_in_use": [
+		{
+			"declarations": [
+				"local entryCountPlural = entryCount: plural"
+			],
+			"selectors": [
+				"entryCountPlural"
+			],
+			"match": {
+				"entryCountPlural=one": "{projectName} má {entryCount} záznam, takže ho nejde smazat. Archivace ho schová z nabídky.",
+				"entryCountPlural=few": "{projectName} má {entryCount} záznamy, takže ho nejde smazat. Archivace ho schová z nabídky.",
+				"entryCountPlural=other": "{projectName} má {entryCount} záznamů, takže ho nejde smazat. Archivace ho schová z nabídky."
+			}
+		}
+	],
+	"errors_project_archived": "{projectName} je archivovaný.",
+	"errors_future_timestamp": "Čas nemůže být v budoucnosti.",
+	"errors_interval_too_short": "Úsek musí trvat aspoň {minSeconds} s.",
+	"errors_stale_preview": "Mezitím se něco změnilo — tady je nový náhled.",
+	"errors_payload_too_large": "Popis je moc dlouhý.",
+	"errors_rate_limited_request": "Moc požadavků. Zkus to za {retryAfterSeconds} s.",
+	"errors_rate_limited_login": "Moc pokusů o přihlášení. Zkus to za {retryAfterSeconds} s.",
+	"errors_service_unavailable": "Server teď nemůže odpovědět. Zkus to za {retryAfterSeconds} s.",
+	"errors_method_not_allowed": "Tahle akce tady není povolená.",
+	"errors_idempotency_key_reused": "Tenhle požadavek už proběhl.",
 	"errors_nothing_to_log": "Není co zapsat.",
-	"errors_project_exists": "Projekt s tímto názvem už existuje.",
-	"errors_project_in_use": "Tento projekt se stále používá.",
-	"errors_project_archived": "Tento projekt je archivován.",
-	"errors_future_timestamp": "Tento čas je příliš daleko v budoucnosti.",
-	"errors_interval_too_short": "Tento interval je příliš krátký.",
-	"errors_stale_preview": "Tento náhled už není platný.",
-	"errors_idempotency_key_reused": "Tento klíč idempotence už byl použit pro jiný požadavek.",
-	"errors_payload_too_large": "Tělo požadavku je příliš velké.",
-	"errors_rate_limited": "Příliš mnoho požadavků. Zkuste to za chvíli.",
-	"errors_service_unavailable": "Služba je dočasně nedostupná.",
-	"errors_internal_error": "Něco se pokazilo.",
-	"errors_login_failed": "Heslo nebylo přijato."
+	"errors_rate_limited": "Moc požadavků. Zkus to za {retryAfterSeconds} s.",
+	"errors_login_failed": "Nesprávné heslo.",
+	"errors_internal_error": "Něco se pokazilo. Když to nahlásíš, přilož kód {requestId}.",
+	"fields_required": "Vyplň tohle pole.",
+	"fields_invalid": "Tahle hodnota nesedí.",
+	"fields_invalid_choice": "Vyber jednu z nabízených možností.",
+	"fields_invalid_date": "Zadej datum ve tvaru RRRR-MM-DD.",
+	"fields_invalid_timestamp": "Zadej čas ve tvaru HH:MM.",
+	"fields_invalid_id": "Tohle není platný identifikátor.",
+	"fields_wrong_type": "Tahle hodnota má být jiného typu.",
+	"fields_too_long": "Nejvíc {max} znaků.",
+	"fields_too_short": "Nejmíň {min} znaků.",
+	"fields_too_large": "Nejvíc {max}.",
+	"fields_too_small": "Nejmíň {min}.",
+	"fields_bounds_together": "Začátek i konec se zadávají spolu.",
+	"fields_date_required_for_duration": "U délky vyplň i den.",
+	"fields_unknown": "Tohle pole sem nepatří.",
+	"aria_timeline": "Časová osa dne {date}",
+	"aria_session_block": "Úsek timeru {from} – {to}, {duration}",
+	"aria_session_start_edge": "Upravit začátek úseku, {time}",
+	"aria_session_end_edge": "Upravit konec úseku, {time}",
+	"aria_uncovered_block": "Bez popisu, {from} – {to}, {duration}, doplnit",
+	"aria_rhythm_row": "{date}, odpracováno {worked}",
+	"aria_project_swatch": "Barva projektu {project}",
+	"aria_close_dialog": "Zavřít dialog",
+	"aria_open_settings": "Otevřít nastavení"
 }

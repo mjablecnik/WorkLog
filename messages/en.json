@@ -1,29 +1,378 @@
 {
 	"$schema": "https://inlang.com/schema/inlang-message-format",
-	"errors_validation_error": "The request could not be validated.",
-	"errors_invalid_interval": "The interval is invalid.",
-	"errors_ambiguous_mode": "The request names more than one way to record this.",
-	"errors_range_too_large": "The requested range is too large.",
-	"errors_unauthorized": "You must be signed in to do that.",
-	"errors_not_found": "That record could not be found.",
-	"errors_method_not_allowed": "That method is not allowed here.",
-	"errors_session_already_running": "A session is already running.",
-	"errors_no_session_running": "No session is running.",
-	"errors_session_overlap": "That would overlap another session.",
-	"errors_activity_overlap": "That would overlap another activity.",
-	"errors_outside_tracked_time": "That falls outside tracked time.",
-	"errors_no_placement_anchor": "There is nothing to place this against on that day.",
-	"errors_nothing_to_log": "There is nothing left to log.",
-	"errors_project_exists": "A project with that name already exists.",
-	"errors_project_in_use": "That project is still in use.",
-	"errors_project_archived": "That project is archived.",
-	"errors_future_timestamp": "That time is too far in the future.",
-	"errors_interval_too_short": "That interval is too short.",
-	"errors_stale_preview": "That preview is no longer valid.",
-	"errors_idempotency_key_reused": "That idempotency key was already used for a different request.",
-	"errors_payload_too_large": "The request body is too large.",
-	"errors_rate_limited": "Too many requests. Try again shortly.",
-	"errors_service_unavailable": "The service is temporarily unavailable.",
-	"errors_internal_error": "Something went wrong.",
-	"errors_login_failed": "That passphrase was not accepted."
+	"common_save": "Save",
+	"common_cancel": "Cancel",
+	"common_delete": "Delete",
+	"common_confirm": "Confirm",
+	"common_back": "Back",
+	"common_close": "Close",
+	"common_retry": "Try again",
+	"common_today": "today",
+	"common_yesterday": "yesterday",
+	"common_none": "—",
+	"common_of_total": "{value} of {total}",
+	"common_esc_hint": "Esc closes · nothing is saved until you confirm",
+	"common_server_computed": "The server computes this, not the browser — what you see is what happens",
+	"nav_timer": "Timer",
+	"nav_day": "Day",
+	"nav_projects": "Projects",
+	"nav_stats": "Statistics",
+	"nav_brand": "Worklog",
+	"shell_settings_open": "Settings",
+	"shell_running_label": "Timer running, {elapsed}",
+	"shell_timezone_notice": "Times are shown in {timeZone}, not your device's zone",
+	"settings_theme_label": "theme",
+	"settings_theme_system": "System",
+	"settings_theme_light": "Light",
+	"settings_theme_dark": "Dark",
+	"settings_language_label": "language",
+	"settings_language_cs": "Czech",
+	"settings_language_en": "English",
+	"settings_logout": "Log out",
+	"auth_title": "Worklog",
+	"auth_passphrase_label": "Passphrase",
+	"auth_submit": "Unlock",
+	"auth_session_expired": "Your session expired, please log in again",
+	"timer_start": "Start the timer",
+	"timer_stop": "Stop the timer",
+	"timer_running_since": "running since {time}",
+	"timer_idle_caption": "timer is not running",
+	"timer_stopped_at": "stopped at {time}",
+	"timer_worked": "worked",
+	"timer_covered": "described",
+	"timer_uncovered": "not described",
+	"timer_worked_short": "worked",
+	"timer_covered_short": "described",
+	"timer_uncovered_short": "missing",
+	"timer_legend_uncovered": "not described",
+	"timer_gauge_label": [
+		{
+			"selectors": [
+				"running"
+			],
+			"match": {
+				"running=true": "Day {date}: worked {worked}, described {covered}, not described {uncovered} · timer running",
+				"running=*": "Day {date}: worked {worked}, described {covered}, not described {uncovered}"
+			}
+		}
+	],
+	"timer_stale_title": "The timer has run since {start} and stopped counting",
+	"timer_stale_body": [
+		{
+			"declarations": [
+				"local hoursPlural = hours: plural"
+			],
+			"selectors": [
+				"hoursPlural"
+			],
+			"match": {
+				"hoursPlural=one": "After {hours} hour the server stopped counting. Choose when it ended.",
+				"hoursPlural=other": "After {hours} hours the server stopped counting. Choose when it ended."
+			}
+		}
+	],
+	"timer_stale_stop": "Stop at this time",
+	"timer_quicklog": "Log {from} → now",
+	"timer_quicklog_remaining": "{duration} not described",
+	"timer_quicklog_open_dialog": "Open the dialog",
+	"timer_quicklog_no_project": "Create a project first",
+	"day_prev": "Previous day",
+	"day_next": "Next day",
+	"day_pick": "Pick a date",
+	"day_heading_meta": "{from} – {to} · worked {worked}",
+	"day_add_activity": "Add a task",
+	"day_add_session": "Add a timer block",
+	"day_empty_title": "Nothing yet",
+	"day_empty_body": "Start the timer and the day fills itself in.",
+	"day_block_head": "{from} – {to}",
+	"day_block_duration": "{duration} unbroken",
+	"day_block_night": "night",
+	"day_block_running": "running",
+	"day_block_capped": "still running, no longer counting",
+	"day_block_continues": "continues to {time}",
+	"day_segment_label": [
+		{
+			"selectors": [
+				"part"
+			],
+			"match": {
+				"part=true": "{project}, {from} – {to}, {duration} · part {index} of {count}",
+				"part=*": "{project}, {from} – {to}, {duration}"
+			}
+		}
+	],
+	"day_segment_part": "part {index} of {count}",
+	"day_segment_part_short": "{index}/{count}",
+	"day_break": "break {duration} · {from} – {to}",
+	"day_break_short": "break {duration}",
+	"day_uncovered_title": "Not described yet",
+	"day_uncovered_title_short": "Not described",
+	"day_uncovered_hint": "{from} – {to} · {duration} — click to fill in",
+	"day_uncovered_action": "fill in",
+	"day_summary_label": "day summary",
+	"day_summary_worked": "Worked",
+	"day_summary_covered": "Described",
+	"day_summary_uncovered": "Not described",
+	"day_summary_share": "{percent} % of worked time has a description",
+	"day_summary_complete": "The whole day is described.",
+	"day_shape_label": "shape of the day",
+	"day_shape_blocks": "Work blocks",
+	"day_shape_longest": "Longest unbroken",
+	"day_shape_evening": "After {eveningHour}",
+	"day_orphans_label": "outside the log",
+	"day_orphans_body": "Entries left with no time after the timer was edited. They are not on the timeline, because they are nowhere.",
+	"day_orphans_row": "asked for {from} – {to} · 0 min left",
+	"day_orphans_reenter": "Re-enter the time",
+	"activity_add_title": "Add a task",
+	"activity_edit_title": "Edit the task",
+	"activity_mode_label": "how you enter it",
+	"activity_mode_explicit": "Exact from–to",
+	"activity_mode_explicit_short": "From–to",
+	"activity_mode_duration": "Duration only",
+	"activity_mode_open": "Since the last one",
+	"activity_field_day": "day",
+	"activity_field_from": "from",
+	"activity_field_to": "to",
+	"activity_field_duration": "how long",
+	"activity_field_project": "project",
+	"activity_field_description": "what you did",
+	"activity_anchor_note": "Starts at {time} — the end of the last entry. Only worked time counts towards {duration}; breaks are skipped.",
+	"activity_anchor_first_session": "Starts at {time} — the beginning of the first timer block.",
+	"activity_requested_note": "asked for {requested} · stored as {stored}",
+	"activity_submit": "Save the task",
+	"activity_delete_title": "Delete this task?",
+	"activity_delete_body": "{project}, {from} – {to} · {duration}. It will disappear from the log.",
+	"session_add_title": "Add a timer block",
+	"session_edit_title": "Edit the timer block",
+	"session_field_start": "start",
+	"session_field_end": "end",
+	"session_delete_link": "Delete the whole block {from} – {to}",
+	"session_delete_title": "Delete this timer block?",
+	"session_delete_body": [
+		{
+			"declarations": [
+				"local entriesPlural = entries: plural"
+			],
+			"selectors": [
+				"entries",
+				"entriesPlural"
+			],
+			"match": {
+				"entries=0, entriesPlural=*": "No entry is affected.",
+				"entries=*, entriesPlural=one": "One entry loses time.",
+				"entries=*, entriesPlural=other": "{entries} entries lose time."
+			}
+		}
+	],
+	"session_confirm_save": "Confirm and save",
+	"session_back_to_edit": "Back to editing",
+	"preview_label": "this is what will be saved",
+	"preview_parts": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "Saved as {count} part around a break.",
+				"countPlural=other": "Saved as {count} parts around a break."
+			}
+		}
+	],
+	"preview_unplaced": "{duration} will not fit.",
+	"preview_unplaced_why": "The timer was not running after {time}, so {stored} of {requested} is recorded.",
+	"preview_sliver": "{duration} is dropped — anything shorter than {minimum} is not stored.",
+	"preview_policy_label": "The remainder:",
+	"preview_policy_clip": "Discard",
+	"preview_policy_extend": "Extend the timer",
+	"preview_loss_title": "Shortening this loses recorded time",
+	"preview_now": "now",
+	"preview_after": "after",
+	"preview_entry_loss": "−{duration}",
+	"preview_emptied": "{from} – {to} disappears entirely — after the change it is outside the timer's run.",
+	"preview_uncovered_row": "Not described yet",
+	"preview_total_split": "Of that, {entriesDuration} from entries and {uncoveredDuration} of undescribed time.",
+	"preview_total": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} entry · {duration} disappears from the log.",
+				"countPlural=other": "{count} entries · {duration} disappears from the log."
+			}
+		}
+	],
+	"preview_no_change": "Nothing is lost.",
+	"projects_title": "Projects",
+	"projects_meta": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "{count} active · over the last 30 days",
+				"countPlural=other": "{count} active · over the last 30 days"
+			}
+		}
+	],
+	"projects_new": "New project",
+	"projects_show_archived": "Show archived",
+	"projects_hide_archived": "Hide archived",
+	"projects_name_label": "Project name",
+	"projects_rename": "Rename",
+	"projects_archive": "Archive",
+	"projects_unarchive": "Unarchive",
+	"projects_archived_badge": "archived",
+	"projects_colour_label": "project colour",
+	"projects_colour_auto": "assigned automatically",
+	"projects_colour_help": "Eight validated colours. A new project takes the first free one, and you can change it whenever.",
+	"projects_empty_title": "No projects yet",
+	"projects_empty_body": "Create the first project and start logging time against it.",
+	"projects_delete_title": "Delete this project?",
+	"projects_delete_body": "{project} has no entries, so nothing disappears with it.",
+	"projects_picker_search": "Search projects",
+	"projects_picker_create": "Create \"{name}\"",
+	"projects_picker_empty": "No project matches",
+	"stats_title": "Statistics",
+	"stats_range_day": "Day",
+	"stats_range_week": "Week",
+	"stats_range_month": "Month",
+	"stats_kpi_worked": "worked",
+	"stats_kpi_covered": "described",
+	"stats_kpi_share": "described share",
+	"stats_kpi_overtime": "outside usual hours",
+	"stats_kpi_overtime_share": "{percent} % of the range",
+	"stats_rhythm_title": "Where the work fell",
+	"stats_rhythm_sub": "one row per logical day, {from} → {to}",
+	"stats_breakdown_label": "by project",
+	"stats_breakdown_uncovered": "Not described",
+	"stats_panel_label": "rhythm of the range",
+	"stats_days_worked": "Days worked",
+	"stats_average_day": "Average per working day",
+	"stats_longest_day": "Longest day",
+	"stats_longest_block": "Longest unbroken block",
+	"stats_total_blocks": "Work blocks in total",
+	"stats_evening": "After {eveningHour}",
+	"stats_observation_nights": [
+		{
+			"declarations": [
+				"local nightsPlural = nights: plural"
+			],
+			"selectors": [
+				"nightsPlural"
+			],
+			"match": {
+				"nightsPlural=one": "Work after {eveningHour} fell on {nights} day of {workdays}.",
+				"nightsPlural=other": "Work after {eveningHour} fell on {nights} days of {workdays}."
+			}
+		}
+	],
+	"stats_observation_longest": "Longest unbroken stretch: {duration}, {weekday}.",
+	"stats_observation_idle": [
+		{
+			"declarations": [
+				"local idleDaysPlural = idleDays: plural"
+			],
+			"selectors": [
+				"idleDaysPlural"
+			],
+			"match": {
+				"idleDaysPlural=one": "No work on {idleDays} day.",
+				"idleDaysPlural=other": "No work on {idleDays} days."
+			}
+		}
+	],
+	"stats_empty_title": "Nothing in this range",
+	"stats_empty_body": "Pick another range, or start the timer.",
+	"stats_rhythm_unavailable": "The strip is drawn for ranges up to {days} days.",
+	"stats_window_suggestion": "The last few weeks fit a {start} – {end} window. Set `GAUGE_START` and `GAUGE_END` in the server configuration and restart it.",
+	"feedback_saved": "Saved",
+	"feedback_deleted": "Deleted",
+	"feedback_saved_partial": "Saved, but {duration} did not fit",
+	"feedback_open_conflict": "Open the entry",
+	"feedback_unsaved_title": "Discard your changes?",
+	"feedback_unsaved_body": "You have an unsaved form open.",
+	"offline_title": "The server is not responding",
+	"offline_body": "Try again in a moment. Nothing you typed was lost.",
+	"error_page_title": "Nothing here",
+	"error_page_body": "The page you are looking for does not exist.",
+	"error_page_home": "Back to the timer",
+	"errors_validation_error": "Check the fields you filled in.",
+	"errors_invalid_interval": "The end has to be after the start.",
+	"errors_ambiguous_mode": "Give either an end or a duration, not both.",
+	"errors_range_too_large": "That range is too large; {maxDays} days at most.",
+	"errors_unauthorized": "Your session expired, please log in again.",
+	"errors_not_found": "That record no longer exists.",
+	"errors_session_already_running": "The timer has been running since {startedAt}.",
+	"errors_no_session_running": "The timer is not running.",
+	"errors_session_overlap": "This overlaps the block {from} – {to}.",
+	"errors_session_overlap_open": "This overlaps the running timer, going since {from}.",
+	"errors_activity_overlap": "This overlaps {project} ({from} – {to}).",
+	"errors_outside_tracked_time": "{duration} falls outside the timer's run.",
+	"errors_no_placement_anchor": "{date} has no entry and no timer block to start from.",
+	"errors_nothing_to_log_empty_interval": "No time has passed since your last entry.",
+	"errors_nothing_to_log_no_tracked_time": "The timer was not running then.",
+	"errors_nothing_to_log_all_slivers": "What is left is shorter than a minute.",
+	"errors_nothing_to_log_already_covered": "That time is already described.",
+	"errors_project_exists": "A project called {projectName} already exists.",
+	"errors_project_in_use": [
+		{
+			"declarations": [
+				"local entryCountPlural = entryCount: plural"
+			],
+			"selectors": [
+				"entryCountPlural"
+			],
+			"match": {
+				"entryCountPlural=one": "{projectName} has {entryCount} entry, so it cannot be deleted. Archiving hides it from the picker.",
+				"entryCountPlural=other": "{projectName} has {entryCount} entries, so it cannot be deleted. Archiving hides it from the picker."
+			}
+		}
+	],
+	"errors_project_archived": "{projectName} is archived.",
+	"errors_future_timestamp": "That time cannot be in the future.",
+	"errors_interval_too_short": "A block has to last at least {minSeconds} s.",
+	"errors_stale_preview": "Something changed in the meantime — here is the new preview.",
+	"errors_payload_too_large": "That description is too long.",
+	"errors_rate_limited_request": "Too many requests. Try again in {retryAfterSeconds} s.",
+	"errors_rate_limited_login": "Too many login attempts. Try again in {retryAfterSeconds} s.",
+	"errors_service_unavailable": "The server cannot answer right now. Try again in {retryAfterSeconds} s.",
+	"errors_method_not_allowed": "That action is not allowed here.",
+	"errors_idempotency_key_reused": "This request has already been processed.",
+	"errors_nothing_to_log": "There is nothing to log.",
+	"errors_rate_limited": "Too many requests. Try again in {retryAfterSeconds} s.",
+	"errors_login_failed": "Incorrect passphrase.",
+	"errors_internal_error": "Something went wrong. If you report it, quote {requestId}.",
+	"fields_required": "This field is required.",
+	"fields_invalid": "This value is not valid.",
+	"fields_invalid_choice": "Choose one of the offered options.",
+	"fields_invalid_date": "Enter a date as YYYY-MM-DD.",
+	"fields_invalid_timestamp": "Enter a time as HH:MM.",
+	"fields_invalid_id": "This is not a valid identifier.",
+	"fields_wrong_type": "This value is of the wrong type.",
+	"fields_too_long": "{max} characters at most.",
+	"fields_too_short": "{min} characters at least.",
+	"fields_too_large": "{max} at most.",
+	"fields_too_small": "{min} at least.",
+	"fields_bounds_together": "Start and end go together.",
+	"fields_date_required_for_duration": "A duration needs a day as well.",
+	"fields_unknown": "This field does not belong here.",
+	"aria_timeline": "Timeline for {date}",
+	"aria_session_block": "Timer block {from} – {to}, {duration}",
+	"aria_session_start_edge": "Edit the block's start, {time}",
+	"aria_session_end_edge": "Edit the block's end, {time}",
+	"aria_uncovered_block": "Not described, {from} – {to}, {duration}, fill in",
+	"aria_rhythm_row": "{date}, worked {worked}",
+	"aria_project_swatch": "Colour of {project}",
+	"aria_close_dialog": "Close the dialog",
+	"aria_open_settings": "Open settings"
 }
