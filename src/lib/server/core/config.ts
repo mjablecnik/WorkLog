@@ -265,6 +265,29 @@ function parseIntEnv(
 	return n;
 }
 
+// `tasks.md` (component 1.2/13) requires the flag to be read as one of these values,
+// case-insensitively, never as mere presence — an operator following that description
+// who sets `ALLOW_DAY_BOUNDARY_CHANGE=1` or `=yes` must not be met with a fatal
+// configuration error.
+const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes']);
+const FALSE_ENV_VALUES = new Set(['0', 'false', 'no']);
+
+function parseBooleanEnv(
+	problems: string[],
+	name: string,
+	raw: string | undefined,
+	def: boolean
+): boolean {
+	if (raw === undefined || raw === '') return def;
+	const normalized = raw.trim().toLowerCase();
+	if (TRUE_ENV_VALUES.has(normalized)) return true;
+	if (FALSE_ENV_VALUES.has(normalized)) return false;
+	problems.push(
+		`${name} must be one of ${[...TRUE_ENV_VALUES, ...FALSE_ENV_VALUES].join(', ')} (case-insensitive), got ${JSON.stringify(raw)}`
+	);
+	return def;
+}
+
 function parseEnum<T extends string>(
 	problems: string[],
 	name: string,
@@ -381,15 +404,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		}
 	}
 
-	const allowDayBoundaryChange =
-		parseEnum(problems, 'ALLOW_DAY_BOUNDARY_CHANGE', env.ALLOW_DAY_BOUNDARY_CHANGE, 'false', [
-			'true',
-			'false'
-		] as const) === 'true';
+	const allowDayBoundaryChange = parseBooleanEnv(
+		problems,
+		'ALLOW_DAY_BOUNDARY_CHANGE',
+		env.ALLOW_DAY_BOUNDARY_CHANGE,
+		false
+	);
 
 	let corsOrigins: string[] = [];
 	if (env.CORS_ORIGINS !== undefined && env.CORS_ORIGINS !== '') {
-		corsOrigins = env.CORS_ORIGINS.split(',');
+		corsOrigins = env.CORS_ORIGINS.split(',')
+			.map((o) => o.trim())
+			.filter((o) => o.length > 0);
 		if (corsOrigins.includes('*') && appEnv !== 'development') {
 			problems.push('CORS_ORIGINS must not be a wildcard outside development');
 		}
