@@ -587,13 +587,13 @@ The runtime is Bun 1.2.15 with SvelteKit ^2.63 on Svelte 5, Drizzle ORM over `po
     - The design is consistent with this: the session rows live in `store/auth-sessions.ts` and the idempotency rows in `store/idempotency.ts`, so no `core` module reaches for the database
     - _Requirements: 6.1, 6.2_
 
-  - [ ]* 10.2 Write property tests for write atomicity and reachability
+  - [x]* 10.2 Write property tests for write atomicity and reachability
     - `tests/lib/server/store/atomicity.property.test.ts` against a real database
     - **Property 10: Rejected writes leave no trace**
     - **Property 16: Every entry stays reachable**
     - **Validates: Requirements 2.10, 6.11, 7.2**
 
-  - [ ]* 10.3 Write property tests for the dry run
+  - [x]* 10.3 Write property tests for the dry run
     - `tests/api/dry-run.property.test.ts`
     - **Property 13: A dry run predicts the write exactly**
     - **Property 14: A dry run changes nothing**
