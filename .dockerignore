@@ -1,0 +1,22 @@
+.git
+tests/
+.env
+.env.*
+!.env.example
+.kiro/
+.agents/
+.design/
+build/
+node_modules/
+.svelte-kit/
+*.md
+.vscode/
+.idea/
+playwright-report/
+test-results/
+coverage/
+backups/
+tmp/
+*.log
+
+# migrations/ and scripts/ are NOT excluded — the runtime image needs both.
