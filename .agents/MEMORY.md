@@ -1,5 +1,36 @@
 # Memory
 
+## Bun's own `.env` loader corrupts any value containing `$name` (the argon2id hash)
+- Project: worklog
+- Problem: `bun run dev` and `bun run build` (plain `vite dev`/`vite build` in
+  package.json, relying on Bun's automatic `.env` loading) both crashed with
+  `WORKLOG_PASSPHRASE_HASH must be present and a parseable argon2id hash` — or, with
+  every field missing, depending on exactly how Bun was invoked — even though `.env`
+  held a real, correctly-formatted hash. Root cause, isolated to a two-line repro:
+  Bun's own `.env` parser performs shell-style `$name` variable expansion on every
+  value it reads, unconditionally, whether the value is unquoted, single-quoted or
+  double-quoted (confirmed on Bun 1.4.0 — this is not the documented dotenv
+  convention, where single quotes suppress expansion). An argon2id hash
+  (`$argon2id$v=19$m=65536,...$<salt>$<hash>`) is mostly `$something` sequences with
+  no matching environment variable, so every one silently resolves to empty and the
+  value comes out mangled. Separately, `bun run <script>` does not reliably propagate
+  its own `.env`-loaded vars into a spawned subprocess like `vite` at all (sometimes
+  every var is simply missing) — the same PATH-shim class of issue already on record
+  below for Vitest, just manifesting as vars-not-loaded instead of a transpiler bug.
+  A value already sitting in `process.env` before Bun starts (real shell `export`, a
+  Docker `ENV` instruction, or anything not parsed from a `.env` file by Bun itself)
+  is never touched — only Bun's own file-parsing corrupts it.
+- Solution: never let Bun parse the `.env` file for a value that contains `$`.
+  `scripts/run-vite.sh` loads `.env` the same way `migrate.sh`/`backup.sh` already
+  do — plain `read` line by line, `export`ed directly, never `source`d and never
+  handed to Bun's `--env-file` — then `exec bun vite "$@"`, so Bun only ever sees an
+  already-populated real environment. `package.json`'s `dev`/`build`/`preview`
+  scripts call this wrapper instead of `vite` directly. The Docker build is
+  unaffected (its builder stage sets the placeholder config via a plain `ENV`
+  instruction, never `.env`), but `scripts/` still had to be added to the builder
+  stage's `COPY` list since `bun run build` now execs into it.
+- Source: build, 2026-08-24T02:58Z
+
 ## Bun's `bun run` PATH shim breaks zod + postgres.js together under Vitest
 - Project: worklog
 - Problem: Any Vitest test file that (directly or via a setup file) imports both
