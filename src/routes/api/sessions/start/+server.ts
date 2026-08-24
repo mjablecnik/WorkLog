@@ -24,7 +24,7 @@ export const POST: RequestHandler = async (event) => {
 			previewToken: body.previewToken,
 			now
 		});
-		return json(result, { status: body.dryRun ? 200 : 201 });
+		return json(result, { status: 201 });
 	} catch (err) {
 		return errorResponse(err, event.locals.requestId);
 	}

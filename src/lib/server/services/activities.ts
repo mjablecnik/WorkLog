@@ -312,8 +312,11 @@ export async function createActivity(
 	const run = async (tx: Tx): Promise<ActivityResponse & { dryRun: boolean }> => {
 		await assertProjectUsable(tx, args.projectId);
 
+		// A Dry_Run never creates anything, so it neither consults nor claims an
+		// Idempotency-Key: a client that previews with a key and then confirms with the
+		// same key must reach a genuine first write, not a replay of the preview.
 		let canonicalHash: string | null = null;
-		if (args.idempotencyKey !== undefined) {
+		if (args.idempotencyKey !== undefined && !args.dryRun) {
 			canonicalHash = canonicalRequestHash({
 				projectId: args.projectId,
 				description: args.description,
