@@ -987,3 +987,471 @@ and marked accordingly.
 - Next: unchanged from the original entry — build the context/snippet passthrough in
   `+layout.svelte`/`Shell.svelte` first, then wire each page's two-item (or
   single-action) sheet content through it.
+
+## [HIGH] Every fresh visit (system theme preference) 500s on the server — the whole app is unreachable for a first-time browser
+- Run: 2026-08-24 (task group 11, E2E)
+- Status: RESOLVED (2026-08-24, same day, by a peer agent working the same task
+  group) — `writeResolvedCookie()`/`writePreferenceCookie()` in
+  `src/lib/theme/theme.svelte.ts` now carry the same `typeof document ===
+  'undefined'` guard `applyDomTheme()` already had. Verified live by this agent
+  after rebuilding (`bun run build` — `bun run preview` serves the prebuilt
+  output, so a source fix alone does not take effect without a fresh build) and
+  re-running the exact reproduction: `GET /login` with no cookies at all now
+  answers 200, not 500. The `tests/e2e/fixtures.ts` cookie-seeding workaround
+  (`seedNonSystemThemeCookie`) is left in place — it is harmless now (dark/light
+  are valid preferences either way) and every spec in this suite already depends
+  on it; removing it and adding the now-possible reload-under-`system` scenario
+  is follow-up work, not done as part of this fix.
+- Phase: impl (found while writing the E2E suite — this is the first time any task
+  actually drives the running app over real HTTP from a browser; every earlier
+  checkpoint that would have caught it — tasks 2, 4 and 10's "walk it by hand"
+  checkpoints — is still unchecked in `tasks.md`)
+- Status: OPEN
+- What: `src/lib/theme/theme.svelte.ts`'s `writeResolvedCookie()` (used by both
+  `document.cookie` writers, `writePreferenceCookie`/`writeResolvedCookie`) has no
+  `typeof document === 'undefined'` guard, unlike its sibling `applyDomTheme()` which
+  does (`if (typeof document === 'undefined') return;`). `initTheme()` calls
+  `writeResolvedCookie(resolved)` unconditionally whenever `preference === 'system'`
+  — and `src/routes/+layout.svelte` calls `initTheme(data.themePreference,
+  data.themeResolved)` as a **synchronous top-level statement**, which SvelteKit
+  also runs during SSR (its own doc comment says so explicitly: "Both functions
+  already guard their `window`/`document` touches internally, so calling them
+  unconditionally here is safe server-side" — true for `initLocale`, false for
+  `initTheme`). `data.themePreference` is `'system'` for absolutely every visitor
+  who has never touched the `Theme_Switcher` — `hooks.server.ts`'s `handleLocals`
+  defaults `locals.theme` to `'system'` whenever the `worklog_theme` cookie is
+  absent — so the very first request from any browser with an empty cookie jar hits
+  this branch, calls `document.cookie = ...` in the Node/Bun SSR runtime, and throws
+  `ReferenceError: document is not defined`.
+- Impact: **every page 500s for a first-time visitor**, including `GET /login`
+  itself — confirmed live: `curl` against a freshly-migrated database with no
+  cookies at all got `[500] GET /login — ReferenceError: document is not defined at
+  writeResolvedCookie (.svelte-kit/output/server/entries/pages/_layout.svelte.js)`.
+  A visitor cannot even reach the login form to authenticate. The crash recurs on
+  **any** full navigation/reload performed while the `worklog_theme` cookie reads
+  `system` (not only the very first one) — it is not a one-time first-paint
+  artifact, it is a standing SSR crash gated on that cookie value. Requirements
+  17.4-17.10 (system theme resolution, first-paint correctness) cannot be honoured
+  at all in this state, and this blocks task 11's E2E suite by default: every
+  `page.goto()` in a fresh Playwright browser context starts with no cookies, i.e.
+  `system` preference, i.e. a 500.
+- Tried: Reproduced directly with `bun run preview` against a real `worklog_test`
+  database (migrated, empty) and plain `curl`: `GET /` correctly 303s to `/login`
+  (the redirect happens in a `load` function, before the layout component ever
+  renders, so it doesn't hit this path), but `GET /login` itself 500s exactly as
+  described, twice in the log for one request (the error page's own render of
+  `+layout.svelte` hits the same crash while trying to render `+error.svelte`).
+  Confirmed the fix shape by inspecting `applyDomTheme()`'s existing guard — the same
+  one-line guard on `writeResolvedCookie` (and, for safety, `writePreferenceCookie`,
+  which is currently only ever called client-side but carries no guard either) would
+  resolve it, but per this task's instructions that fix was left for review rather
+  than made here.
+- Workaround used to keep task 11's E2E suite unblocked: `tests/e2e/fixtures.ts` now
+  seeds a `worklog_theme=dark` (or `light`) cookie via `context.addCookies()` before
+  the first navigation of every test, which resolves `locals.theme` to a
+  non-`'system'` value server-side and steers every request around the crashing
+  branch entirely. Specs that need to exercise the `system` preference do so
+  client-side only (choosing "Systém" in the `Settings_Menu` and reading
+  `data-theme` back without an intervening `page.reload()`/`page.goto()`) —
+  `settings.spec.ts` documents this explicitly at the point it matters. No spec
+  reloads or navigates while the theme preference is `system`, because that would
+  hit this bug rather than test anything.
+- Next: add the same `typeof document === 'undefined'` guard `applyDomTheme()`
+  already has to `writeResolvedCookie()` and `writePreferenceCookie()` in
+  `src/lib/theme/theme.svelte.ts`, then delete the cookie-seeding workaround from
+  `tests/e2e/fixtures.ts` and add the reload-under-`system` scenario the workaround
+  is currently avoiding.
+
+## [HIGH] `GET /stats` 500s — `src/routes/stats/+page.svelte` was never written
+- Run: 2026-08-24 (task group 11, E2E)
+- Status: RESOLVED (2026-08-24, same day, by a peer agent working the same task
+  group) — `src/routes/stats/+page.svelte` and
+  `src/modules/stats/pages/StatsPage.svelte` now exist, assembling `KpiRow` +
+  `ProjectBreakdown` + `DayRhythm`/`RhythmPanel` from `+page.server.ts`'s data.
+  Verified live by this agent after rebuilding (`bun run build`, required for
+  `bun run preview` to pick up the fix — it serves the prebuilt output, not
+  source): `GET /stats` with a real session now answers 200. Task 11.5's
+  accessibility/responsive sweep and 11.6's visual conformance pass now cover
+  `/stats` and the `Stats` artboard, both previously excluded here.
+- Phase: impl (found while investigating the environment before writing any of
+  task group 11's specs — the first pass to actually navigate to `/stats` in a
+  real browser/HTTP client rather than unit- or component-testing
+  `src/modules/stats/**` in isolation)
+- What: `src/routes/stats/` holds only `+page.server.ts` (task 8.1's load function,
+  6.6 KB, clearly implemented — reads the day summaries, builds `StatsRange`, etc.)
+  — there is no `+page.svelte` anywhere under that route. Every component task 8.2
+  and 8.3 built (`KpiRow`, `CoverageMeter`, `ProjectBreakdown`, `DayRhythm`,
+  `RhythmPanel`) exists under `src/modules/stats/components/` and is covered by its
+  own component tests, but nothing in `src/routes/` ever imports and assembles
+  them the way `src/modules/projects/pages/ProjectsPage.svelte` does for
+  `/projects` (compare: `src/routes/projects/+page.svelte` exists and renders
+  `ProjectsPage`; `src/routes/stats/+page.svelte` does not exist at all, and there
+  is no `src/modules/stats/pages/` directory either).
+- Impact: `GET /stats` 500s for every authenticated request — confirmed live
+  against a real `worklog_test` database with a valid session: `curl` got
+  `HTTP/1.1 500`, body rendering `+error.svelte` ("Tady nic není" / "Internal
+  Error"), `error: {message:"Internal Error"}` in the hydration payload. The
+  entire statistics page — everything Requirements 12.1-12.20 describe — is
+  unreachable. This also means task 11.5's accessibility/responsive pass (axe,
+  keyboard walk, 320px-no-overflow, the `KPI_Row`/breakdown mobile layout) cannot
+  cover `/stats` at all, even though the task brief calls this page out by name as
+  one of only two pages (with `/projects`) that have no mobile artboard to check
+  against otherwise — and task 11.6's visual pass cannot compare the `Stats`
+  artboard against anything real either.
+- Tried: confirmed the 500 is specifically the missing-component error (not a data
+  or config problem) by checking the route directory listing directly
+  (`+page.server.ts` present, `+page.svelte` absent) and cross-checking against
+  the sibling `/projects` route, which has both files and renders correctly.
+- Workaround: none available without writing production code, which this task's
+  instructions forbid. `tests/e2e/a11y.spec.ts` excludes `/stats` from its
+  four-page sweep (timer, day, projects — not statistics) and says so in a comment
+  pointing at this entry; task 11.6's visual conformance pass records the `Stats`
+  artboard comparison as blocked here instead of silently skipping it.
+- Next: write `src/routes/stats/+page.svelte` (and, if the project wants to mirror
+  `/projects`' shape, a `src/modules/stats/pages/StatsPage.svelte` the route
+  delegates to) assembling `RangeControl` + `KpiRow` + `ProjectBreakdown` +
+  `DayRhythm`/`RhythmPanel` from `+page.server.ts`'s already-correct `data`, per
+  design.md's "Statistics Page" section — then re-run task 11.5's axe/responsive
+  pass and 11.6's visual pass against the real page.
+
+## [HIGH] Every write that carries a Preview_Token always answers STALE_PREVIEW — the entire Dry_Run confirmation mechanism is non-functional
+- Run: 2026-08-24 (task group 11, E2E)
+- Phase: impl (found writing `tests/e2e/day.spec.ts`/`preview.spec.ts` — the first
+  tasks to drive a real confirm-after-preview write through the actual running
+  app; every earlier test of this path is a component test that mocks the server
+  response, so it never exercised the real two-request round trip against a real
+  database)
+- Status: OPEN
+- What: `computePreviewToken` (`src/lib/server/core/preview-token.ts`) fingerprints
+  every `Work_Session`/`Activity_Segment` overlapping a window, including each
+  session's own `updatedAt`. Every write function in
+  `src/lib/server/services/sessions.ts` and `services/activities.ts` follows the
+  same shape: compute a `previousToken` fingerprint **before** mutating anything
+  and compare it against the client's submitted `previewToken`
+  (`assertFreshPreview`), then mutate, then (`finishWrite`) compute the token
+  **returned to the client** by re-fingerprinting the SAME window **after** the
+  mutation, inside the same (possibly soon-to-be-rolled-back) transaction. A
+  `Dry_Run`'s returned `previewToken` therefore always reflects the row's
+  post-write state — including a freshly `now()`-derived `updatedAt` on the
+  session being written — while the corresponding real write's own freshness
+  check always reads the row's pre-write state. For a CREATE the pre-write state
+  is empty (nothing overlaps yet) while the dry run's returned token reflects a
+  hypothetical non-empty row — guaranteed mismatch. For a PATCH the pre-write
+  state is the real, currently-stored `updatedAt`, while the dry run's returned
+  token embeds a **different**, dry-run-transaction-local `updatedAt` computed
+  from `now()` at preview time — also a guaranteed mismatch, confirmed live (see
+  below) even calling dry-run-then-confirm back-to-back with nothing else
+  touching the database in between. This is not a race condition, not fixable by
+  retrying, waiting, or slowing down — every dry run's own returned token is
+  architecturally unable to equal what any later real write compares it against,
+  for every write shape this project has (`createSession`, `patchSession`, and by
+  the same pattern in `activities.ts`, `createActivity`/`patchActivity`).
+- Impact: **A `Dry_Run` preview can never be confirmed once it carries a
+  `Preview_Token`, for any write, at any speed.** Confirmed live with `curl`,
+  bypassing the browser and any timing entirely:
+  - `POST /api/sessions` (`dryRun:true`) → real `previewToken`; the SAME token
+    replayed immediately on `POST /api/sessions` (`dryRun:false`) → 409
+    `STALE_PREVIEW`.
+  - `PATCH /api/sessions/{id}` (`dryRun:true`) → real `previewToken`; the SAME
+    token replayed immediately on `PATCH /api/sessions/{id}` (`dryRun:false`) →
+    409 `STALE_PREVIEW`, `currentToken` differs from `submittedToken` even though
+    nothing else touched the row in between.
+  - `POST /api/activities` (`dryRun:true` then `dryRun:false` with the same
+    token, `Explicit_Mode`) → 409 `STALE_PREVIEW` identically.
+  - Any of the above **without** a `previewToken` at all succeed immediately
+    (`assertFreshPreview` only runs when a token is submitted) — the
+    create/patch/clip logic itself is correct; only the token check is broken.
+  - The real UI **always** attaches a `previewToken` once a preview has
+    resolved, for every mode and every write: `ActivityDialog.svelte`'s and
+    `SessionDialog.svelte`'s hidden wire forms both include it unconditionally
+    whenever `preview.rejection === null`, and the 400ms debounce virtually
+    guarantees a resolved preview exists by the time a user (or an automated
+    click) reaches Save. Reproduced end-to-end through a real Playwright browser
+    session against `SessionDialog`'s real create AND real patch forms: every
+    attempt — the initial "skip the confirm step, nothing to reclip" shortcut
+    submit, and every subsequent explicit "Potvrdit a uložit" click in the
+    confirming state it falls back to — fails with the same error, forever;
+    confirmed across many manual retries with multi-second gaps between them and
+    with a settle delay added before each submit specifically to rule out a
+    debounce race.
+  - **This means creating OR editing a `Work_Session` or an `Activity_Entry`
+    through the running application's own UI does not currently work at all**,
+    for any user, in any browser, at any speed, the moment the write is one a
+    `Change_Preview` is shown for (i.e. essentially always — the only writes that
+    skip it are the ones this bug happens to route around by construction, see
+    below). Every requirement the day/timer pages exist to serve — logging what
+    you worked on, adding a missed timer block, shortening or deleting a
+    session — is unusable end to end through the confirm step. `Requirements
+    6.1, 6.14, 6.19, 7.4-7.8, 8.1-8.6, 8.9, 8.10, 9.7` are all affected on the
+    confirming side.
+  - Two things are NOT affected, and it matters why: the `Timer_Control`
+    start/stop buttons, because `TimerControl.svelte` never attaches a
+    `previewToken` to begin with (no `Change_Preview` step exists for the timer
+    button at all) — start/stop route around the bug by construction, not
+    because the check is correct. And an overlap/conflict rejection
+    (`ACTIVITY_OVERLAP`/`SESSION_OVERLAP`) is also unaffected, since that check
+    runs during the dry run itself, before any confirm token is ever compared —
+    a genuinely-conflicting write is correctly rejected and never reaches the
+    broken comparison at all.
+- Tried: root-caused by reading `preview-token.ts` and every `create*`/`patch*`
+  function in both `services/sessions.ts` and `services/activities.ts` side by
+  side; confirmed the exact mechanism (the returned token is always computed
+  post-mutation, the comparison token is always computed pre-mutation) and
+  reproduced it multiple independent ways — raw `curl` dry-run-then-confirm
+  round trips against `/api/sessions` (both CREATE and PATCH) and against
+  `/api/activities` (CREATE), and a real Playwright browser session driving both
+  `SessionDialog`'s create form and its patch/edit form end to end
+  (`day.spec.ts`/`preview.spec.ts`, written for this task). Initially
+  mis-diagnosed PATCH as unaffected (an earlier pass of this entry said so) —
+  that conclusion came from testing "PATCH with no token" (which does work) and
+  not "PATCH with a real dry-run token immediately confirmed," which fails
+  identically to CREATE once actually tried; correcting the record here rather
+  than leaving the earlier, narrower claim standing.
+- Workaround used to keep task 11's E2E suite unblocked: every spec that needs a
+  `Work_Session`/`Activity_Entry` to already exist as setup data creates it via a
+  direct authenticated `page.request.post()`/`.patch()` call to the same public
+  REST API real scripts use (README: "Scripts and phone shortcuts use the bearer
+  token against the same endpoints"), omitting `previewToken` — never through the
+  broken dialog confirm step (`createSessionViaApi`/`createActivityViaApi` in
+  `tests/e2e/fixtures.ts`). Assertions about what the UI actually **shows** — the
+  timeline, a `Change_Preview`'s rendered rejection/loss/uncovered text, a
+  dialog's prefill, an overlap rejection, a toast — still go through the real
+  components, since none of that rendering depends on a confirm ever succeeding.
+  Where a task requirement is specifically about the CREATE/PATCH-confirm UI flow
+  itself completing (`preview.spec.ts`'s "confirm this time" step,
+  `gaps.spec.ts`'s "save" step, `open-mode.spec.ts`'s `Activity_Dialog`
+  `Open_Mode` create), the spec says so in a comment at the point it substitutes
+  a direct API call, and the task report lists every such substitution
+  explicitly rather than leaving it implicit.
+- Next: fix `finishWrite`'s (and its `activities.ts` equivalent's) returned
+  `previewToken` so it is computed the SAME way, over the SAME pre-mutation
+  snapshot, as the comparison token the next real write will check it against —
+  the dry run should hand back a fingerprint of the state that must NOT have
+  changed by confirm time, not a fingerprint of its own hypothetical result.
+  Concretely: compute one fingerprint up front (`previousToken`), use it for both
+  the freshness comparison AND as the returned `previewToken` — there is no need
+  for a second, post-mutation fingerprint at all, since staleness is about
+  whether anything ELSE changed the affected rows between preview and confirm,
+  not about what this write itself is about to do to them. Add an integration
+  test that does exactly what this issue's `curl` reproductions did — dry run,
+  then confirm with the returned token, immediately, nothing else touching the
+  database in between, for CREATE and PATCH on both sessions and activities —
+  since every existing test apparently mocks one side of this round trip rather
+  than running both for real against a live database.
+
+## [MEDIUM] An overlap rejection renders as "Překrývá se se záznamem undefined (undefined – undefined)."
+- Run: 2026-08-24 (task group 11, E2E — `tests/e2e/conflict.spec.ts`)
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `ChangePreview.svelte`'s `rejectionMessage()`
+  now runs `adaptOverlapDetails()` first, extracting `details.conflicts[0]` into the
+  flat `{project, from, to}` / `{from, to}` / `{from}` shape each overlap message key
+  expects, for both `ACTIVITY_OVERLAP` and `SESSION_OVERLAP`.
+- What: `ChangePreview.svelte`'s `rejectionMessage()` calls the message function
+  named by `rejection.messageKey` with `rejection.details` passed through
+  verbatim: `fn(rejection.details ?? {})`. This works for every rejection whose
+  API `details` shape already matches the message's flat interpolation
+  parameters, but `errors_activity_overlap` — `"Překrývá se se záznamem
+  {project} ({from} – {to})."` — needs `{project, from, to}`, while
+  `POST /api/activities`'s `ACTIVITY_OVERLAP` error actually returns `{
+  conflictCount, conflicts: [{ entryId, projectName, colorIndex, description,
+  interval: { start, end } }] }` — a nested array under different field names
+  entirely. None of `project`/`from`/`to` exist at the top level of `details`,
+  so all three interpolations render as literal `undefined`. Confirmed live,
+  through the real `ActivityDialog` in a real browser: logging an activity that
+  overlaps an existing one renders the rejection body as `"Překrývá se se
+  záznamem undefined (undefined – undefined)."` verbatim. `errors_session_overlap`
+  — `"Překrývá se s úsekem {from} – {to}."` — is built the same way from a
+  differently-shaped `SESSION_OVERLAP` `details.conflicts[]`, and is presumably
+  affected identically, though this pass only reproduced the activity case live
+  (`conflict.spec.ts`'s scenario).
+- Impact: Requirement 15.9 ("an overlap conflict names the conflicting records")
+  is not met via `ChangePreview` — the rejection is correctly DETECTED (Save
+  stays disabled, nothing is written) and a message IS shown, but the message
+  names nothing: no project, no time range, nothing a user could use to find and
+  resolve the conflict. Contrast `+page.svelte` (the timer page)'s own
+  `buildFailureMessage()`, which handles the identical `SESSION_OVERLAP` shape
+  correctly by extracting `details.conflicts[0]` and mapping `interval.start`/
+  `interval.end` to the `from`/`to` the message template wants — the fix belongs
+  in `ChangePreview.svelte`'s `rejectionMessage()`, generalized so it can pick
+  the right extraction per messageKey shape (or, better, matched to whatever
+  shape the two overlap codes actually share).
+- Tried: reproduced live via Playwright driving the real `ActivityDialog`
+  (`conflict.spec.ts`); traced the mismatch by comparing `rejectionMessage()`'s
+  call site against the actual `ACTIVITY_OVERLAP` JSON body from a direct `curl`
+  request, and against the message catalogue's own parameter list for
+  `errors_activity_overlap`/`errors_session_overlap`.
+- Next: `ChangePreview.svelte`'s `rejectionMessage()` needs to extract
+  `details.conflicts[0]` (`projectName`/`description`/`interval` for an activity
+  conflict, `interval`/`open` for a session conflict) into the flat
+  `project`/`from`/`to` shape the two overlap message keys expect, the same way
+  `+page.svelte`'s `buildFailureMessage()` already does for the timer page's own
+  `SESSION_OVERLAP` handling — ideally by extracting that mapping into something
+  both call, rather than fixing it in one place and leaving the other's own
+  duplicate copy to drift.
+
+## [HIGH] Logging out does nothing — the form is removed from the DOM before its own submit completes
+- Run: 2026-08-24 (task group 11, E2E — `tests/e2e/auth.spec.ts`)
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `handleLogoutSubmit()` (`SettingsMenu.svelte`)
+  now defers `open = false` to a macrotask (`setTimeout(..., 0)`) instead of setting it
+  synchronously inside the submit handler, so the form stays connected to the
+  document through the browser's own native submission dispatch. Verified live: the
+  server's `/logout` action itself (confirmed correct all along) now actually
+  receives the request and clears the session cookie.
+- What: `SettingsMenu.svelte`'s logout form —
+  `<form method="POST" action="/logout" onsubmit={handleLogoutSubmit}>` — calls
+  `handleLogoutSubmit()` synchronously on submit:
+  ```js
+  function handleLogoutSubmit(): void {
+      open = false;
+  }
+  ```
+  Setting `open = false` immediately unmounts the `{#if open}` block that
+  contains this very form (both the desktop panel and the mobile sheet render
+  it there, per the component's own template). Since the form is a plain
+  `method="POST"` submission with no `use:enhance` and no
+  `event.preventDefault()`, removing it from the document DURING its own
+  `submit` event handler cancels the browser's native form submission outright.
+  Confirmed live through a real browser (Playwright, but this is a plain DOM/
+  HTML mechanic — any real user hits it identically): clicking "Odhlásit se"
+  logs a browser console warning, `Form submission canceled because the form is
+  not connected`, no request to `/logout` is ever sent, and the page stays
+  exactly where it was.
+- Impact: **Logging out does not work at all**, for any user, through the only
+  logout control the interface has — `SettingsMenu.svelte`'s own doc comment
+  says so explicitly: "the logout row submits the logout form action and is the
+  only logout control in the interface." Requirements 1.6, 1.20 (logout inside
+  `Settings_Menu`) and the session-lifecycle expectations `2.1-2.7` build on are
+  unmet: a session can only actually end by expiring or by clearing cookies by
+  hand outside the app.
+- Tried: reproduced live via Playwright driving the real `Settings_Menu`
+  (desktop popover); the browser's own console warning names the exact
+  mechanism, and the code confirms it — `open = false` runs before the form's
+  native submit has a chance to leave the page, unmounting the form it is
+  submitting.
+- Workaround used to keep task 11's E2E suite unblocked: specs that need a
+  logged-out `page`/session use a direct `POST /logout` (`page.request.post`)
+  or `context.clearCookies()` instead of clicking "Odhlásit se" — the same
+  pattern every other 11.x spec uses to route around a write path that does not
+  currently work through its own UI control. `auth.spec.ts` still drives the
+  real click once, and asserts what actually happens (nothing) rather than
+  asserting the requirement's happy path, so this stands as the regression test
+  for the bug rather than silently omitting it.
+- Next: don't set `open = false` synchronously inside `onsubmit`. Either defer
+  it (e.g. `requestAnimationFrame`/a microtask after the event handler returns,
+  once the browser has already captured the form for submission) or — simpler
+  and more in keeping with every other write in this codebase — give this form
+  a real `use:enhance` and close the menu in ITS callback once the action
+  result is known, the same way every other form submission here already
+  defers its own UI state changes to after the round trip rather than before it.
+
+## [HIGH] `src/app.css` is never imported — the entire design-token/Tailwind system never reaches the running application
+- Run: 2026-08-24 (task group 11, E2E — found while investigating why no
+  element shows a visible focus ring for `a11y-interaction.spec.ts`)
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `src/routes/+layout.svelte` now imports
+  `../app.css` at the top of its `<script>` block. Verified live: a fresh
+  `bun run build && bun run preview`, logged in via a throwaway passphrase against
+  `worklog_test`, shows the token-bearing CSS chunk (`0.<hash>.css`) linked in every
+  page's `<head>`.
+- What: `src/app.css` is the one file that does `@import 'tailwindcss'`,
+  `@import './lib/theme/theme.css'`, `@import './lib/theme/palette.css'` and
+  `@import './lib/theme/timeline-heights.css'`, and declares the `@theme`
+  block mapping design tokens to Tailwind utilities — task 1.4's own doc
+  comment describes it as the entry point for the whole styling system.
+  Nothing in `src/` ever imports it: not `src/routes/+layout.svelte`, not
+  `src/app.html`, not `src/hooks.client.ts`, not `vite.config.ts` (which
+  registers the `@tailwindcss/vite` plugin but gives it no entry CSS file to
+  process — the plugin needs a real `@import 'tailwindcss'` reachable from the
+  module graph, same as any other CSS entry point). `grep -rl "app\.css"
+  src/` matches only `src/app.css` itself.
+- Impact: **every CSS custom property this design system defines —
+  `--bg`, `--text`, `--accent`, `--panel`, `--focus-gap`, the entire palette,
+  every token theme.css/palette.css/timeline-heights.css declare — is
+  undefined in the actual running application, in both themes, on every
+  page.** Confirmed live multiple ways: `getComputedStyle(document.
+  documentElement).getPropertyValue('--bg')` returns `""` (empty) despite
+  `<html data-theme="dark">` correctly carrying the attribute and
+  `[data-theme='dark'] { --bg: #0f1319; ... }` existing verbatim in
+  `theme.css`; `getComputedStyle(document.body).backgroundColor` and the
+  `<html>` element's own are both `rgba(0, 0, 0, 0)` (transparent); a
+  screenshot of a real page (`bun run build && bun run preview`, a fully
+  seeded day) renders plain black text on a plain white background with no
+  accent color, no panel backgrounds, no borders, no dark theme at all —
+  layout and spacing look correct (every component's own scoped `<style>`
+  block still applies, since those load independently of `app.css`) but every
+  single `color`/`background`/`border-color` declaration that reads
+  `var(--token)` silently resolves to nothing. This is also the direct cause
+  of the missing focus ring `a11y-interaction.spec.ts` was written to check:
+  `:focus-visible { box-shadow: 0 0 0 2px var(--focus-gap), 0 0 0 4px
+  var(--accent); }` has no fallback on either `var()`, so with `--focus-gap`
+  and `--accent` both undefined the whole `box-shadow` declaration is invalid
+  at computed-value time and resolves to `none` — not a focus-ring bug on its
+  own, a symptom of this one. Every requirement this spec's `Design_Tokens`,
+  both themes, the whole `Design_System` subset (tasks 1.3-1.5) exist to
+  satisfy is unmet in the shipped app, even though every *component test* of
+  these tokens (`tests/lib/theme/*.test.ts`, `tests/lib/viz/palette.test.ts`)
+  passes — those import `theme.css`/`palette.ts` directly in a Vitest/jsdom
+  environment, which never exercises whether the real app's own module graph
+  actually loads them.
+- Tried: root-caused by grepping every `src/` file for an `app.css` import
+  (zero besides the file itself) and confirming from the other direction —
+  `getComputedStyle` on `<html>`/`<body>` for both a raw custom property and a
+  real computed color, in a real browser via Playwright, against a real build
+  (`bun run build`, not dev mode, to rule out a dev-only HMR quirk) — and by
+  reviewing an actual page screenshot, which shows the unstyled result
+  directly.
+- Workaround: none applied — every E2E spec in this suite still passes
+  wherever its assertions are about structure, text content, ARIA roles/
+  labels or navigation rather than about a specific rendered color or
+  computed style, since only the latter is affected. The one assertion this
+  pass could not make as originally planned — "every focused control shows a
+  focus ring with an actual ring color" — is recorded as failing here instead
+  of silently adjusted to pass; see `a11y-interaction.spec.ts`'s own comment
+  at that test.
+- Next: add `import '../app.css';` (or the project's preferred path) to
+  `src/routes/+layout.svelte`'s `<script>` block — the standard SvelteKit
+  place for a global stylesheet, and consistent with this app's own root
+  layout already owning global concerns (locale/theme init, the shell). Once
+  wired in, re-run this suite's `a11y-interaction.spec.ts` focus-ring
+  assertion and task 11.6's visual conformance pass — the latter cannot
+  usefully compare ANY artboard against the current unstyled build.
+
+## [MEDIUM] The timer and day pages have no level-one heading (axe `page-has-heading-one`)
+- Run: 2026-08-24 (task group 11, E2E — `tests/e2e/a11y.spec.ts`)
+- Phase: impl
+- Status: RESOLVED (2026-08-24-0659) — `src/routes/+page.svelte` (timer) and
+  `src/routes/day/[date]/+page.svelte` each now render a visually-hidden `<h1>`
+  (`.sr-only`, matching `DayNav.svelte`'s own existing convention) naming the page —
+  `m.nav_timer()` and the day's own `dateLabel` respectively — rather than promoting
+  the ticking hero figure or relying on the desktop-only date span. Verified live via
+  curl against a real running build: both pages now render exactly one `<h1>`.
+- What: an `@axe-core/playwright` scan of `/` (timer, both themes) and
+  `/day/[date]` (dark theme; light theme not reached before the run hit the
+  login rate limit — see the "currently rate limited" note under Workaround)
+  reports `page-has-heading-one` (`cat.semantics`, `best-practice`, moderate
+  impact): "Page should contain a level-one heading." `grep -n "<h1"
+  src/routes/+page.svelte src/routes/day/[date]/+page.svelte` matches nothing
+  in either file — neither page has an `<h1>`, or any heading element at
+  all. `src/routes/projects/+page.svelte` (`<h1 class="projects-page__title">`)
+  and the statistics page both do, and both passed the same scan cleanly.
+- Impact: a screen reader user has no landmark heading to jump to on the two
+  busiest pages in the app (the timer page opens the application; the day
+  page is where most reading/editing happens) — the page's own visible
+  heading text (the hero readout, the date heading) exists but is not marked
+  up as a heading at all, so it is invisible to heading-based navigation.
+- Tried: reproduced live via `AxeBuilder` in the same Playwright browser this
+  suite already drives; confirmed the absence directly against the two
+  route's `.svelte` source rather than only trusting the scan.
+- Workaround: `a11y.spec.ts`'s axe assertions for the timer and day pages
+  filter this one rule id out of the violations list before asserting empty,
+  with a comment pointing here, rather than silently dropping the whole page
+  from the sweep or asserting a result that includes a known finding as if it
+  were unexpected. Every OTHER rule axe checks still applies in full on both
+  pages.
+- Next: give the timer page's hero figure (or a visually-hidden page title
+  above it) and the day page's date heading a real `<h1>` — visually
+  unchanged if the design calls for something smaller, via
+  `.sr-only`/equivalent plus a styled visible element, or by promoting the
+  existing heading-shaped text to a real `<h1>` if its current size already
+  matches design.md's heading scale.
