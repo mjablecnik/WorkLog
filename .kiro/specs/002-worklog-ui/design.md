@@ -1405,7 +1405,7 @@ Nothing about the timer, the day or the projects is cached in the browser. Requi
 
 ### Property 1: The gauge mapping is monotone and turns exactly once per day
 
-*For any* pair of instants `a < b` within one calendar day, `angleOf(b) − angleOf(a)` SHALL equal `(b − a)` in minutes × 0.25, SHALL be strictly positive, and SHALL equal exactly 360 when `b − a` is 24 hours — so the mapping is strictly increasing, uniform, and completes exactly one turn per 24 hours regardless of the `Gauge_Window`.
+*For any* pair of instants `a < b` within one calendar day, `angleOf(b) − angleOf(a)` SHALL equal `(b − a)` in minutes × 0.25 and SHALL be strictly positive. `angleOf` is periodic by wall-clock time — the same time-of-day always yields the same angle, which is what keeps a DST-affected 23h/25h `Logical_Day` from moving a single graduation — so when `b − a` is exactly 24 hours the raw difference SHALL be congruent to 0 mod 360 (i.e. `0`, not `360`: `a` and `b` share the same wall-clock time and therefore the same angle). So the mapping is strictly increasing, uniform, and completes exactly one turn per 24 hours of elapsed minutes, regardless of the `Gauge_Window`.
 
 **Validates: Requirements 16.1, 16.18**
 
