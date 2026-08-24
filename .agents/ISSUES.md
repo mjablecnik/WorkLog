@@ -1455,3 +1455,57 @@ and marked accordingly.
   `.sr-only`/equivalent plus a styled visible element, or by promoting the
   existing heading-shaped text to a real `<h1>` if its current size already
   matches design.md's heading scale.
+
+## [MEDIUM] Task 11.6's visual conformance pass needs to be redone
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: task 11's own agent ran a first visual pass comparing the running app
+  against the 16 `.design/screens/*.png` artboards, but the app it compared
+  against had no CSS reaching the page at all — the `src/app.css` import bug
+  (see the entry above, now RESOLVED) meant every design token was undefined,
+  so every screen rendered as unstyled black-on-white. That pass's own
+  conclusion ("structural arrangement matches well; the dominant deviation is
+  the missing styling") is therefore not a real conformance result — it
+  compared layout only, never palette, never the actual visual language the
+  16 artboards exist to check.
+- Impact: task 11.6 is not genuinely done. No one has yet compared the real,
+  styled application against the artboards for arrangement, relative
+  proportion and palette — the actual content of what that task asks for.
+- Tried: n/a — not attempted this run; the `app.css` fix landed after the
+  visual pass had already run and reported its (invalid) result.
+- Next: re-run the visual pass now that `app.css` is wired in — screenshot
+  each of the 16 screen artboards' matching real page, at the artboard's own
+  frame size and theme, and compare arrangement/proportion/palette against
+  `.design/screens/`. Also re-check the nine token-only surfaces (confirmation
+  dialogs, toasts, empty states, skeletons, login/error/offline pages, the
+  timezone notice, the focus ring) now that real styling actually applies.
+
+## [LOW] Checkpoints 2, 4, 10 and 12 have not been walked by hand
+- Run: 2026-08-24-0659
+- Phase: impl
+- Status: OPEN
+- What: `tasks.md`'s four Checkpoint tasks each call for a live, human-paced
+  pass beyond what this run's automated verification covered — checkpoint 2
+  ("confirm the application starts, login works, the shell renders in both
+  themes, the theme survives a reload without a flash, and the language
+  switches without a reload"), checkpoint 4 (seed a specific day and confirm
+  the timeline draws it correctly), checkpoint 10 ("walk the whole
+  application by hand on a desktop and at a 375 pixel width, in both
+  themes"), and checkpoint 12 (`bun run test:all`, then "use the application
+  for one real working day and fix whatever gets in the way").
+- Impact: nothing FOUND wrong here — this is an absence of a specific kind of
+  verification, not a known defect. `bun run check`, the non-DB Vitest suite,
+  and task 11's E2E/accessibility suite together cover a great deal of the
+  same ground automatically, and several of the bugs these checkpoints would
+  have caught (the theme SSR crash, the missing `/stats` page, the unstyled
+  build, the broken logout) were in fact found and fixed this run via the E2E
+  pass instead of via a checkpoint. What remains genuinely unverified is the
+  specific manual/visual judgment these checkpoints ask for that no
+  automated test substitutes for (a real flash-of-wrong-theme check on
+  reload, an actual full day of real use).
+- Tried: n/a — explicitly out of scope for a task-by-task implementation
+  pass under time pressure; flagged rather than rushed.
+- Next: a `dev-verify`-style live pass, or a deliberate manual session
+  against a real `bun run preview` build, covering each checkpoint's own
+  bullet list.
