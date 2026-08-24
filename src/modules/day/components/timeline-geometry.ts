@@ -61,6 +61,18 @@ export type DayLayout = {
 export type LaidOutSegment = {
 	segment: ActivitySegment | null; // null for an Uncovered_Time stretch
 	entry: ActivityEntry | null;
+	/**
+	 * The unit's own clipped interval — for a real segment this equals
+	 * `{start: segment.startedAt, end: segment.endedAt}`, but for an Uncovered_Time
+	 * stretch (`segment: null`) it is the ONLY place that stretch's times are exposed,
+	 * since `segment`/`entry` are both null there. Extension beyond design.md's literal
+	 * `LaidOutSegment` code block, added because a rendering component cannot draw a
+	 * Segment_Block's times, form its aria-label, or resolve exactly which interval
+	 * `onUncoveredActivate` should carry without it — re-pairing a rendered unit back to
+	 * the original `uncovered: Interval[]` array by chronological position is fragile
+	 * and unnecessary when `layOutDay` already computed this interval internally.
+	 */
+	interval: Interval;
 	/** Quantised to HEIGHT_STEP_PX, never below MIN_BLOCK_PX for the density. */
 	heightPx: number;
 	/** True when heightPx >= DESCRIPTION_MIN_PX and the density is desktop. */
@@ -379,6 +391,7 @@ export function layOutDay(
 			return {
 				segment: s.segment,
 				entry: s.entry,
+				interval: { start: new Date(s.startMs), end: new Date(s.endMs) },
 				heightPx: s.height,
 				showsDescription,
 				partIndex: index,
