@@ -93,17 +93,6 @@ committed.
 
 ## Known gaps (see `DOCS.md`'s Known Limitations for the full list)
 
-- **The E2E harness is currently broken before it starts.** `scripts/test-e2e.sh` sets
-  `DATABASE_URL` and `TEST_DATABASE_URL` to the identical string; `tests/setup/db.ts`
-  (imported by every Playwright run via `tests/e2e/global-setup.ts`) refuses to run
-  its truncation helper when the two are equal, and throws immediately — before any
-  spec, before any browser opens. This is not sandbox-specific; it reproduces on a
-  plain `bun` invocation of `global-setup.ts` with no Docker or Playwright involved.
-  `bun run test` (no `e2e`) is unaffected. Don't spend time re-diagnosing this from
-  scratch — see `DOCS.md`'s Troubleshooting and `.agents/ISSUES.md`.
-- **Logging out does not work.** Clicking "Odhlásit se" in `SettingsMenu` does not end
-  the session client-side; a session only ends by expiring or by clearing cookies
-  directly.
 - **No mobile FAB entry point.** `Shell.svelte` reserves floating-action-button space
   on mobile; no page currently supplies content for it.
 

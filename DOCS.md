@@ -267,17 +267,10 @@ if the committed files and a fresh generation disagree.
 Real, currently-open gaps — listed here rather than left for a reader to discover the
 hard way:
 
-- **Logging out does not work.** Clicking "Odhlásit se" in `SettingsMenu` does not end
-  the session. Today a session can only end by expiring (`SESSION_DURATION_HOURS`) or
-  by clearing cookies directly.
 - **No mobile "create" entry point yet.** `Shell.svelte` reserves floating-action-button
   space on mobile, but no page currently supplies its content — there is no mobile path
   to open the create-activity/create-session sheet from the FAB itself (the day page's
   own inline "+" pills still work).
-- **The day timeline's `continues` flag uses a UTC-midnight approximation**, not the
-  configured `Logical_Day` boundary (`TIMEZONE`/`DAY_START_HOUR`) — it can be wrong for
-  a session that runs across midnight UTC without actually crossing the real day
-  boundary, or vice versa.
 - **`SessionDialog`'s quick edit→confirm shortcut** does not weigh one edge case
   (`lostUncoveredSeconds > 0`) the same way `ChangePreview`'s own three-way check does.
 - **Four icons have no artboard source.** `search`, `sun`, `moon` and `check` in
@@ -332,25 +325,7 @@ name ends in `_test` and which differs from `DATABASE_URL` — the suite truncat
 table in it before each test. It is always run through
 `scripts/run-vitest.sh`, never `bunx vitest` or `vitest` directly (see Troubleshooting).
 
-`bun run test:e2e:local` (`scripts/test-e2e.sh`) currently fails before it opens a
-browser — see the first Troubleshooting entry below. `bun run test` on its own is
-unaffected and is what to run in the meantime.
-
 ## Troubleshooting
-
-**`bun run test:e2e:local` fails immediately with `"TEST_DATABASE_URL must be set,
-must differ from DATABASE_URL and must name a database ending in _test"`, before any
-Playwright test runs.** `scripts/test-e2e.sh` deliberately sets `DATABASE_URL` to the
-exact same string as `TEST_DATABASE_URL` ("point the app's own `DATABASE_URL` at the
-test database too"), but `tests/setup/db.ts` — imported by
-`tests/e2e/global-setup.ts`, which every Playwright run executes once before any spec
-— refuses to run its truncation helper whenever the two are equal. The two files'
-safety rules contradict each other; this is not a per-machine or per-environment
-issue, and not specific to any sandbox — it reproduces from a plain
-`bun -e "import gs from './tests/e2e/global-setup.ts'; await gs();"` with the two
-variables set equal, no Docker or Playwright involved. There is no workaround short of
-changing one of the two files (out of scope for documentation to fix); tracked in
-`.agents/ISSUES.md`.
 
 **`bun run test` (or anything importing both `postgres` and `zod` in one process)
 silently produces `zod is not a constructor` or a similarly nonsensical error deep
