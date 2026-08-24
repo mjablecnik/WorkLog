@@ -140,6 +140,21 @@
 	"activity_anchor_note": "Začne se od {time} — konec posledního záznamu. Do {duration} se počítá jen čistá práce, pauzy se přeskakují.",
 	"activity_anchor_first_session": "Začne se od {time} — začátek prvního úseku timeru.",
 	"activity_requested_note": "žádáno {requested} · uloženo {stored}",
+	"activity_requested_stored_parts": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "v {count} části",
+				"countPlural=few": "ve {count} částech",
+				"countPlural=other": "ve {count} částech"
+			}
+		}
+	],
 	"activity_submit": "Uložit úkol",
 	"activity_delete_title": "Smazat úkol?",
 	"activity_delete_body": "{project}, {from} – {to} · {duration}. Zmizí z výkazu.",

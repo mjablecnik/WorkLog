@@ -139,6 +139,20 @@
 	"activity_anchor_note": "Starts at {time} — the end of the last entry. Only worked time counts towards {duration}; breaks are skipped.",
 	"activity_anchor_first_session": "Starts at {time} — the beginning of the first timer block.",
 	"activity_requested_note": "asked for {requested} · stored as {stored}",
+	"activity_requested_stored_parts": [
+		{
+			"declarations": [
+				"local countPlural = count: plural"
+			],
+			"selectors": [
+				"countPlural"
+			],
+			"match": {
+				"countPlural=one": "in {count} part",
+				"countPlural=other": "in {count} parts"
+			}
+		}
+	],
 	"activity_submit": "Save the task",
 	"activity_delete_title": "Delete this task?",
 	"activity_delete_body": "{project}, {from} – {to} · {duration}. It will disappear from the log.",
