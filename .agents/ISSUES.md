@@ -1,15 +1,215 @@
 # Issues
 
-> The eighteen entries below were opened by the `cases` phase, which reads code and
-> writes documents and executes nothing. Each was found by reading the implementation
-> against `requirements.md`, and each names the use case in `.agents/USE_CASES.md` that
-> asserts the specified behaviour. The `verify` phase confirms or clears them by
-> running that case; none of them has been reproduced against a running server yet.
+> The eighteen entries below the next section were opened by the `cases` phase, which
+> reads code and writes documents and executes nothing. Each was found by reading the
+> implementation against `requirements.md`. The `verify` phase (run 2026-08-23-2200)
+> confirmed every one of them against a real running server, fixed all but three
+> (`/logout` exemption, the idempotency-replay status column, and the login passphrase
+> non-record — each left `OPEN` with its own reasoning below), and found six further
+> code defects plus three non-code findings that only running the API — not reading
+> it — could surface. Those nine are listed first, newest first.
+
+## [HIGH] tx.ts's error translation never matches a Drizzle-wrapped Postgres error
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: `translateConstraintError` and `translateOrRethrow` in
+  `src/lib/server/store/tx.ts` read `err.code`/`err.constraint_name` directly. This
+  project's `drizzle-orm` version wraps every driver failure in its own
+  `DrizzleQueryError` before it reaches a caller — verified with a live repro (`SET
+  statement_timeout`, then a blocking `pg_sleep`): the thrown object's own `.code` is
+  `undefined`; the real `postgres.js` `PostgresError` (`.code`, `.constraint_name`)
+  survives only as `.cause`. Every check in both functions therefore never matches.
+- Impact: Requirement 13.6/13.14 ("a query exceeding `DB_QUERY_TIMEOUT_SECONDS` answers
+  503 `SERVICE_UNAVAILABLE`") was completely unreachable — confirmed live: holding the
+  advisory lock from a second `psql` session for longer than `DB_QUERY_TIMEOUT_SECONDS`
+  produced a 500 `INTERNAL_ERROR`, not 503. The constraint-violation safety net
+  (`SESSION_OVERLAP`/`ACTIVITY_OVERLAP`/`PROJECT_EXISTS`/`PROJECT_IN_USE` on a genuine
+  race) was equally dead, though harder to observe directly since this single-instance,
+  advisory-lock-serialized app's own proactive pre-checks catch the ordinary case first
+  — exactly why eighteen rounds of reading and a full green test suite never caught it.
+- Tried: Fixed by unwrapping one level (`err.code ?? err.cause?.code`, same for
+  `constraint_name`) in a shared `unwrapPgError` helper both functions now call.
+  Re-ran the live repro after rebuilding: the blocked query now answers 503 with
+  `retryAfterSeconds`, as specified.
+- Next: None — watch for a future `drizzle-orm` upgrade changing the wrapping shape
+  again; the helper's doc comment says explicitly what it depends on.
+
+## [HIGH] A malformed {id} path parameter answers 500, not 400
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: `event.params.id` was passed straight into a Drizzle query on
+  `/api/projects/{id}`, `/api/sessions/{id}` and `/api/activities/{id}` (PATCH, DELETE,
+  and GET for activities) with no validation. A path segment that is not a UUID at all
+  (`.../not-a-uuid`) reached Postgres as a bind parameter, which rejects it with
+  "invalid input syntax for type uuid" — an error `errorResponse` does not recognise,
+  so it became 500 `INTERNAL_ERROR` with the query and params logged.
+- Impact: None of `.agents/USE_CASES.md`'s cases named this exact input (they use a
+  syntactically-valid random UUID for "not found"), so `cases`-phase reading never hit
+  it; VERIFY_TASKS step 13's PATCH testing surfaced it by accident when a prior request
+  in the same batch failed and left a literal `null`/`not-a-uuid` id in a later call.
+  Requirement 12.3 (no internals in an error body) and the general "validate at the
+  boundary" principle both apply to path parameters, not only bodies and queries.
+- Tried: Added `export const idParam = z.uuid()` to `schemas.ts` and
+  `parseRequest(idParam, event.params.id)` at the top of every affected handler.
+  Confirmed: the same malformed id now answers 400 `VALIDATION_ERROR` with
+  `fields_invalid_id`, consistently across all three resources.
+- Next: None.
+
+## [HIGH] Closing a Stale_Session could crash instead of answering SESSION_OVERLAP
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: `stopSession` (`src/lib/server/services/sessions.ts`) closes the open session
+  without first checking whether the now-bounded interval overlaps a *closed* session
+  written while the timer was still running — every sibling write (`createSession`,
+  `patchSession`) checks `sessionsConflictingWith` before writing; `stopSession` did
+  not. Reproduced live: seed a session open 13h (a `Stale_Session`), write a closed
+  session later that falls inside what closing the timer would span, then stop the
+  timer — `work_sessions_no_overlap` fires as a raw constraint violation, which (see
+  the `tx.ts` entry above) surfaced as 500 rather than the 409 the constraint exists to
+  produce.
+- Impact: A real, if narrow, gap in Requirement 1.15/1.16 — closing an old-enough
+  running timer could 500 instead of cleanly reporting the conflicting session.
+- Tried: Added the same `sessionsConflictingWith` pre-check `createSession`/
+  `patchSession` already have, before `closeOpenSession`. Confirmed: the same
+  reproduction now answers 409 `SESSION_OVERLAP` with the conflicting session named.
+- Next: None.
+
+## [HIGH] adapter-node's own body-size ceiling pre-empts this app's 413
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: Even after fixing the streaming-limit issue below, a body over 1 MiB with no
+  `Content-Length` still answered 500. adapter-node enforces its own `BODY_SIZE_LIMIT`
+  (default 512K, an env var distinct from this app's `MAX_BODY_BYTES`) inside its raw
+  Node HTTP body reader, *before* the SvelteKit `handle` chain — and therefore this
+  app's own check — ever sees a byte. It throws a `SvelteKitError(413, ...)`, which
+  `errorResponse` did not recognise (no `ApiError`, no `PAYLOAD_TOO_LARGE` message),
+  so it fell through to 500 `INTERNAL_ERROR`.
+- Impact: Requirement 12.6/12.15's 1 MiB ceiling was shadowed by a smaller, undocumented
+  512K one for any request without a `Content-Length` header, answering the wrong
+  status for a legitimate over-size upload.
+- Tried: Two fixes, both applied: (1) `Dockerfile` now sets `ENV BODY_SIZE_LIMIT=2097152`
+  (2 MiB, comfortably above `MAX_BODY_BYTES`) so this app's own check is always the one
+  that fires; (2) `errorResponse` defensively classifies any thrown error carrying
+  `status: 413` (not just the `'PAYLOAD_TOO_LARGE'` sentinel) as `PAYLOAD_TOO_LARGE`,
+  so an environment that forgets the env var still answers correctly rather than
+  leaking a 500. Verified live with a >1 MiB chunked body: 413 with `maxBytes` in
+  `details`.
+- Next: None — `scripts/start-docker.sh`/`.env.example` do not need `BODY_SIZE_LIMIT`;
+  it is an adapter-node runtime knob, not part of this app's own config surface, so the
+  Dockerfile is the right and only place for it.
+
+## [MEDIUM] Idempotency-Key format errors reported the wrong messageKey
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: `fieldMessageKeyFor` (`src/lib/server/core/errors.ts`) mapped every
+  `invalid_format`/`regex` Zod issue to `fields_invalid_date`, written when the only
+  regex-validated field was `dateString`. Adding a second regex-validated field this
+  same phase (the `Idempotency-Key` shape, `idempotencyKeySchema`) exposed the
+  collision: `Idempotency-Key: bad/key` answered `VALIDATION_ERROR` with
+  `reason: "fields_invalid_date"` — a misleading key for a header that is not a date.
+- Impact: `002` would render "invalid date" copy for a rejected idempotency key.
+- Tried: Disambiguated by the regex's own source (`issue.pattern`, which Zod v4
+  includes on the issue) rather than by field path — both `dateString` used standalone
+  (`dayDateParam`) and `idempotencyKeySchema` validate a bare string with `path: []`, so
+  path alone cannot tell them apart. Confirmed: the same request now answers
+  `fields_invalid` (the generic fallback); `dateString` failures are unaffected.
+- Next: None.
+
+## [LOW] An empty meta-only PATCH on an activity answers 500
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: RESOLVED (2026-08-23-2200)
+- What: The same bug already catalogued for `PATCH /api/projects/{id}` (empty `{}`
+  reaching `update(...).set({})`, which Drizzle rejects) also existed in
+  `updateEntryMeta` (`src/lib/server/store/activities.ts`) — a meta-only
+  `PATCH /api/activities/{id}` with neither `description` nor `projectId` supplied
+  (e.g. `{}`, or only `{dryRun}`/`{previewToken}`) hit the identical crash.
+- Impact: Same as the projects case — a request that passed validation must never
+  answer 500.
+- Tried: Applied the same fix: when neither field is present, reread and return the
+  row unchanged instead of issuing an empty `SET`. Confirmed via a direct PATCH with
+  `{}` against a real entry — 200, entry unchanged.
+- Next: None.
+
+## [LOW] scripts/migrate.sh ignores a DATABASE_URL already set in the environment
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: OPEN
+- What: The script's own header comment says it "reads `DATABASE_URL` directly from
+  the environment or from `.env.<environment>`", but the code unconditionally
+  `export`s every key from `.env`/`.env.<environment>` (to survive the `$`-bearing
+  argon2id hash safely) *after* the caller's shell would have exported one — bash's
+  `export` always overwrites, so `DATABASE_URL=postgres://...worklog_test2
+  ./scripts/migrate.sh` silently migrates whatever `.env`'s own `DATABASE_URL` points
+  at instead. Found live this phase while migrating a throwaway unmigrated database for
+  VERIFY_TASKS step 43: the command reported "up to date" against the wrong database.
+- Impact: An operator who deliberately overrides `DATABASE_URL` on the command line —
+  exactly the pattern the header comment describes as supported — gets no error and no
+  indication the override was ignored; they only discover it when the target database
+  turns out not to have been migrated at all.
+- Tried: Worked around it for this session by temporarily pointing `.env`'s own
+  `DATABASE_URL` at the target, running the script, then reverting — not a code change.
+- Next: Change the load loop to conditional-assign (`: "${KEY:=$VALUE}"` semantics, or
+  check `[[ -z "${!KEY:-}" ]]` before exporting) so a value already in the environment
+  wins, matching the documented behaviour; or fix the comment instead, if unconditional
+  `.env` precedence is the intended contract.
+
+## [LOW] FIX-TOUCHING and FIX-WEEK fixtures collide on 2026-08-19
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: OPEN
+- What: `.agents/USE_CASES.md`'s fixture catalogue: `FIX-TOUCHING` seeds three sessions
+  on `2026-08-19`; `FIX-WEEK` seeds one session on each of `2026-08-17/18/19`. Both
+  claim `2026-08-19`, and VERIFY_TASKS step 31 groups seeding both in the same pass —
+  attempting that produces a genuine `SESSION_OVERLAP` (09:00-17:00 the whole day,
+  written by `FIX-WEEK`, cannot coexist with `FIX-TOUCHING`'s 09:00-11:00/11:00-12:00/
+  14:00-15:00 on the same date). Confirmed live: seeded and verified each fixture in
+  its own truncated pass instead, per-fixture behaviour otherwise correct.
+- Impact: None on the application — this is a catalogue/handover authoring slip, not a
+  code defect. It cost this phase a truncate-and-reseed it would not otherwise have
+  needed.
+- Tried: Seeded them separately; both verified correctly in isolation (documented in
+  `04-verify.md`).
+- Next: Either move `FIX-WEEK` off `2026-08-19` (e.g. `2026-08-16/17/18`) or note
+  explicitly in the fixture catalogue that the two are seeded in separate passes, next
+  time `USE_CASES.md` is touched.
+
+## [LOW] /login page rendering could not be exercised over HTTP this phase
+- Run: 2026-08-23-2200
+- Phase: verify
+- Status: OPEN
+- What: `src/routes/login/+page.svelte` does not exist yet — by design, spec
+  `002-worklog-ui` (not started) owns it; `001` owns only `+page.server.ts`. `GET
+  /login` therefore 500s with SvelteKit's own "Missing +page.svelte component for
+  route /login" before this spec's `%lang%`/`%theme%` substitution, or the page-level
+  cookie-attribute behaviour, can be observed against real rendered HTML.
+- Impact: VERIFY_TASKS step 10 (UC-074, UC-075) could not be ticked as fully passed —
+  left unticked rather than marked done. Not a code defect in `001`:
+  `handleSecurityHeaders`/`substitutePagePlaceholders`/`resolveRenderTheme` are
+  unit-tested (`security-headers.test.ts`, part of the green 327-test suite), and this
+  phase independently confirmed live that the three preference cookies ARE set with
+  the exact Requirement 12.30 attributes (`SameSite=Lax`, `Path=/`,
+  `Max-Age=31536000`, `Secure` since `APP_ENV=test`, script-readable) on both `/login`
+  and `/logout` responses even though the body 500s, and that the response still
+  carries the standard security headers and a request log line despite the 500 (the
+  hook-ordering fix above applies here too). `lang`/`data-theme`/placeholder-survival
+  on real rendered HTML remain unverified until `002` supplies the missing component.
+- Tried: Confirmed the 500 is exactly the missing-component error, not a regression.
+- Next: Re-run VERIFY_TASKS step 10 once `002-worklog-ui` adds
+  `src/routes/login/+page.svelte`.
+
+The eighteen entries below are `cases`-phase findings, each confirmed live this phase
+and marked accordingly.
 
 ## [HIGH] A bad configuration never logs its problem list or exits non-zero
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `loadConfig()` in `src/lib/server/core/config.ts` collects every problem and
   throws a `ConfigError`, but nothing catches it. `src/hooks.server.ts:53` calls
   `getConfig()` at module load and there is no `try/catch`, no `process.exit` and no
@@ -31,7 +231,7 @@
 ## [MEDIUM] METHOD_NOT_ALLOWED is never produced, and framework errors escape the envelope
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `src/lib/server/core/errors.ts` declares the code, maps it to 405 and
   serializes `details.allowed[]` into an `Allow` header, but nothing in the codebase
   ever throws it — no route, no hook, no fallback. A wrong method on an existing path
@@ -49,7 +249,7 @@
 ## [MEDIUM] The streaming body-size limit answers 500 instead of 413
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `handleBodySizeLimit` wraps the request body in a `TransformStream` that errors
   with a plain `Error('PAYLOAD_TOO_LARGE')` once the cumulative byte count passes
   `MAX_BODY_BYTES`. Every route wraps its own body read in
@@ -66,7 +266,7 @@
 ## [MEDIUM] Cross-origin session-cookie rejection is production-only
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `src/hooks.server.ts:333-336` ignores a `Browser_Session` cookie on a request
   carrying a foreign `Origin` **only when** `config.appEnv === 'production'`. In
   `development` and `test` the cookie authenticates a cross-origin request.
@@ -81,7 +281,7 @@
 ## [MEDIUM] The three preference cookies are read but never set
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `handleLocals` and `resolveRenderTheme` read `worklog_locale`, `worklog_theme`
   and `worklog_theme_resolved`, but nothing in `src/` ever sets any of them, so the
   attribute table of Requirement 12.30 (`SameSite=Lax`, explicit `Path`,
@@ -98,7 +298,7 @@
 ## [MEDIUM] DELETE /api/projects/{id} answers 204 for an unknown id
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `src/lib/server/store/projects.ts:167` deletes without checking that the row
   exists, so a `DELETE` naming a project that was never created answers 204.
   `updateProject` (same file, line 139) does raise `NOT_FOUND`, so the two disagree.
@@ -112,7 +312,7 @@
 ## [MEDIUM] POST /api/sessions reports reversed bounds as INTERVAL_TOO_SHORT
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `src/routes/api/sessions/+server.ts:43` runs `assertIntervalNotTooShort` before
   any ordering check, and `createSession` in `src/lib/server/services/sessions.ts:243`
   has no `start < end` guard at all — unlike `patchSession`, which does. A request whose
@@ -128,7 +328,7 @@
 ## [MEDIUM] /api/days/{date} accepts an impossible but well-formatted date
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `dayDateParam` in `src/lib/contracts/schemas.ts:183` validates only the shape
   `^\d{4}-\d{2}-\d{2}$`, so `2026-13-45` passes and is handed straight to
   `dayResolver.bounds`, which answers 200 for a day that does not exist.
@@ -142,7 +342,7 @@
 ## [LOW] An empty PATCH body on a project answers 500
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `patchProjectSchema` accepts `{}` (every field is optional), and
   `src/lib/server/store/projects.ts:136` then issues `update(...).set({})`, which
   Drizzle rejects — surfacing as 500 `INTERNAL_ERROR`.
@@ -156,7 +356,7 @@
 ## [LOW] A readiness 503 carries no security headers and writes no log line
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `handleReadiness` sits second in the handle sequence, before both
   `handleRequestLog` and `handleSecurityHeaders`, so its 503 carries only
   `x-request-id`, `content-type` and `retry-after`, and it is the one response that
@@ -171,7 +371,7 @@
 ## [LOW] The readiness probe re-runs on every request while it is failing
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `getReadiness` nulls `readinessPromise` whenever the probe fails
   (`src/hooks.server.ts:143`), so the next request starts a fresh probe. Its own
   comment, `design.md` ("re-run at most once per `CLEANUP_INTERVAL_MINUTES`") and
@@ -185,7 +385,7 @@
 ## [LOW] reason=session_expired is never produced
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `handleAuth` redirects an unauthenticated page request to `/login?next=…` only.
   The string `session_expired` appears nowhere in `src/` or `messages/`, so the
   `reason` parameter Requirement 11.25 defines is accepted but never set.
@@ -198,7 +398,7 @@
 ## [LOW] The activity preview token fingerprints the requested start's day, not the Target_Day
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `src/lib/server/services/activities.ts:351` (and 623) computes the preview
   window as `dayResolver.bounds(dayResolver.dateOf(requested.start))`. `design.md`
   specifies "the whole `Logical_Day` of the `Target_Day`". For an explicit interval
@@ -241,7 +441,7 @@
 ## [LOW] ALLOW_DAY_BOUNDARY_CHANGE rejects the truthy spellings tasks.md requires
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `loadConfig` accepts only the literal `true` or `false`; any other value is a
   fatal configuration problem. `tasks.md` line 403 requires `1`, `true` and `yes` all to
   be read as true.
@@ -255,7 +455,7 @@
 ## [LOW] CORS_ORIGINS='*' is accepted in development but matches nothing
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-23-2200)
 - What: `loadConfig` permits the wildcard when `APP_ENV=development`, but `matchesOrigin`
   is an exact list membership test, so `*` is stored and never matches an origin.
   Entries are also never trimmed, so `a, b` yields a literal `" b"` that can never
