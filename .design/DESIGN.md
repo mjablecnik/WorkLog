@@ -181,7 +181,7 @@ with `-webkit-font-smoothing: antialiased`. Every numeric readout uses
 | Gauge numerals | 12px | `1` — SVG text, positioned by baseline |
 | Caps label (`.lbl`) | 11px / `letter-spacing: 0.16em` / uppercase — mobile 10 | `1.35` |
 
-The block head is 14px / 500 at `1.4`, and `layOutDay` reserves `round(size × line-height)` plus its own padding — so a line height changed here changes the timeline budget.
+The block head is 13px / 500 at `1.4` (mobile 12), and `layOutDay` reserves `round(size × line-height)` plus its own padding — so a line height changed here changes the timeline budget.
 
 Durations read as `14 h 15 min`. Mobile drops the unit on the hero only: `14 h 15`.
 

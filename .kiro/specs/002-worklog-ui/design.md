@@ -201,9 +201,10 @@ Transcribed from `.design/DESIGN.md` §§ 1–4. Declared once in `src/lib/theme
 | `--bg` | `#0F1319` |
 | `--text` | `#E6EAF2` |
 | `--text-dim` | `rgba(230,234,242,0.62)` |
-| `--text-faint` | `rgba(230,234,242,0.50)` |
+| `--text-faint` | `rgba(230,234,242,0.56)` |
 | `--accent` | `#D18A6A` |
 | `--accent-hover` | `#E2A88D` |
+| `--accent-on-tint` | `var(--accent)` — accent text on an accent-tinted surface (`--segment-active` and similar) clears 4.5:1 here already |
 | `--ink-on-accent` | `#1A0F0A` |
 | `--panel` | `rgba(255,255,255,0.043)` |
 | `--dialog` | `#171B22` |
@@ -227,9 +228,10 @@ Transcribed from `.design/DESIGN.md` §§ 1–4. Declared once in `src/lib/theme
 | `--bg` | `#F3EEE6` |
 | `--text` | `#2B2420` |
 | `--text-dim` | `rgba(43,36,32,0.78)` |
-| `--text-faint` | `rgba(43,36,32,0.66)` |
+| `--text-faint` | `rgba(43,36,32,0.70)` |
 | `--accent` | `#A5522E` |
 | `--accent-hover` | `#8A4724` |
+| `--accent-on-tint` | `var(--accent-hover)` — plain `--accent` only reaches 3.59-4.38:1 on `--segment-active` and equivalents here; `--accent-hover` clears 4.5:1 (4.71-5.60:1 depending on the surface) |
 | `--ink-on-accent` | `#FBF7F1` |
 | `--panel` | `rgba(0,0,0,0.045)` |
 | `--dialog` | `#FBF7F1` |
@@ -255,7 +257,7 @@ Transcribed from `.design/DESIGN.md` §§ 1–4. Declared once in `src/lib/theme
 |---|---|---|
 | `--text` | `#2B2420` | 14.30:1 |
 | `--text-dim` | `rgba(43,36,32,0.78)` | 7.18:1 |
-| `--text-faint` | `rgba(43,36,32,0.66)` | 4.85:1 |
+| `--text-faint` | `rgba(43,36,32,0.70)` | 5.52:1 |
 | `--accent` | `#A5522E` | 5.12:1 |
 | `--destructive` | `#A8321F` | 6.26:1 |
 
@@ -265,10 +267,10 @@ The active segmented item is the one place the two themes take different alphas 
 
 | | dim | faint |
 |---|---|---|
-| dark on `#0F1319` | 0.62 → 6.44:1 | 0.50 → 4.63:1 |
-| light on `#F3EEE6` | 0.78 → 6.84:1 | 0.66 → 4.69:1 |
+| dark on `#0F1319` | 0.62 → 6.44:1 | 0.56 → 5.47:1 |
+| light on `#F3EEE6` | 0.78 → 6.84:1 | 0.70 → 5.31:1 |
 
-Both pairs started lower and were raised after measurement. The light pair computed to 4.17 and 2.99; dark faint — which carries every block time, every break label and every caps label — sat at **3.38:1**, under the 4.5:1 Requirement 14.10 demands. Dark dim moved up with it so the two levels stay visibly apart instead of collapsing into one. Four numbers, four measurements; do not "unify" them.
+Both pairs started lower and were raised after measurement. The light pair computed to 4.17 and 2.99; dark faint — which carries every block time, every break label and every caps label — sat at **3.38:1**, under the 4.5:1 Requirement 14.10 demands, and was raised to 0.50/4.63:1 to clear it against plain `--bg`. That still wasn't enough once every `--text-faint` usage was checked against every real background it actually sits on rather than `--bg` alone: `Segment_Block`'s meta line (`.sb-meta`) sits on `--pj-tint`, not `--bg`, and every one of the 8 `Palette_Slot` hues' tint drops the composited ratio back under 4.5:1 (dark 4.19-4.40:1, light 4.31-4.44:1 at the 0.50/0.66 pair — confirmed live via `tests/e2e/a11y.spec.ts`'s axe sweep). The values above (0.56/0.70) are the ones that clear 4.5:1 against the worst `Palette_Slot` tint in both themes, not just against `--bg`. Dark dim moved up with faint's first raise so the two levels stay visibly apart instead of collapsing into one; it did not need to move again for the second raise. Four numbers, four measurements; do not "unify" them, and do not check any of them against `--bg` alone again — check against every real background the token is drawn over.
 
 **Two collisions the implementation must not merge.**
 
@@ -597,8 +599,8 @@ One treatment — the `Uncovered_Marker` — in four variants, all built from th
 |---|---|---|
 | tall block | desktop, ≥ 60 px — the same threshold that shows a description | `Zatím bez popisu` 13/500 accent, then `01:30 – 03:00 · 1 h 30 min — klikni a doplň` 12 `--text-faint` |
 | short block | desktop, under 60 px | `Bez popisu` 13/500 accent · times 12 `--text-faint` · flexible gap · `doplnit` 12 accent at the right edge |
-| mobile tall | mobile, above the floor | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
-| mobile short | mobile, at the 26 px floor | `Bez popisu` 12.5/500 accent and the times 10.5 `--text-faint` on one row, **no `doplnit` pill** — 26 px cannot hold it, and the whole block is the activation target anyway, so the pill would be a second affordance for the same tap |
+| mobile tall | mobile, ≥ 44 px | title 12.5/500 accent over times 10.5 `--text-faint`, with `doplnit` as a rounded 11 px accent pill on `rgba(209,138,106,0.14)` |
+| mobile short | mobile, under 44 px (down to the 26 px floor) | `Bez popisu` 12.5/500 accent and the times 10.5 `--text-faint` on one row, **no `doplnit` pill** — a block this short cannot hold it, and the whole block is the activation target anyway, so the pill would be a second affordance for the same tap |
 
 ### Dialogs (`AddTask`, `AddTaskLight`, `AddTaskMobile`, `SessionEdit`)
 
