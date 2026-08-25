@@ -750,8 +750,6 @@
 						<TimeInput
 							{id}
 							name="from"
-							date={$form.date}
-							{timeZone}
 							{density}
 							bind:value={$form.from}
 							required
@@ -765,8 +763,6 @@
 						<TimeInput
 							{id}
 							name="to"
-							date={$form.date}
-							{timeZone}
 							{density}
 							bind:value={$form.to}
 							required

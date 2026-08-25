@@ -719,8 +719,6 @@
 					<div bind:this={startFieldWrapperEl}>
 						<TimeInput
 							{id}
-							date={startDateAnchor}
-							{timeZone}
 							{density}
 							bind:value={$form.start}
 							required
@@ -740,8 +738,6 @@
 					<div bind:this={endFieldWrapperEl}>
 						<TimeInput
 							{id}
-							date={endDateAnchor}
-							{timeZone}
 							{density}
 							bind:value={$form.end}
 							required={endFieldRequired}

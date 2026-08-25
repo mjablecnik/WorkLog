@@ -302,7 +302,7 @@
 			</div>
 			<p class="stale-notice__body">{m.timer_stale_body({ hours: maxOpenSessionHours })}</p>
 			<form method="POST" action="?/stopAt" class="stale-notice__form" use:enhance={handleStopAtSubmit}>
-				<TimeInput bind:value={staleStopValue} date={data.date} {timeZone} {density} disabled={staleSubmitting} />
+				<TimeInput bind:value={staleStopValue} {density} disabled={staleSubmitting} />
 				<button type="submit" class="stale-notice__stop-btn" disabled={staleSubmitting}>
 					{m.timer_stale_stop()}
 				</button>
