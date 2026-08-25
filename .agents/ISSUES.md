@@ -2200,7 +2200,7 @@ and marked accordingly.
 ## [LOW] The "nine token-only surfaces" conformance re-check (task 11.6) was never actually done
 - Run: 2026-08-24-0659
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (follow-up conformance check, 2026-08-25)
 - What: `.design/DESIGN.md` specifies nine surfaces — confirmation dialogs
   (generically, beyond the two dialog artboards), toasts, empty states,
   skeletons, the login/error/offline pages, the timezone notice and the focus
@@ -2215,6 +2215,120 @@ and marked accordingly.
 - Tried: not attempted this phase — budget went to the 16-artboard pass (an
   explicit, scoped ask this run) plus the case catalogue's programmatically-
   checkable items.
+- Follow-up (2026-08-25, dedicated conformance-check task, not a numbered
+  pipeline phase): read every prose value `.design/DESIGN.md` and
+  `.kiro/specs/002-worklog-ui/design.md` give for these nine surfaces (the
+  latter carries the actual per-surface numbers — dimensions, colours,
+  typography — that `.design/DESIGN.md` itself only lists as "drawn nowhere"),
+  matched each against the real component source, then brought up the real
+  built app (`bun run dev`, `worklog-pg` on `trayline-net`, logged in with the
+  real passphrase) and screenshotted every surface live in both themes via a
+  headless Chromium driven through `playwright-core` (real login, a forced
+  `500` on a delete action to raise the `PROJECT_IN_USE` error toast, an empty
+  `/day/2030-01-01`, a keyboard `Tab` for the focus ring, a nonexistent route
+  for the error page). Verdicts:
+  1. **Confirmation dialogs — conforms.** `ConfirmDialog.svelte`/`Modal.svelte`
+     match the spec's dialog-at-its-smallest description exactly (`--dialog`
+     at `--radius-20`, `max-width: 420`, header 17/500, body 13.5
+     `--text-dim`, destructive confirm filled `--destructive` with
+     `--ink-on-accent` text). Confirmed live (dark) deleting a project.
+     `ChangePreview.svelte` (the other named surface) also conforms —
+     `--panel`/`--radius-14`/`--accent`/`--text-dim`/`--text-faint`/`--pj`
+     throughout, no stray literals in its own typography or spacing.
+  2. **Toasts — conforms.** `Toast.svelte`/`ToastContainer.svelte` match
+     `design.md`'s Toast paragraph exactly: bottom-centre mobile / bottom-right
+     desktop at 16px from the edge, `--dialog` at `--radius-14` with
+     `--dialog-shadow`, `padding: 12px 16px`, 13.5px text, 15px icon,
+     `max-width: 420`, ~4s auto-dismiss for success only, error keeps a
+     `--accent` text action and never auto-dismisses. Confirmed live (both
+     themes) by forcing a `PROJECT_IN_USE`-shaped failure.
+  3. **Empty states — conforms.** `EmptyState.svelte` matches design.md's
+     Empty-state paragraph exactly (20px icon `--text-faint`, 14px
+     `--text-dim` line, `padding: 48px 24px`, `gap: 12`, filled accent pill
+     only where an obvious next step exists). All three call sites
+     (`DayTimeline`, `ProjectsPage`, `ProjectBreakdown`) checked; the day and
+     stats instances omit the action deliberately (the next step is already
+     one click away elsewhere in the shell — nav/range switcher), which reads
+     as a considered interpretation, not a token deviation. Confirmed live:
+     `/day/2030-01-01` in both themes.
+  4. **Skeletons — conforms.** `LoadingSkeleton.svelte` matches (`--panel`
+     ground, `--dur-shimmer` 1.2s shimmer, one of the closed radius list,
+     never a spinner). All three callers (`StatsPage`, `ChangePreview`,
+     `DataTable`) pass a valid radius token.
+  5. **Login page — conforms.** `page-shell`/`page-shell__card` matches the
+     shared "Login, error and offline" paragraph (max-width 420, gap 16,
+     20/500 heading, 14 `--text-dim` line); the passphrase field is 48px
+     mobile / 44px desktop exactly as specified. Confirmed live, both themes.
+  6. **Error page — fixed, real bug found.** `+error.svelte`'s own comment
+     claimed SvelteKit renders it "without this layout" for an unmatched
+     route, so `+layout.svelte`'s `isBareShellPage` never exempted it (only
+     `/login`, `/logout`, `/offline` were). Live testing proved that
+     assumption wrong: visiting a nonexistent path rendered the full
+     Topbar/nav/timezone-notice chrome around `+error.svelte`'s own centred
+     card, because the root layout's `load` still runs (and its markup still
+     wraps the error boundary) for a 404 as long as it doesn't itself throw —
+     contradicting the design's explicit minimal-page-shell intent for this
+     surface (same reasoning as the offline page: a nav bar over an error
+     invites clicking into more failures). **Fixed** in
+     `src/routes/+layout.svelte`: `isBareShellPage` now also checks
+     `page.error !== null` (`$app/state`), the signal SvelteKit sets while an
+     error boundary is active. Confirmed live, both themes, before/after.
+  7. **Offline page — conforms** (plus one small fix, see below).
+     `page-shell` matches the shared paragraph; the ghost `retry` pill beside
+     the primary action matches "the offline page adds a ghost retry pill
+     beside the primary action." Confirmed live, both themes, via a real
+     authenticated visit (unauthenticated visits redirect to `/login` first,
+     per `hooks.server.ts` — `/offline` is not auth-exempt, so this page is
+     only ever reached signed in in practice).
+  8. **Timezone notice — conforms.** `.timezone-notice` in `+layout.svelte`
+     is 12px `--text-faint`, centred, shown only when
+     `deviceZone !== serverConfig.timezone`, and renders as the first child of
+     `<main>` (immediately under the top bar) — matching the spec's "one line
+     at 12 `--text-faint` directly under the top bar, centred." Confirmed live
+     in every authenticated screenshot taken this pass.
+  9. **Focus ring — conforms.** The global `:focus-visible` rule in
+     `theme.css` (`0 0 0 2px var(--focus-gap), 0 0 0 4px var(--accent)`) is
+     applied consistently across every interactive element checked (`Button`,
+     `Input`, `Checkbox`, `Select`, nav items, dialogs, toasts, `Fab`,
+     `SettingsMenu`), and `--focus-gap` is correctly overridden per elevated
+     surface (`--dialog` in modals/toasts/menus, `--panel` in `Section`/
+     `DaySummaryPanels`, `--pj-tint` in `SegmentBlock`). `ProjectPicker`'s
+     combobox intentionally uses the `--field-active` ring instead of the
+     generic halo for its text field, matching the established field-focus
+     pattern elsewhere. Confirmed live by tabbing through the top nav.
+  - **Fixed (mechanical, small):** `.page-shell__primary`/`.page-shell__ghost`
+    in `src/routes/+error.svelte` and `src/routes/offline/+page.svelte` used a
+    hand-picked `font-size: 14px` that matches neither `Button.svelte`'s size
+    ladder (12/13.5/15px) nor the closed typography scale's "Buttons" role
+    (13.5px/600 primary) these pill-shaped filled/ghost actions visually are —
+    changed to `13.5px` in both files.
+  - **No design decision needed** — nothing found here was genuinely
+    ambiguous or contradictory; the one real defect (the error page's Shell
+    wrapping) had a clean, unambiguous fix once observed live, unlike the
+    ten contradictions already resolved in `.design/DESIGN.md` §9.
+  - **Noted, not changed:** several components (`ChangePreview`,
+    `ActivityDialog`, `DaySummaryPanels`, `DayRhythm`) hardcode the dark
+    theme's accent RGB literal (`rgba(209, 138, 106, …)`) for
+    uncovered-time/attention tints rather than a theme-aware token, at alpha
+    values that don't match any existing named token
+    (`--field-active-bg`/`--uncovered-dash`/`--segment-active`). This mirrors
+    `.design/DESIGN.md` §6's own literal, non-themed value for the Day page's
+    uncovered-block fill and is consistent across every component that uses
+    this pattern (not limited to the nine surfaces here — `DayRhythm` and
+    `ActivityDialog` are outside this check's scope). Changing it would mean
+    deciding whether "uncovered/attention" tinting should become theme-aware
+    project-wide, which is a design call beyond a token-audit's repair remit,
+    not a mechanical fix — left as-is.
+  - Verified clean after the fixes: `bun run check`, `bun run lint` both
+    passed with zero errors/warnings. `bun run test` passed 547/548; the one
+    failure (`overlap.property.test.ts`'s Property 15, a `150000ms` timeout
+    under full-suite sandbox load) reproduced the exact known-flaky pattern
+    already recorded in the "[LOW] Three spec-001 property tests failed once
+    under this run's heavy sandbox load" entry above — re-ran in isolation via
+    `./scripts/run-vitest.sh run tests/lib/server/store/overlap.property.test.ts`
+    and it passed cleanly (4/4, 111s). Not a regression: this run's only code
+    changes are three Svelte page/layout files nowhere near the server
+    store/domain layer this test exercises.
 - Next: a dedicated pass reading `DESIGN.md`'s token values for each of the
   nine surfaces against the real running app (colour, radius, spacing, motion),
   the same rigor the 16-artboard pass applied to arrangement/proportion/palette.
