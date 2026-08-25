@@ -429,7 +429,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 #### Acceptance Criteria
 
 1. THE Worklog_UI SHALL implement both the `dark` and the `light` `Theme`, each defining the complete token set: background, text, dim text, faint text, accent, accent hover, ink on accent, panel, dialog, scrim, field, active field, divider and destructive
-2. THE Worklog_UI SHALL declare the `Design_Tokens` once as CSS custom properties, and SHALL derive every colour it draws from those properties rather than from a literal value at the point of use
+2. THE Worklog_UI SHALL declare the `Design_Tokens` once as CSS custom properties, and SHALL derive every colour it draws from those properties rather than from a literal value at the point of use, excepting the fixed heraldic colours of a national flag glyph (`FlagCZ`, `FlagGB`), which do not change with the `Theme` and are not `Design_Tokens`
 3. THE Worklog_UI SHALL use higher opacities for dim and faint text in the `light` `Theme` than in the `dark` one, because the dark theme's values fall below the contrast required by criterion 14.10 against the light background
 4. THE Theme_Switcher SHALL offer three values of `Theme_Preference` — `system`, `light` and `dark` — and THE Worklog_UI SHALL default to `system`
 5. WHILE the `Theme_Preference` is `system`, THE Worklog_UI SHALL resolve the `Theme` from `prefers-color-scheme`, resolving to `dark` when the browser expresses none, and SHALL follow a change of that setting without a reload

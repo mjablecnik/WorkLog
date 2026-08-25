@@ -5671,10 +5671,11 @@ something to draw. A fixture on a fixed past date says the date explicitly.
 - Data needed: none
 - Steps: search every `.svelte` and `.css` file under `src/` for a hex, `rgb()` or
   `hsl()` literal outside `theme.css` and the generated `palette.css`
-- Expected: none. Every colour the interface draws resolves through a custom property, so
-  a theme swap is one attribute write. A literal at a point of use is a defect even when
-  it happens to equal the dark theme's value — it will be wrong the moment the light
-  theme renders.
+- Expected: none, excepting `FlagCZ.svelte`/`FlagGB.svelte`'s hardcoded heraldic
+  colours (Requirement 17.2's stated exception) — every other colour the interface
+  draws resolves through a custom property, so a theme swap is one attribute write.
+  A literal at any other point of use is a defect even when it happens to equal the
+  dark theme's value — it will be wrong the moment the light theme renders.
 
 ## UC-473 — The light theme uses its own higher dim and faint opacities
 - Area: theming · accessibility

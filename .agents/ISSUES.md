@@ -222,10 +222,11 @@
 ## [LOW] Two Pass-1 source-sweep findings not fixed this phase (UC-472, UC-423)
 - Run: 2026-08-24-0659
 - Phase: verify
-- Status: OPEN — UC-423 half RESOLVED (2026-08-24-0659 repairs pass); UC-472
-  still needs a product decision and was deliberately left alone (out of scope
-  for a bug-fix pass — it needs a person to decide whether the flag colours are
-  an intentional exception or should be retinted, not a code fix).
+- Status: RESOLVED — UC-423 fixed in the 2026-08-24-0659 repairs pass (see below);
+  UC-472 decided by the user (2026-08-25): the flag colours ARE an intentional
+  exception, not a defect. Requirement 17.2 and UC-472 in USE_CASES.md were both
+  updated to state the exception explicitly rather than leaving it implicit — no
+  code change needed, `FlagCZ.svelte`/`FlagGB.svelte` are correct as they stand.
 - UC-423 fix: flipped all 7 files' `@media (max-width: 767px)` blocks to
   `@media (min-width: 768px)`, inverting each block's declarations (the mobile
   values become the unconditional base, the desktop values move into the
@@ -787,7 +788,11 @@
 ## [LOW] Four Icon.svelte glyphs have no artboard source
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: ACCEPTED (2026-08-25, by the user) — the fallback geometry for `search`,
+  `sun`, `moon` and `check` is accepted as final since it is visually consistent
+  with the twelve artboard-sourced icons. No fix needed; `.design/artboards/` is
+  not being extended to add these four. Left as documentation for why these four
+  paths in `Icon.svelte` don't trace back to an artboard `<svg>` block.
 - What: `src/lib/ui/elements/Icon.svelte` was rewritten as an inline-SVG registry
   sourcing real path geometry from `.design/artboards/*.dc.html` per Requirement
   17.19/14.6 ("no icon set substitution"). Twelve icons were extracted verbatim. Four
