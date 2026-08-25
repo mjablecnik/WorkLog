@@ -254,13 +254,14 @@ describe('DayTimeline', () => {
 		expect(screen.getByText(m.day_block_running())).toBeInTheDocument();
 	});
 
-	it('renders a segment at the floor as one collapsed line, with no description (Requirement 4.15)', () => {
+	it('renders a segment at the floor as one collapsed row, description inline between name and time (Requirement 4.21)', () => {
 		// One session, two segments from two different entries: a 7h segment and a 1
 		// minute segment. Against the 712px fallback budget (41px fixed, 671px flex,
 		// 25260s total), the tiny segment's proportional share is ~1.6px — far under
 		// MIN_BLOCK_PX.desktop (36) — so layOutDay's floor step lifts it to exactly 36,
 		// which SegmentBlock's atFloor = heightPx <= floorPx renders as the collapsed,
-		// single-row, no-description variant regardless of the entry's own description.
+		// single row — with its description squeezed in truncated between the name and
+		// the times, same as the row already carried name and times alone before.
 		const session = mkSession(dt(9), dt(16, 1));
 		const bigEntry = mkEntry([{ start: dt(9), end: dt(16) }], {
 			projectName: 'Big Project',
@@ -268,7 +269,7 @@ describe('DayTimeline', () => {
 		});
 		const tinyEntry = mkEntry([{ start: dt(16), end: dt(16, 1) }], {
 			projectName: 'Tiny Project',
-			description: 'A description that must never appear at the floor'
+			description: 'A description that must appear at the floor too'
 		});
 
 		const { container } = renderTimeline({
@@ -279,24 +280,24 @@ describe('DayTimeline', () => {
 		const tinyBlock = container.querySelector(`[data-entry-id="${tinyEntry.id}"]`);
 		expect(tinyBlock).not.toBeNull();
 		expect(tinyBlock).toHaveClass('sb--floor');
-		expect(tinyBlock?.querySelector('.sb-desc')).toBeNull();
+		expect(tinyBlock?.querySelector('.sb-desc')).not.toBeNull();
 		expect(tinyBlock?.querySelector('.sb-name')).not.toBeNull();
 		expect(tinyBlock?.querySelector('.sb-meta')).not.toBeNull();
-		expect(screen.queryByText('A description that must never appear at the floor')).toBeNull();
+		expect(screen.getByText('A description that must appear at the floor too')).toBeInTheDocument();
 
 		// Sanity: the big segment, well above the floor, is not collapsed.
 		const bigBlock = container.querySelector(`[data-entry-id="${bigEntry.id}"]`);
 		expect(bigBlock).not.toHaveClass('sb--floor');
 	});
 
-	it('never renders a description on a mobile block, even when tall enough for one on desktop (Requirement 4.16)', () => {
+	it('renders a description on a mobile block too, inline when compact (Requirement 4.21)', () => {
 		// A single segment filling almost the whole 712px budget — well past
-		// DESCRIPTION_MIN_PX (60) — which would show a description on desktop. On
-		// mobile, layOutDay sets showsDescription = density === 'desktop' && ... , so it
-		// is always false regardless of height.
+		// DESCRIPTION_MIN_PX (60) — so this is the stacked, own-line treatment, not the
+		// inline one; density no longer gates whether a description shows at all, only
+		// which of the two layouts it takes.
 		const session = mkSession(dt(9), dt(17));
 		const entry = mkEntry([{ start: dt(9), end: dt(17) }], {
-			description: 'This description must never render on mobile'
+			description: 'This description must render on mobile too'
 		});
 
 		renderTimeline({
@@ -305,7 +306,7 @@ describe('DayTimeline', () => {
 			density: 'mobile'
 		});
 
-		expect(screen.queryByText('This description must never render on mobile')).toBeNull();
+		expect(screen.getByText('This description must render on mobile too')).toBeInTheDocument();
 	});
 
 	it('marks a session touching the Evening_Hour as night (Requirement 4.21)', () => {

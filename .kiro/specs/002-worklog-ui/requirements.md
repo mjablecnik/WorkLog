@@ -155,7 +155,7 @@ Terms carried over from `001-worklog-domain-api` keep their meaning there: **Wor
 18. THE Day_Timeline SHALL replace every break between two `Work_Block` groups with a single `Break_Marker` of fixed height, naming the break's duration and its start and end
 19. WHEN a break is a `Long_Break`, THE Break_Marker SHALL be emphasised against the treatment used for a shorter break
 20. THE Day_Timeline SHALL give every `Segment_Block` a rendered height of at least `MIN_BLOCK_PX`, regardless of how short the segment is
-21. THE Day_Timeline SHALL draw the description inside a `Segment_Block` only at the desktop density and only when the block is at least 60 pixels tall; below that height, and at every height on mobile, the block carries the project name and the times alone
+21. THE Day_Timeline SHALL draw a `Segment_Block`'s description whenever its `Activity_Entry` has one, at every density: on its own line below the project name when the block is at least 60 pixels tall, truncated to fit; inline between the project name and the times, truncated to fit, at every lesser height
 22. THE Day_Timeline SHALL label each `Work_Block` with its start, its end and its total duration
 23. IF the `Day_Timeline` cannot honour `MIN_BLOCK_PX` for every `Segment_Block` within the height available to it, THEN THE Day_Timeline SHALL grow beyond that height and the page SHALL scroll, because a block too small to read is worse than a page that scrolls
 24. WHEN any part of a `Work_Session` falls at or after the `Evening_Hour` of its `Logical_Day`, THE Work_Block SHALL mark its head as a night block

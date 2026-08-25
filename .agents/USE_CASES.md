@@ -3341,17 +3341,19 @@ something to draw. A fixture on a fixed past date says the date explicitly.
   its segment. A two-minute segment is drawn at the floor, not as a sliver, and it is
   still clickable.
 
-## UC-294 — The description appears only on a desktop block of at least 60 pixels
+## UC-294 — The description always renders, stacked above 60 pixels, inline below it
 - Area: day timeline
 - Requirement: 4.21
 - Preconditions: logged in
 - Data needed: FIX-UI-DAY (tall blocks) and FIX-UI-MANY (floor blocks)
 - Steps: at `VP-DESKTOP` compare a block above 60 px with one at the floor; then view the
   same day at `VP-MOBILE`
-- Expected: a desktop block of 60 px or more carries project name 14/500 → description
-  12.5 `--text-dim` → times 12 `--text-faint`. Below 60 px it collapses to one row — name
-  13/500 and times side by side, no description. At **every** mobile height the
-  description is absent, and the tooltip (UC-284) is what supplies it.
+- Expected: a block of 60 px or more, at any density, carries project name 14/500 →
+  description 12.5 `--text-dim` on its own line → times 12 `--text-faint`, every line
+  truncated to fit. Below 60 px — at any density, including every mobile height — it
+  collapses to one row: name, then the description truncated inline to whatever room is
+  left, then times, name and description both giving way to an ellipsis rather than
+  wrapping or pushing the times out of view.
 
 ## UC-295 — Every block head names its start, its end and its total
 - Area: day timeline
