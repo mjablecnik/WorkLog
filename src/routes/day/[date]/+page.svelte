@@ -30,7 +30,9 @@
 	import ActivityDialog from '$modules/day/components/ActivityDialog.svelte';
 	import SessionDialog from '$modules/day/components/SessionDialog.svelte';
 	import DaySummaryPanels from '$modules/day/components/DaySummaryPanels.svelte';
+	import CreateFab from '$modules/day/components/CreateFab.svelte';
 	import ConfirmDialog from '$lib/ui/overlays/ConfirmDialog.svelte';
+	import FabSlot from '$lib/ui/layout/FabSlot.svelte';
 	import { addSuccessToast, addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 
 	interface Props {
@@ -263,6 +265,10 @@
 		/>
 	</div>
 </div>
+
+<FabSlot>
+	<CreateFab onAddActivity={() => openCreateActivity()} onAddSession={handleAddSession} />
+</FabSlot>
 
 <ActivityDialog
 	mode={activityDialogMode}

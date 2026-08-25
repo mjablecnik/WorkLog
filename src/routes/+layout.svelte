@@ -36,6 +36,7 @@
 	import Topbar from '$lib/ui/layout/Topbar.svelte';
 	import BottomNav from '$lib/ui/layout/BottomNav.svelte';
 	import SettingsMenu from '$lib/ui/layout/SettingsMenu.svelte';
+	import { createFabSlot } from '$lib/ui/layout/fab-slot.svelte';
 	import ToastContainer from '$lib/ui/overlays/ToastContainer.svelte';
 	import type { IconName } from '$lib/ui/elements/Icon.svelte';
 	import { initTheme } from '$lib/theme/theme.svelte';
@@ -49,6 +50,12 @@
 	}
 
 	let { data, children }: Props = $props();
+
+	// The mobile FAB passthrough (`fab-slot.svelte.ts`) — created once, here,
+	// before `Shell` (below) ever reads `fabSlot.content`. A routed page fills
+	// it via `<FabSlot>`; most pages never render one, and `fabSlot.content`
+	// simply stays `null` for them.
+	const fabSlot = createFabSlot();
 
 	// `data` is a reactive prop; every read below is a deliberate ONE-TIME snapshot of
 	// its initial value (the seed for a rune/store that owns its own reactivity from
@@ -236,6 +243,12 @@
 
 		{#snippet bottomNav()}
 			<BottomNav items={navTargets} ariaLabel={m.nav_brand()} />
+		{/snippet}
+
+		{#snippet fab()}
+			{#if fabSlot.content}
+				{@render fabSlot.content()}
+			{/if}
 		{/snippet}
 
 		{#if showTimezoneNotice}

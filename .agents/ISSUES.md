@@ -622,7 +622,17 @@
 ## [LOW] No FAB-content mechanism exists between the shell and pages
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (follow-up feature/bug work, 2026-08-25) — built the
+  passthrough: `src/lib/ui/layout/fab-slot.svelte.ts` (a Svelte context, created
+  once by `+layout.svelte` before `Shell` reads it, not a module-level `$state`
+  store — the FAB's content genuinely differs per route, and a context object
+  freshly created per request/mount avoids any risk of one page's content
+  leaking into another's server-rendered response) plus
+  `src/lib/ui/layout/FabSlot.svelte`, a small component a page renders once to
+  register its FAB content (`<FabSlot>{@render ...}</FabSlot>`). `+layout.svelte`
+  now passes a real `fab` snippet into `Shell` that renders whatever the current
+  page registered, or nothing. See the "Mobile FAB two-item create sheet" entry
+  below for the day page's own use of it.
 - What: `Shell.svelte` (task 1.10) declares a `fab` snippet slot, but the root
   `+layout.svelte` never passes a snippet into it, and no context/prop path exists
   for a page to supply one. Found by the task 3.7 (day page) agent while trying to
@@ -1637,7 +1647,22 @@ and marked accordingly.
 ## [LOW] Mobile FAB two-item create sheet still has no entry point
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN (unchanged since first logged; noted here as still blocking `SessionDialog`)
+- Status: RESOLVED (follow-up feature/bug work, 2026-08-25) — built on the
+  FAB-passthrough mechanism (see the entry above): the day page
+  (`src/routes/day/[date]/+page.svelte`) now renders `<FabSlot>` with a new
+  `src/modules/day/components/CreateFab.svelte`, which is both the FAB trigger
+  and the two-item bottom sheet ("Přidat úkol" primary/filled, "Přidat úsek
+  timeru" quiet, per UC-334/`.design/artboards/DayMobile.dc.html`), portalled
+  and on the shared `modal-stack.ts` exactly like `SettingsMenu.svelte`'s own
+  mobile sheet (scrim, grabber, Escape/scrim dismiss, Tab trap, focus returned
+  to the FAB on close). Each item opens `ActivityDialog`/`SessionDialog` in
+  create mode via the day page's existing `openCreateActivity`/`handleAddSession`
+  handlers. Verified live at a real 375×812 viewport against a real dev
+  server/database: FAB visible bottom-right, tapping it opens the sheet with
+  both items visible, each item opens the correct dialog in create mode, and a
+  real session create (09:00–10:00) round-tripped to the server and reappeared
+  after reload. Scoped to the day page only, per UC-305/UC-334 — no other page
+  currently calls for a FAB.
 - What: see the earlier "No FAB-content mechanism exists between the shell and pages"
   entry above — `Shell.svelte` declares a `fab` snippet slot the root layout never
   fills, and no page has a way to push content into it. Task 5.6 (`SessionDialog`) now

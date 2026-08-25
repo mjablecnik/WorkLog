@@ -19,9 +19,24 @@
 		href?: string;
 		onclick?: () => void;
 		disabled?: boolean;
+		/** The button variant only — a FAB that opens a sheet/menu (the day
+		 * page's two-item create sheet) rather than acting directly. Mirrors
+		 * `SettingsMenu`'s own trigger chip attributes. */
+		ariaHaspopup?: 'dialog' | 'menu' | 'true';
+		ariaExpanded?: boolean;
+		ariaControls?: string;
 	}
 
-	let { icon, label, href, onclick, disabled = false }: Props = $props();
+	let {
+		icon,
+		label,
+		href,
+		onclick,
+		disabled = false,
+		ariaHaspopup,
+		ariaExpanded,
+		ariaControls
+	}: Props = $props();
 </script>
 
 {#if href}
@@ -31,7 +46,17 @@
 		<Icon name={icon} size={22} />
 	</a>
 {:else}
-	<button type="button" class="fab" aria-label={label} {disabled} aria-disabled={disabled} {onclick}>
+	<button
+		type="button"
+		class="fab"
+		aria-label={label}
+		{disabled}
+		aria-disabled={disabled}
+		aria-haspopup={ariaHaspopup}
+		aria-expanded={ariaHaspopup ? ariaExpanded : undefined}
+		aria-controls={ariaControls}
+		{onclick}
+	>
 		<Icon name={icon} size={22} />
 	</button>
 {/if}

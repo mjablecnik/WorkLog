@@ -402,5 +402,6 @@
 	"aria_rhythm_row": "{date}, odpracováno {worked}",
 	"aria_project_swatch": "Barva projektu {project}",
 	"aria_close_dialog": "Zavřít dialog",
-	"aria_open_settings": "Otevřít nastavení"
+	"aria_open_settings": "Otevřít nastavení",
+	"aria_open_create_menu": "Otevřít nabídku vytvoření"
 }

@@ -393,5 +393,6 @@
 	"aria_rhythm_row": "{date}, worked {worked}",
 	"aria_project_swatch": "Colour of {project}",
 	"aria_close_dialog": "Close the dialog",
-	"aria_open_settings": "Open settings"
+	"aria_open_settings": "Open settings",
+	"aria_open_create_menu": "Open the create menu"
 }
