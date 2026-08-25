@@ -164,6 +164,11 @@
  * -------------------------------------------------------------------------- */
 :root,
 [data-theme='dark'] {
+	/* Tells the browser's own chrome — native date/time pickers, their
+	   calendar/clock picker-indicator icons, the scrollbar — to render in its
+	   dark variant instead of defaulting to light regardless of this theme. */
+	color-scheme: dark;
+
 	/* --- Design_Tokens: Theme: dark ---------------------------------------- */
 	--bg: #0f1319;
 	--text: #e6eaf2;
@@ -245,6 +250,9 @@
  * Theme: light — "Daylight"
  * -------------------------------------------------------------------------- */
 [data-theme='light'] {
+	/* See the dark theme's identical note above. */
+	color-scheme: light;
+
 	/* --- Design_Tokens: Theme: light ---------------------------------------- */
 	--bg: #f3eee6;
 	--text: #2b2420;
