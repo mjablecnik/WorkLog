@@ -48,15 +48,63 @@ fi
 
 echo "deploy.sh: environment=${ENVIRONMENT} app=${APP_NAME} config=${FLY_CONFIG}"
 
-# The org: read a previously persisted choice, or prompt through /dev/tty and
-# persist it — never read from stdin, which may be piped from something else
-# entirely when this script runs non-interactively.
+# The org: read a previously persisted choice, or fetch available orgs from Fly and
+# let the user pick interactively. Persisted so subsequent deploys never prompt again.
 ORG_FILE="${PROJECT_ROOT}/.fly-org"
 if [[ -f "${ORG_FILE}" ]]; then
 	FLY_ORG="$(cat "${ORG_FILE}")"
 else
-	read -r -p 'Fly organization slug: ' FLY_ORG < /dev/tty
+	echo "deploy.sh: fetching available organizations..." >&2
+
+	ORG_JSON=$(fly orgs list --json 2>/dev/null || true)
+
+	if [[ -z "$ORG_JSON" || "$ORG_JSON" == "null" || "$ORG_JSON" == "{}" ]]; then
+		echo "deploy.sh: no organizations found. Are you logged in? (fly auth login)" >&2
+		exit 1
+	fi
+
+	# The JSON is {"slug": "name", ...} — parse key/value pairs.
+	ORGS=()
+	ORG_NAMES=()
+	while IFS='|' read -r slug name; do
+		[[ -z "$slug" ]] && continue
+		ORGS+=("$slug")
+		ORG_NAMES+=("$name")
+	done < <(echo "$ORG_JSON" | sed 's/[{}]//g' | tr ',' '\n' | sed 's/^ *//;s/ *$//' | awk -F':' '{
+		gsub(/^[ \t]*"/, "", $1); gsub(/"[ \t]*$/, "", $1);
+		val=$2; for(i=3;i<=NF;i++) val=val":"$i;
+		gsub(/^[ \t]*"/, "", val); gsub(/"[ \t]*$/, "", val);
+		if ($1 != "") print $1 "|" val
+	}')
+
+	if [[ ${#ORGS[@]} -eq 0 ]]; then
+		echo "deploy.sh: could not parse organizations. Are you logged in? (fly auth login)" >&2
+		exit 1
+	elif [[ ${#ORGS[@]} -eq 1 ]]; then
+		FLY_ORG="${ORGS[0]}"
+		echo "deploy.sh: only one org available: ${ORG_NAMES[0]} (${FLY_ORG})" >&2
+	else
+		echo "" >&2
+		echo "Select organization:" >&2
+		for i in "${!ORGS[@]}"; do
+			echo "  $((i+1))) ${ORG_NAMES[$i]} (${ORGS[$i]})" >&2
+		done
+		echo "" >&2
+		while true; do
+			printf "Choice [1-${#ORGS[@]}]: " >&2
+			read -r CHOICE < /dev/tty
+			# Strip everything that isn't a digit.
+			CHOICE="${CHOICE//[^0-9]/}"
+			if [[ -n "$CHOICE" ]] && [[ "$CHOICE" -ge 1 ]] && [[ "$CHOICE" -le ${#ORGS[@]} ]]; then
+				FLY_ORG="${ORGS[$((CHOICE-1))]}"
+				break
+			fi
+			echo "Invalid choice. Try again." >&2
+		done
+	fi
+
 	echo "${FLY_ORG}" > "${ORG_FILE}"
+	echo "deploy.sh: ✓ saved org=${FLY_ORG} to .fly-org" >&2
 fi
 
 # Create the app only when it does not already exist.
