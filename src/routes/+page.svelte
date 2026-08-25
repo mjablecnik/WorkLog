@@ -271,8 +271,11 @@
 		}
 	}
 
+	let lastHandledForm: typeof form = undefined;
 	$effect(() => {
 		if (form === undefined || form === null) return;
+		if (form === lastHandledForm) return;
+		lastHandledForm = form;
 		if ('discarded' in form && form.discarded === true) {
 			addSuccessToast(m.timer_stop_discarded());
 		}
