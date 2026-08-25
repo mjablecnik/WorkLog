@@ -308,7 +308,7 @@ describe('ActivityDialog', () => {
 		expect(descriptionField).toHaveValue('Fixed the header layout');
 	});
 
-	it('keeps the typed input and shows an inline error after a validation failure (Requirement 6.10)', async () => {
+	it('keeps the other typed input and shows an inline error after a validation failure (Requirement 6.10)', async () => {
 		const project = mkProject();
 		const { baseElement } = renderDialog({ projects: [project] });
 
@@ -320,7 +320,12 @@ describe('ActivityDialog', () => {
 			m.activity_field_description()
 		) as HTMLTextAreaElement;
 
-		await fireEvent.input(fromInput, { target: { value: 'not-a-time' } });
+		// `fromInput` is a native `<input type="time">` since it switched from a
+		// hand-rolled text field — its own value-sanitisation algorithm makes an
+		// arbitrary string like 'not-a-time' unrepresentable at the DOM level (the
+		// browser, and jsdom with it, coerces an invalid assignment to ''), so the
+		// left-empty case is what this test can actually drive: TIME_RE fails an
+		// empty string exactly the same way it failed the old free-text garbage.
 		await fireEvent.input(toInput, { target: { value: '10:00' } });
 		await fireEvent.input(descriptionField, { target: { value: 'Wrote the proposal' } });
 
@@ -338,7 +343,7 @@ describe('ActivityDialog', () => {
 		await fireEvent.submit(form);
 		await tick();
 
-		expect(fromInput).toHaveValue('not-a-time');
+		expect(fromInput).toHaveValue('');
 		expect(toInput).toHaveValue('10:00');
 		expect(descriptionField).toHaveValue('Wrote the proposal');
 		expect((screen.getByRole('combobox') as HTMLInputElement)).toHaveValue(project.name);
