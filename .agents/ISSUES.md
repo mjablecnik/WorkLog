@@ -1618,7 +1618,18 @@ and marked accordingly.
 ## [LOW] SessionDialog's Editing->Confirming shortcut ignores lostUncoveredSeconds
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (follow-up feature/bug work, 2026-08-25) — the user decided
+  the shortcut should match `ChangePreview`'s own three-way `sessionHasLoss`
+  check exactly. Widened both shortcut conditions in `SessionDialog.svelte`
+  (`handleSubmit` and `handleDeleteConfirmConfirm`) to also require
+  `lostUncoveredSeconds === 0`. Verified live against a real dev server/database:
+  a session with no `Activity_Entry` at all (4h, entirely `Uncovered_Time`),
+  shortened by 2h, now stops at Confirming and shows "Celkem 0 záznamů · 2 h 00
+  min zmizí z výkazu" naming the lost `Uncovered_Time`, rather than silently
+  saving — confirming performs the real write correctly. The pre-existing
+  trivial-edit shortcut (nothing to confirm at all) still skips straight to save,
+  unaffected. Added a new E2E case for this exact scenario to
+  `tests/e2e/preview.spec.ts`.
 - What: `SessionDialog.svelte` (task 5.6)'s shortcut — a `Dry_Run` with nothing to
   confirm skips straight from Editing to the real write — follows design.md's own
   wording verbatim: "a `Dry_Run` reporting no `reclipped` entries and

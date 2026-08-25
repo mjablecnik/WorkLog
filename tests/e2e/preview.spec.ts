@@ -97,3 +97,49 @@ test('confirming the shortened session saves through the real confirm step', asy
 	await expect(page.getByText('09:00 – 11:00').first()).toBeVisible();
 	await expect(page.getByText('12:00 – 13:00')).toHaveCount(0);
 });
+
+const DAY3 = '2024-01-19';
+
+test('shortening a session over pure Uncovered_Time now shows Confirming instead of auto-saving', async ({
+	page
+}) => {
+	// .agents/ISSUES.md, "SessionDialog's Editing->Confirming shortcut ignores
+	// lostUncoveredSeconds" — the narrow case that used to skip Confirming and save
+	// immediately: a session edit that only shrinks Uncovered_Time, with no
+	// Activity_Entry involved at all (removedSeconds stays 0, reclipped stays empty),
+	// so the old two-way shortcut condition let it straight through even though
+	// ChangePreview's own three-way `sessionHasLoss` check would have rendered it as
+	// a loss. The widened shortcut must now agree and stop at Confirming instead.
+	await login(page);
+
+	// A 4-hour session (09:00-13:00 Prague = 08:00Z-12:00Z) with no Activity_Entry at
+	// all — every minute of it is Uncovered_Time.
+	await createSessionViaApi(page, `${DAY3}T08:00:00.000Z`, `${DAY3}T12:00:00.000Z`);
+
+	await page.goto(`/day/${DAY3}`);
+	await page.getByRole('button', { name: /Úsek timeru 09:00/ }).click();
+	const dialog = page.getByRole('dialog', { name: 'Upravit úsek timeru' });
+	await expect(dialog).toBeVisible();
+
+	// Shorten the end from 13:00 to 11:00 — no Activity_Entry is touched, but the
+	// 11:00-13:00 stretch that WAS Uncovered_Time falls outside the new frame.
+	await dialog.getByLabel('konec').fill('11:00');
+	await page.waitForTimeout(700);
+	await dialog.getByRole('button', { name: 'Uložit', exact: true }).click();
+
+	// This must NOT save immediately: Confirming shows, naming the lost
+	// Uncovered_Time, and the dialog stays open until confirmed.
+	const confirmButton = dialog.getByRole('button', { name: 'Potvrdit a uložit' });
+	await confirmButton.waitFor({ state: 'visible', timeout: 8000 });
+	await expect(dialog.locator('.change-preview__uncovered-text')).toBeVisible();
+	await expect(dialog.locator('.change-preview__uncovered-text')).toContainText('2 h 00 min');
+	await expect(dialog).toBeVisible();
+
+	// Confirming performs the real write.
+	await confirmButton.click();
+	await expect(dialog).toBeHidden();
+
+	await page.reload();
+	await expect(page.getByText('09:00 – 11:00').first()).toBeVisible();
+	await expect(page.getByText('12:00 – 13:00')).toHaveCount(0);
+});

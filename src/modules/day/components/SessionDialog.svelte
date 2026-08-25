@@ -12,14 +12,18 @@
 	 * background, and submitting moves the dialog into a distinct **Confirming** state
 	 * where the `Change_Preview` REPLACES the fields entirely and the footer swaps to
 	 * "confirm and save" beside "back to editing" (Requirement 8.4). The shortcut in
-	 * both mermaid diagrams applies here too: a `Dry_Run` reporting no `reclipped`
-	 * entries and `removedSeconds: 0` has nothing to confirm, so submitting goes
-	 * straight to the real write — see `handleSubmit` below for the exact condition,
-	 * copied verbatim from design.md's own wording (a discrepancy with `ChangePreview`'s
-	 * own three-way `sessionHasLoss` check, which also weighs `lostUncoveredSeconds`, is
-	 * a known, deliberate divergence — flagged in this task's implementation report,
-	 * not silently reconciled by widening the shortcut's condition past what design.md
-	 * states).
+	 * both mermaid diagrams applies here too: a `Dry_Run` with nothing to confirm has
+	 * nothing to confirm, so submitting goes straight to the real write — see
+	 * `handleSubmit` below for the exact condition. This now matches `ChangePreview`'s
+	 * own three-way `sessionHasLoss` check exactly (`reclipped.length`, `removedSeconds`,
+	 * AND `lostUncoveredSeconds`, all zero/empty) rather than design.md's narrower
+	 * literal wording ("no `reclipped` entries and `removedSeconds: 0`"), which omitted
+	 * `lostUncoveredSeconds` — a session edit that only shrinks `Uncovered_Time` (no
+	 * `Activity_Entry` touched) used to skip Confirming and save immediately, even
+	 * though `ChangePreview` would have rendered that exact case as a loss had the
+	 * dialog shown it. Widened 2026-08-25 per .agents/ISSUES.md's "SessionDialog's
+	 * Editing->Confirming shortcut ignores lostUncoveredSeconds" so nothing that would
+	 * be shown as a loss is ever silently auto-saved.
 	 *
 	 * ---------------------------------------------------------------------------
 	 * NO DAY/DATE FIELD. Unlike `ActivityDialog`, which shows an explicit, editable
@@ -410,7 +414,8 @@
 		if (
 			deletePreview.rejection === null &&
 			deletePreview.reclipped.length === 0 &&
-			deletePreview.removedSeconds === 0
+			deletePreview.removedSeconds === 0 &&
+			deletePreview.lostUncoveredSeconds === 0
 		) {
 			phase = 'saving';
 			deleteFormEl?.requestSubmit();
@@ -551,9 +556,14 @@
 		submitting = false;
 		if (preview === null) return;
 
-		// Design.md's shortcut, verbatim — see this file's top doc comment for the
-		// deliberate discrepancy with `ChangePreview`'s own `sessionHasLoss`.
-		if (preview.rejection === null && preview.reclipped.length === 0 && preview.removedSeconds === 0) {
+		// Matches `ChangePreview`'s own three-way `sessionHasLoss` check exactly — see
+		// this file's top doc comment for why `lostUncoveredSeconds` is included here.
+		if (
+			preview.rejection === null &&
+			preview.reclipped.length === 0 &&
+			preview.removedSeconds === 0 &&
+			preview.lostUncoveredSeconds === 0
+		) {
 			phase = 'saving';
 			submitFormEl?.requestSubmit();
 			return;
