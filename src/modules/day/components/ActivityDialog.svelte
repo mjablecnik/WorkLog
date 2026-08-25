@@ -140,7 +140,7 @@
 		mode: 'create' | 'edit';
 		/** Edit only. */
 		entry?: ActivityEntry;
-		prefill?: { range?: Interval; projectId?: string; description?: string };
+		prefill?: { range?: Interval; projectId?: string; description?: string; mode?: EntryMode };
 		/** The Logical_Day being edited. */
 		date: string;
 		projects: Project[];
@@ -243,7 +243,7 @@
 		}
 		const range = prefill?.range;
 		return {
-			mode: 'explicit',
+			mode: prefill?.mode ?? 'explicit',
 			date,
 			from: range ? timeOf(range.start) : '',
 			to: range ? timeOf(range.end) : '',

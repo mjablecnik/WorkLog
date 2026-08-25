@@ -179,11 +179,16 @@
 	let projectsList = $derived(data.projects);
 
 	let activityDialogOpen = $state(false);
-	let activityDialogPrefill = $state<{ projectId?: string } | undefined>(undefined);
+	let activityDialogPrefill = $state<{ projectId?: string; mode: 'open' } | undefined>(undefined);
 	let activityDialogInitialFocus = $state<'project' | 'description' | undefined>(undefined);
 
+	/** Opened from Quick_Log, which previews "since the last entry ended" — the
+	 * dialog should default to that same Od_posledního tab rather than the
+	 * generic Přesně od–do one, so the two never disagree about what a click
+	 * here is about to log. */
 	function openActivityDialogFromQuickLog(prefill: { projectId?: string }): void {
-		activityDialogPrefill = prefill.projectId !== undefined ? { projectId: prefill.projectId } : undefined;
+		activityDialogPrefill =
+			prefill.projectId !== undefined ? { projectId: prefill.projectId, mode: 'open' } : { mode: 'open' };
 		activityDialogInitialFocus = prefill.projectId !== undefined ? undefined : 'project';
 		activityDialogOpen = true;
 	}
