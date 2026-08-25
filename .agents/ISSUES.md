@@ -3,7 +3,10 @@
 ## [LOW] `README.md` and `CLAUDE.md` still describe the fixed E2E-harness bug as current
 - Run: 2026-08-24-0659
 - Phase: report
-- Status: OPEN
+- Status: RESOLVED (2026-08-25, commit `4d905eb`) — removed `README.md`'s
+  `[!WARNING]` block and dropped the `— currently broken, see "Known gaps"`
+  suffix from `CLAUDE.md`'s `test:e2e:local` line, exactly as this entry's own
+  "Next" prescribed.
 - What: the repairs pass (`9f84503 docs: remove known-gaps notes for bugs fixed this
   pass`) removed the `DATABASE_URL`/`TEST_DATABASE_URL` notes from `DOCS.md` — its
   Known Limitations, Testing and Troubleshooting entries are all gone — but two
