@@ -84,11 +84,8 @@
 		color: var(--text-faint);
 	}
 
-	.search-input__field:focus-visible {
-		background-color: var(--field-active-bg);
-		box-shadow: var(--field-active-ring);
-		outline: none;
-	}
+	/* No local :focus-visible override — falls through to theme.css's global
+	   accent ring, same as any other focusable element. */
 
 	.search-input__clear {
 		position: absolute;

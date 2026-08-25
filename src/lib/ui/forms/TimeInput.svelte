@@ -85,10 +85,10 @@
 		background-color: var(--field-active-bg);
 	}
 
+	/* See DatePicker.svelte's identical note. */
 	.time-input:focus-visible {
-		background-color: var(--field-active-bg);
-		box-shadow: var(--field-active-ring);
 		outline: none;
+		box-shadow: none;
 	}
 
 	.time-input:disabled {

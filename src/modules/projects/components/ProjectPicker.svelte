@@ -66,6 +66,34 @@
 	const listboxId = `project-picker-${uid}-listbox`;
 	const createOptionId = `${listboxId}-option-create`;
 
+	/** Per-browser only (never affects first paint — see infra-env-configuration's
+	 * localStorage rule) — a most-recently-first list of project ids, read fresh
+	 * each time the dropdown opens and written on every selection. Convenience,
+	 * never required: any read/write failure (private browsing, quota, disabled
+	 * storage) just falls back to showing every project, unranked. */
+	const RECENT_STORAGE_KEY = 'worklog_recent_projects';
+	const RECENT_MAX = 10;
+
+	function readRecentIds(): string[] {
+		try {
+			const raw = localStorage.getItem(RECENT_STORAGE_KEY);
+			if (!raw) return [];
+			const parsed: unknown = JSON.parse(raw);
+			return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+		} catch {
+			return [];
+		}
+	}
+
+	function recordRecentId(id: string): void {
+		try {
+			const next = [id, ...readRecentIds().filter((v) => v !== id)].slice(0, RECENT_MAX);
+			localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(next));
+		} catch {
+			// See the doc comment above — recency is a convenience only.
+		}
+	}
+
 	let rootEl: HTMLDivElement | undefined = $state();
 	let inputEl: HTMLInputElement | undefined = $state();
 
@@ -75,6 +103,8 @@
 	let activeIndex = $state(0);
 	let creating = $state(false);
 	let createError = $state<string | null>(null);
+	/** Refreshed by `openDropdown` — see `recentProjects` below. */
+	let recentIds = $state<string[]>([]);
 
 	const selectedProject = $derived(value ? (projects.find((p) => p.id === value) ?? null) : null);
 	const selectedArchived = $derived(selectedProject?.archived ?? false);
@@ -83,9 +113,25 @@
 	const noProjectsAtAll = $derived(nonArchived.length === 0);
 	const trimmedQuery = $derived(query.trim());
 
+	/** The closed-query default view: up to `RECENT_MAX` projects, most recently
+	 * used first, padded with the remaining non-archived projects (in their
+	 * existing order) when usage history is too thin to fill it — so a new or
+	 * light user still sees every project rather than a sparse-looking list. */
+	const recentProjects = $derived.by((): Project[] => {
+		const byId = new Map(nonArchived.map((p): [string, Project] => [p.id, p]));
+		const known: Project[] = [];
+		for (const id of recentIds) {
+			const project = byId.get(id);
+			if (project) known.push(project);
+		}
+		if (known.length >= Math.min(RECENT_MAX, nonArchived.length)) return known.slice(0, RECENT_MAX);
+		const seen = new Set(known.map((p) => p.id));
+		return [...known, ...nonArchived.filter((p) => !seen.has(p.id))].slice(0, RECENT_MAX);
+	});
+
 	const filtered = $derived(
 		trimmedQuery === ''
-			? nonArchived
+			? recentProjects
 			: nonArchived.filter((p) => p.name.toLocaleLowerCase().includes(trimmedQuery.toLocaleLowerCase()))
 	);
 
@@ -118,7 +164,8 @@
 		open = true;
 		query = '';
 		createError = null;
-		const idx = nonArchived.findIndex((p) => p.id === value);
+		recentIds = readRecentIds();
+		const idx = recentProjects.findIndex((p) => p.id === value);
 		activeIndex = idx >= 0 ? idx : 0;
 	}
 
@@ -154,6 +201,7 @@
 
 	function selectProject(project: Project): void {
 		onChange(project.id);
+		recordRecentId(project.id);
 		closeDropdown();
 		focusInputWithoutReopening();
 	}
@@ -289,6 +337,7 @@
 			const project = reviveProject(body as WireProject);
 			onChange(project.id);
 			onCreate(project);
+			recordRecentId(project.id);
 			closeDropdown();
 			focusInputWithoutReopening();
 		} catch {
@@ -435,11 +484,10 @@
 		background-color: var(--field-active-bg);
 	}
 
-	.project-picker__control--open,
-	.project-picker__control:focus-within {
-		background-color: var(--field-active-bg);
-		box-shadow: var(--field-active-ring);
-	}
+	/* No accent ring on --open/:focus-within — the dropdown opening and the
+	   chevron flipping (below) are already the "this is active" signal, on any
+	   focus method: `handleInputFocus` opens the dropdown on a Tab-in exactly
+	   like it does on a click. */
 
 	.project-picker__control--error {
 		box-shadow: inset 0 0 0 1px var(--destructive);
@@ -473,8 +521,16 @@
 		cursor: inherit;
 	}
 
-	.project-picker__field:focus {
+	/* :focus-visible, not just :focus: Chromium always treats a text-editable
+	   input as focus-visible on click (not only on Tab), so the bare :focus
+	   rule alone would still leave theme.css's global accent ring showing —
+	   suppressed here for the same reason as .project-picker__control's own
+	   comment above: the dropdown opening on every focus method already says
+	   "this is active". */
+	.project-picker__field:focus,
+	.project-picker__field:focus-visible {
 		outline: none;
+		box-shadow: none;
 	}
 
 	.project-picker__field::placeholder {

@@ -68,10 +68,16 @@
 		background-color: var(--field-active-bg);
 	}
 
+	/* :focus-visible, not just :focus: Chromium treats a click into this field
+	   as focus-visible (unlike most non-text widgets), so leaving the global
+	   accent ring unsuppressed here would draw it every time the picker opens
+	   by pointer — the picker itself is already the "this is active" signal,
+	   on any focus method (openPickerOnClick only fires from a pointer, but a
+	   keyboard Tab-in still opens *something*: the field's own segments become
+	   editable immediately). */
 	.date-picker:focus-visible {
-		background-color: var(--field-active-bg);
-		box-shadow: var(--field-active-ring);
 		outline: none;
+		box-shadow: none;
 	}
 
 	.date-picker:disabled {
