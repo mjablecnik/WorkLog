@@ -271,7 +271,7 @@
 		}
 	}
 
-	let lastHandledForm: typeof form = undefined;
+	let lastHandledForm: typeof form | undefined = undefined;
 	$effect(() => {
 		if (form === undefined || form === null) return;
 		if (form === lastHandledForm) return;
