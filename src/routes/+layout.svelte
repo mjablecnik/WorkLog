@@ -78,17 +78,30 @@
 
 	const isTimerPage = $derived(page.url.pathname === '/');
 
-	// Login, logout and offline are the three routes design.md's "Login, error and
-	// offline pages" describes with their own minimal centred "page shell" — not the
-	// Application Shell. Nav links an unauthenticated visitor cannot use, and a
-	// Settings_Menu that offers logging out, have no business on the login page; the
-	// offline page shares the pattern deliberately (a full nav bar over "the server
-	// isn't answering" invites clicking straight into more failures). `+error.svelte`
-	// needs no such check — SvelteKit already renders it without this layout whenever
-	// the root `load` above never ran (an unmatched route, or this layout's own load
-	// failing outright).
+	// Login, logout, offline and the error page are the four routes design.md's
+	// "Login, error and offline pages" describes with their own minimal centred
+	// "page shell" — not the Application Shell. Nav links an unauthenticated
+	// visitor cannot use, and a Settings_Menu that offers logging out, have no
+	// business on the login page; the offline page shares the pattern deliberately
+	// (a full nav bar over "the server isn't answering" invites clicking straight
+	// into more failures).
+	//
+	// `+error.svelte` DOES need this check, despite an earlier assumption here that
+	// it wouldn't: SvelteKit still runs this root layout's `load` — and therefore
+	// still renders this layout's markup around `+error.svelte` — for an unmatched
+	// route, as long as the layout itself doesn't throw, because the root layout is
+	// universal rather than scoped to any one leaf route. Confirmed live (this
+	// phase's nine-surface conformance pass): visiting a nonexistent path rendered
+	// the full Topbar/nav/timezone-notice chrome around `+error.svelte`'s own
+	// centred card, doubling up on "page shell" and contradicting the design.
+	// `page.error` (`$app/state`) is the signal SvelteKit sets specifically while an
+	// error boundary is active, so it is checked here rather than trying to special
+	// case pathnames, which cannot enumerate every unmatched route.
 	const isBareShellPage = $derived(
-		page.url.pathname === '/login' || page.url.pathname === '/logout' || page.url.pathname === '/offline'
+		page.url.pathname === '/login' ||
+			page.url.pathname === '/logout' ||
+			page.url.pathname === '/offline' ||
+			page.error !== null
 	);
 
 	// The Settings_Menu's own popover-vs-sheet, modal-vs-not behaviour must track the
