@@ -1037,6 +1037,9 @@
 		background-color: var(--field-active-bg);
 		box-shadow: var(--field-active-ring);
 		outline: none;
+		/* 16px, not the resting 14/15px — see TimeInput.svelte's identical note
+		   on preventing iOS Safari's auto-zoom-on-focus. */
+		font-size: 1rem;
 	}
 	.activity-dialog__duration-input--error {
 		box-shadow: inset 0 0 0 1px var(--destructive);
@@ -1072,6 +1075,8 @@
 		background-color: var(--field-active-bg);
 		box-shadow: var(--field-active-ring);
 		outline: none;
+		/* See .activity-dialog__duration-input's identical note. */
+		font-size: 1rem;
 	}
 
 	/* --------------------------------------------------------------------

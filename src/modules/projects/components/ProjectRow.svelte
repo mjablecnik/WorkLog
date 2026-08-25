@@ -651,6 +651,9 @@
 		box-shadow:
 			0 0 0 2px var(--bg),
 			0 0 0 4px var(--accent);
+		/* 16px, not the resting 14px — see TimeInput.svelte's identical note on
+		   preventing iOS Safari's auto-zoom-on-focus. */
+		font-size: 1rem;
 	}
 
 	.project-row__name-input--error {

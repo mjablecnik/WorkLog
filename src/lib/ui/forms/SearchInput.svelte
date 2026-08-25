@@ -84,8 +84,14 @@
 		color: var(--text-faint);
 	}
 
-	/* No local :focus-visible override — falls through to theme.css's global
-	   accent ring, same as any other focusable element. */
+	/* No local outline/box-shadow override — falls through to theme.css's
+	   global accent ring, same as any other focusable element. Font-size
+	   alone is bumped: 16px, not the resting 14px design.md's type scale
+	   specifies, prevents iOS Safari's auto-zoom-on-focus (see
+	   TimeInput.svelte's identical note) without changing the resting size. */
+	.search-input__field:focus-visible {
+		font-size: 1rem;
+	}
 
 	.search-input__clear {
 		position: absolute;

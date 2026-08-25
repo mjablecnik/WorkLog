@@ -78,6 +78,11 @@
 	.date-picker:focus-visible {
 		outline: none;
 		box-shadow: none;
+		/* 16px, not the resting 14px design.md's type scale specifies — iOS Safari
+		   auto-zooms the whole page on focus for any editable control under 16px,
+		   forcing the visitor to zoom back out by hand. Applying it only while
+		   focused keeps the documented resting size everywhere else. */
+		font-size: 1rem;
 	}
 
 	.date-picker:disabled {

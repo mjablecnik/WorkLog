@@ -89,6 +89,9 @@
 	.time-input:focus-visible {
 		outline: none;
 		box-shadow: none;
+		/* See DatePicker.svelte's identical note — prevents iOS Safari's
+		   auto-zoom-on-focus without changing the resting, unfocused size. */
+		font-size: 1rem;
 	}
 
 	.time-input:disabled {

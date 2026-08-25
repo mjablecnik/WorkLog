@@ -533,6 +533,12 @@
 		box-shadow: none;
 	}
 
+	/* 16px, not the resting 14px design.md's type scale specifies — see
+	   TimeInput.svelte's identical note on why, and why only while focused. */
+	.project-picker__field:focus {
+		font-size: 1rem;
+	}
+
 	.project-picker__field::placeholder {
 		color: var(--text-faint);
 	}
