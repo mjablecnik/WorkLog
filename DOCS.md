@@ -267,12 +267,6 @@ if the committed files and a fresh generation disagree.
 Real, currently-open gaps — listed here rather than left for a reader to discover the
 hard way:
 
-- **No mobile "create" entry point yet.** `Shell.svelte` reserves floating-action-button
-  space on mobile, but no page currently supplies its content — there is no mobile path
-  to open the create-activity/create-session sheet from the FAB itself (the day page's
-  own inline "+" pills still work).
-- **`SessionDialog`'s quick edit→confirm shortcut** does not weigh one edge case
-  (`lostUncoveredSeconds > 0`) the same way `ChangePreview`'s own three-way check does.
 - **Four icons have no artboard source.** `search`, `sun`, `moon` and `check` in
   `Icon.svelte` render from a documented fallback geometry rather than a value traced
   from `.design/artboards/`.

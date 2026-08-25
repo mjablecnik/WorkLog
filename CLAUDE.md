@@ -91,10 +91,7 @@ a second one.
 either file; `check` fails the build if a fresh generation would differ from what is
 committed.
 
-## Known gaps (see `DOCS.md`'s Known Limitations for the full list)
-
-- **No mobile FAB entry point.** `Shell.svelte` reserves floating-action-button space
-  on mobile; no page currently supplies content for it.
+See `DOCS.md`'s Known Limitations for the current list of open gaps.
 
 ## Commands
 
