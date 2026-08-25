@@ -70,7 +70,7 @@
 		border-radius: 9999px;
 		background-color: var(--accent);
 		color: var(--ink-on-accent);
-		font-size: 14px;
+		font-size: 13.5px;
 		font-weight: 600;
 		text-decoration: none;
 		cursor: pointer;

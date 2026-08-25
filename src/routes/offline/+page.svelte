@@ -101,7 +101,7 @@
 		height: 42px;
 		padding: 0 20px;
 		border-radius: 9999px;
-		font-size: 14px;
+		font-size: 13.5px;
 		text-decoration: none;
 		cursor: pointer;
 		transition: background-color var(--dur-hover, 200ms) var(--ease-standard, ease);
