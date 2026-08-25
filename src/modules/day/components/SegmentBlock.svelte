@@ -67,6 +67,14 @@
 	const durationSeconds = $derived((segment.interval.end.getTime() - segment.interval.start.getTime()) / 1000);
 	const floorPx = $derived(MIN_BLOCK_PX[density]);
 	const atFloor = $derived(segment.heightPx <= floorPx);
+	/** Too short for the stacked name/description/meta layout (which needs
+	 * DESCRIPTION_MIN_PX to fit three lines) — the single-row layout instead,
+	 * with the description squeezed in truncated between the name and the
+	 * time, same as `atFloor` already did with just name and time. A superset
+	 * of `atFloor`: every block that's genuinely at the pixel floor is also
+	 * too short for three lines, but plenty of taller-than-floor blocks are
+	 * too, so this needs its own threshold rather than reusing that one. */
+	const compactRow = $derived(segment.heightPx < DESCRIPTION_MIN_PX);
 	const isSplit = $derived(segment.partIndex !== null && segment.partCount !== null);
 	const isFirstPart = $derived(segment.partIndex === 1);
 	const isLastPart = $derived(segment.partIndex !== null && segment.partCount !== null && segment.partIndex === segment.partCount);
@@ -96,7 +104,7 @@
 	<button
 		type="button"
 		class="sb sb--{density} sb--project {projectSlotClass(entry.colorIndex)} {heightClass()}"
-		class:sb--floor={atFloor}
+		class:sb--floor={compactRow}
 		class:sb--linked={linked}
 		data-entry-id={entry.id}
 		aria-label={m.day_segment_label({
@@ -118,7 +126,7 @@
 			<span class="sb-notch sb-notch--top" aria-hidden="true"></span>
 		{/if}
 		<span class="sb-name">{entry.projectName}</span>
-		{#if segment.showsDescription && !atFloor && entry.description}
+		{#if entry.description}
 			<span class="sb-desc">{entry.description}</span>
 		{/if}
 		<span class="sb-meta">
@@ -257,6 +265,9 @@
 		font-size: 12.5px;
 		line-height: 1.55;
 		color: var(--text-dim);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.sb-meta {
@@ -272,10 +283,24 @@
 		flex-shrink: 0;
 	}
 	.sb--floor .sb-name {
-		flex: 1 1 auto;
+		/* Doesn't grow when a description needs the room instead — see
+		   .sb--floor .sb-desc below, which takes the flex-grow in that case;
+		   :not(:has()) restores the old grow-to-fill behaviour when there's
+		   nothing to make room for. */
+		flex: 0 1 auto;
+		max-width: 45%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.sb--floor:not(:has(.sb-desc)) .sb-name {
+		flex: 1 1 auto;
+		max-width: none;
+	}
+	.sb--floor .sb-desc {
+		flex: 1 1 auto;
+		min-width: 0;
+		margin: 0 2px;
 	}
 
 	/* Split_Marker continuation notch — a 7 px --pj triangle centred on the edge
