@@ -120,4 +120,63 @@ describe('coverage route', () => {
 		);
 		expect(res.status).toBe(400);
 	});
+
+	// 003-worklog-time-categories, task 5.11: /api/coverage's totals and intervals are
+	// unchanged by the presence of a Leisure_Entry in the same range.
+	it('coverage totals and intervals are unaffected by a Leisure_Entry in the same range', async () => {
+		const project = await bodyOf(
+			await projectsPost(
+				mockEvent({ method: 'POST', url: `${BASE}/api/projects`, body: { name: 'Leisure Coverage Test' } })
+			)
+		);
+		await sessionsPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/sessions`,
+				body: { startedAt: '2026-08-03T08:00:00Z', endedAt: '2026-08-03T12:00:00Z' }
+			})
+		);
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId: project.id,
+					description: 'covered stretch',
+					startedAt: '2026-08-03T09:00:00Z',
+					endedAt: '2026-08-03T10:00:00Z'
+				}
+			})
+		);
+
+		const before = await bodyOf(
+			await coverageGet(
+				mockEvent({ url: `${BASE}/api/coverage?from=2026-08-03T00:00:00Z&to=2026-08-04T00:00:00Z` })
+			)
+		);
+
+		// A Leisure_Entry, hours outside the Work_Session entirely.
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'evening leisure',
+					startedAt: '2026-08-03T20:00:00Z',
+					endedAt: '2026-08-03T21:00:00Z'
+				}
+			})
+		);
+
+		const after = await bodyOf(
+			await coverageGet(
+				mockEvent({ url: `${BASE}/api/coverage?from=2026-08-03T00:00:00Z&to=2026-08-04T00:00:00Z` })
+			)
+		);
+
+		expect(after.totals).toEqual(before.totals);
+		expect(after.covered).toEqual(before.covered);
+		expect(after.uncovered).toEqual(before.uncovered);
+		expect(after.tracked).toEqual(before.tracked);
+	});
 });

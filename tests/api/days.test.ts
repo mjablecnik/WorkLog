@@ -205,6 +205,81 @@ describe('day and coverage routes', () => {
 		expect((body.days as unknown[]).length).toBeGreaterThan(0);
 	});
 
+	// --- 003-worklog-time-categories, task 5.11: paidSeconds/unpaidSeconds/relaxSeconds
+	// on both /api/days/{date} and /api/days ---
+
+	it('/api/days/{date} reports paidSeconds/unpaidSeconds/relaxSeconds alongside coveredSeconds', async () => {
+		const paidProject = await createProject('Paid Days Project');
+		const unpaidRes = await projectsPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/projects`,
+				body: { name: 'Unpaid Days Project', billable: false }
+			})
+		);
+		const unpaidProject = (await bodyOf(unpaidRes)).id as string;
+
+		await createSession('2026-07-27T08:00:00Z', '2026-07-27T12:00:00Z');
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId: paidProject,
+					description: 'paid work',
+					startedAt: '2026-07-27T08:00:00Z',
+					endedAt: '2026-07-27T09:00:00Z'
+				}
+			})
+		);
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId: unpaidProject,
+					description: 'unpaid work',
+					startedAt: '2026-07-27T09:00:00Z',
+					endedAt: '2026-07-27T10:30:00Z'
+				}
+			})
+		);
+		// Well outside the session entirely — leisure never needs a timer running.
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'leisure',
+					startedAt: '2026-07-27T20:00:00Z',
+					endedAt: '2026-07-27T21:30:00Z'
+				}
+			})
+		);
+
+		const day = await bodyOf(
+			await dayGet(mockEvent({ url: `${BASE}/api/days/2026-07-27`, params: { date: '2026-07-27' } }))
+		);
+		const totals = day.totals as Record<string, number>;
+		expect(totals.paidSeconds).toBe(3600);
+		expect(totals.unpaidSeconds).toBe(90 * 60);
+		expect(totals.relaxSeconds).toBe(90 * 60);
+		expect(totals.paidSeconds + totals.unpaidSeconds).toBe(totals.coveredSeconds);
+
+		const range = await bodyOf(
+			await daysGet(
+				mockEvent({ url: `${BASE}/api/days?from=2026-07-27T00:00:00Z&to=2026-07-28T00:00:00Z` })
+			)
+		);
+		const rangeDay = (range.days as Record<string, unknown>[]).find((d) => d.date === '2026-07-27') as Record<
+			string,
+			number
+		>;
+		expect(rangeDay.paidSeconds).toBe(3600);
+		expect(rangeDay.unpaidSeconds).toBe(90 * 60);
+		expect(rangeDay.relaxSeconds).toBe(90 * 60);
+	});
+
 	it('quickLog on the current Logical_Day runs from the last segment end to now', async () => {
 		const config = getConfig();
 		const dayResolver = createDayResolver(config.timezone, config.dayStartHour);

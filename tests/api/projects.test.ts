@@ -144,4 +144,88 @@ describe('project routes', () => {
 		);
 		expect(patched.colorIndex).toBe(a.colorIndex);
 	});
+
+	// --- 003-worklog-time-categories, task 5.11: billable create/patch, default,
+	// and untouched by rename/archive/recolour ---
+
+	it('a project created without billable defaults to true', async () => {
+		const created = await bodyOf(
+			await projectsPost(
+				mockEvent({ method: 'POST', url: `${BASE}/api/projects`, body: { name: 'Default Billable' } })
+			)
+		);
+		expect(created.billable).toBe(true);
+	});
+
+	it('create with an explicit billable: false, and PATCH flips it', async () => {
+		const created = await bodyOf(
+			await projectsPost(
+				mockEvent({
+					method: 'POST',
+					url: `${BASE}/api/projects`,
+					body: { name: 'Explicit Unpaid', billable: false }
+				})
+			)
+		);
+		expect(created.billable).toBe(false);
+
+		const patched = await bodyOf(
+			await projectPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/projects/${created.id}`,
+					params: { id: created.id as string },
+					body: { billable: true }
+				})
+			)
+		);
+		expect(patched.billable).toBe(true);
+	});
+
+	it('rename, archive/unarchive and recolour never change billable', async () => {
+		const created = await bodyOf(
+			await projectsPost(
+				mockEvent({
+					method: 'POST',
+					url: `${BASE}/api/projects`,
+					body: { name: 'Stable Billable', billable: false }
+				})
+			)
+		);
+		const renamed = await bodyOf(
+			await projectPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/projects/${created.id}`,
+					params: { id: created.id as string },
+					body: { name: 'Stable Billable Renamed' }
+				})
+			)
+		);
+		expect(renamed.billable).toBe(false);
+
+		const archived = await bodyOf(
+			await projectPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/projects/${created.id}`,
+					params: { id: created.id as string },
+					body: { archived: true }
+				})
+			)
+		);
+		expect(archived.billable).toBe(false);
+
+		const recoloured = await bodyOf(
+			await projectPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/projects/${created.id}`,
+					params: { id: created.id as string },
+					body: { colorIndex: 5 }
+				})
+			)
+		);
+		expect(recoloured.billable).toBe(false);
+	});
 });

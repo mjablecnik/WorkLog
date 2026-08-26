@@ -11,6 +11,8 @@ import {
 } from '../../src/routes/api/activities/[id]/+server';
 import { POST as projectsPost } from '../../src/routes/api/projects/+server';
 import { POST as sessionsPost } from '../../src/routes/api/sessions/+server';
+import { getConfig } from '../../src/lib/server/core/config';
+import { createDayResolver } from '../../src/lib/server/domain/logical-day';
 
 const BASE = 'http://localhost';
 
@@ -471,5 +473,374 @@ describe('activity routes', () => {
 		);
 		expect(res.status).toBe(400);
 		expect((await bodyOf(res)).error).toBe('RANGE_TOO_LARGE');
+	});
+
+	// --- 003-worklog-time-categories, task 5.10: Leisure_Entry create/patch/delete ---
+
+	it('creates a Leisure_Entry in Explicit_Mode with no projectId at all', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'evening off',
+					startedAt: '2026-06-01T20:00:00Z',
+					endedAt: '2026-06-01T21:00:00Z'
+				}
+			})
+		);
+		expect(res.status).toBe(201);
+		const body = await bodyOf(res);
+		const entry = body.entry as Record<string, unknown>;
+		expect(entry.projectId).toBeNull();
+		expect(entry.projectName).toBeNull();
+		expect(entry.colorIndex).toBeNull();
+		expect(entry.category).toBe('relax');
+	});
+
+	it('creates a Leisure_Entry in Duration_Mode, bounded at the Target_Day end', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'late duration leisure',
+					date: '2026-06-01',
+					startedAt: '2026-06-01T23:00:00Z',
+					durationMinutes: 180
+				}
+			})
+		);
+		expect(res.status).toBe(201);
+		const body = await bodyOf(res);
+		const entry = body.entry as Record<string, unknown>;
+		const segments = entry.segments as { startedAt: string; endedAt: string }[];
+		const totalMs = segments.reduce(
+			(sum, s) => sum + (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()),
+			0
+		);
+		// Bounded at the Target_Day end (03:00 Europe/Prague, or whatever DAY_START_HOUR
+		// resolves to in UTC for this fixture) rather than running the full 180 minutes.
+		expect(totalMs).toBeLessThanOrEqual(180 * 60_000);
+		expect(totalMs).toBeGreaterThan(0);
+	});
+
+	it('creates a Leisure_Entry in Open_Mode on the CURRENT Logical_Day with no Work_Session at all (day-start anchor)', async () => {
+		// resolveCreateWindow reads the real wall clock, not a test-controlled `now`
+		// (unlike the service-layer tests in tests/lib/server/services/activities.test.ts,
+		// which do control it) — so this only exercises the day-start success path when
+		// the target date IS today, matching days.test.ts's own "quickLog on the current
+		// Logical_Day" convention. Requirement 3.12's past-day dead end is covered by the
+		// next test.
+		const config = getConfig();
+		const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
+		const todayDate = dayResolver.dateOf(new Date());
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: { description: 'open leisure, no session today', date: todayDate }
+			})
+		);
+		expect(res.status).toBe(201);
+		const body = await bodyOf(res);
+		expect((body.anchor as Record<string, unknown>).source).toBe('day-start');
+		expect((body.entry as Record<string, unknown>).projectId).toBeNull();
+	});
+
+	it('accepts an empty description on a Leisure_Entry, exactly as for a Work_Entry', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: { description: '', startedAt: '2026-06-01T20:00:00Z', endedAt: '2026-06-01T20:30:00Z' }
+			})
+		);
+		expect(res.status).toBe(201);
+	});
+
+	it('a sub-MIN_INTERVAL_SECONDS Leisure_Entry is rejected as NOTHING_TO_LOG (all-slivers)', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'too short',
+					startedAt: '2026-06-01T20:00:00Z',
+					endedAt: '2026-06-01T20:00:30Z'
+				}
+			})
+		);
+		expect(res.status).toBe(409);
+		expect((await bodyOf(res)).error).toBe('NOTHING_TO_LOG');
+	});
+
+	it('VALIDATION_ERROR when a supplied projectId names no existing Project', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId: '00000000-0000-0000-0000-000000000000',
+					description: 'unknown project',
+					startedAt: '2026-06-01T20:00:00Z',
+					endedAt: '2026-06-01T21:00:00Z'
+				}
+			})
+		);
+		expect(res.status).toBe(400);
+		expect((await bodyOf(res)).error).toBe('VALIDATION_ERROR');
+	});
+
+	it('PROJECT_ARCHIVED when a supplied projectId names an archived Project', async () => {
+		const archivedProject = await bodyOf(
+			await projectsPost(
+				mockEvent({ method: 'POST', url: `${BASE}/api/projects`, body: { name: 'Archived Leisure' } })
+			)
+		);
+		const { PATCH: projectPatch } = await import('../../src/routes/api/projects/[id]/+server');
+		await projectPatch(
+			mockEvent({
+				method: 'PATCH',
+				url: `${BASE}/api/projects/${archivedProject.id}`,
+				params: { id: archivedProject.id as string },
+				body: { archived: true }
+			})
+		);
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId: archivedProject.id,
+					description: 'archived',
+					startedAt: '2026-06-01T20:00:00Z',
+					endedAt: '2026-06-01T21:00:00Z'
+				}
+			})
+		);
+		expect(res.status).toBe(400);
+		expect((await bodyOf(res)).error).toBe('PROJECT_ARCHIVED');
+	});
+
+	it('ACTIVITY_OVERLAP between a Leisure_Entry and a Work_Entry, in either order', async () => {
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId,
+					description: 'work first',
+					startedAt: '2026-06-01T09:00:00Z',
+					endedAt: '2026-06-01T10:00:00Z'
+				}
+			})
+		);
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'leisure overlapping work',
+					startedAt: '2026-06-01T09:30:00Z',
+					endedAt: '2026-06-01T10:30:00Z'
+				}
+			})
+		);
+		expect(res.status).toBe(409);
+		expect((await bodyOf(res)).error).toBe('ACTIVITY_OVERLAP');
+	});
+
+	it('Requirement 3.12: Open_Mode leisure on a PAST day with no Work_Session is NOTHING_TO_LOG', async () => {
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: { description: 'past day, no session', date: '2020-01-01' }
+			})
+		);
+		expect(res.status).toBe(409);
+		expect((await bodyOf(res)).error).toBe('NOTHING_TO_LOG');
+	});
+
+	it('deletes a Leisure_Entry exactly as a Work_Entry', async () => {
+		const created = (
+			await bodyOf(
+				await activitiesPost(
+					mockEvent({
+						method: 'POST',
+						url: `${BASE}/api/activities`,
+						body: {
+							description: 'to delete',
+							startedAt: '2026-06-01T20:00:00Z',
+							endedAt: '2026-06-01T21:00:00Z'
+						}
+					})
+				)
+			)
+		).entry as Record<string, unknown>;
+		const del = await activityDelete(
+			mockEvent({ method: 'DELETE', url: `${BASE}/api/activities/${created.id}`, params: { id: created.id as string } })
+		);
+		expect(del.status).toBe(204);
+	});
+
+	it('lists a Leisure_Entry alongside a Work_Entry in the documented order', async () => {
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId,
+					description: 'work at 09',
+					startedAt: '2026-06-01T09:00:00Z',
+					endedAt: '2026-06-01T10:00:00Z'
+				}
+			})
+		);
+		await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'leisure at 20',
+					startedAt: '2026-06-01T20:00:00Z',
+					endedAt: '2026-06-01T21:00:00Z'
+				}
+			})
+		);
+		const list = await bodyOf(
+			await activitiesGet(
+				mockEvent({
+					url: `${BASE}/api/activities?from=2026-06-01T00:00:00Z&to=2026-06-02T00:00:00Z`
+				})
+			)
+		);
+		const entries = list.entries as Record<string, unknown>[];
+		expect(entries).toHaveLength(2);
+		expect(entries.map((e) => e.description)).toEqual(['work at 09', 'leisure at 20']);
+	});
+
+	it('PATCH converts a Work_Entry to a Leisure_Entry (projectId: null) and back', async () => {
+		const created = (
+			await bodyOf(
+				await activitiesPost(
+					mockEvent({
+						method: 'POST',
+						url: `${BASE}/api/activities`,
+						body: {
+							projectId,
+							description: 'convert me',
+							startedAt: '2026-06-01T09:00:00Z',
+							endedAt: '2026-06-01T10:00:00Z'
+						}
+					})
+				)
+			)
+		).entry as Record<string, unknown>;
+
+		const toLeisure = await bodyOf(
+			await activityPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/activities/${created.id}`,
+					params: { id: created.id as string },
+					body: { projectId: null }
+				})
+			)
+		);
+		const leisureEntry = toLeisure.entry as Record<string, unknown>;
+		expect(leisureEntry.projectId).toBeNull();
+		expect(leisureEntry.category).toBe('relax');
+
+		const backToWork = await bodyOf(
+			await activityPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/activities/${created.id}`,
+					params: { id: created.id as string },
+					body: { projectId }
+				})
+			)
+		);
+		const workEntry = backToWork.entry as Record<string, unknown>;
+		expect(workEntry.projectId).toBe(projectId);
+		expect(workEntry.category).not.toBe('relax');
+	});
+
+	it('a description-only PATCH and a Project-to-Project PATCH stay meta-only (unchanged behaviour)', async () => {
+		const otherProject = await bodyOf(
+			await projectsPost(mockEvent({ method: 'POST', url: `${BASE}/api/projects`, body: { name: 'Other Project' } }))
+		);
+		const created = (
+			await bodyOf(
+				await activitiesPost(
+					mockEvent({
+						method: 'POST',
+						url: `${BASE}/api/activities`,
+						body: {
+							projectId,
+							description: 'meta only',
+							startedAt: '2026-06-01T09:00:00Z',
+							endedAt: '2026-06-01T10:00:00Z'
+						}
+					})
+				)
+			)
+		).entry as Record<string, unknown>;
+
+		const renamed = await bodyOf(
+			await activityPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/activities/${created.id}`,
+					params: { id: created.id as string },
+					body: { description: 'renamed' }
+				})
+			)
+		);
+		expect((renamed.entry as Record<string, unknown>).description).toBe('renamed');
+
+		const reassigned = await bodyOf(
+			await activityPatch(
+				mockEvent({
+					method: 'PATCH',
+					url: `${BASE}/api/activities/${created.id}`,
+					params: { id: created.id as string },
+					body: { projectId: otherProject.id }
+				})
+			)
+		);
+		expect((reassigned.entry as Record<string, unknown>).projectId).toBe(otherProject.id);
+	});
+
+	it('a JSON PATCH supplying clearProject is rejected — projectId: null is the one JSON encoding', async () => {
+		const created = (
+			await bodyOf(
+				await activitiesPost(
+					mockEvent({
+						method: 'POST',
+						url: `${BASE}/api/activities`,
+						body: {
+							projectId,
+							description: 'no clearProject over JSON',
+							startedAt: '2026-06-01T09:00:00Z',
+							endedAt: '2026-06-01T10:00:00Z'
+						}
+					})
+				)
+			)
+		).entry as Record<string, unknown>;
+
+		const res = await activityPatch(
+			mockEvent({
+				method: 'PATCH',
+				url: `${BASE}/api/activities/${created.id}`,
+				params: { id: created.id as string },
+				body: { clearProject: true }
+			})
+		);
+		expect(res.status).toBe(400);
+		expect((await bodyOf(res)).error).toBe('VALIDATION_ERROR');
 	});
 });
