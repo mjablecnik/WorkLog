@@ -79,7 +79,9 @@
 		intervalsIncluded: boolean;
 		kpi: KpiFigures;
 		uncoveredSeconds: number;
-		projectBreakdown: ProjectRangeTotal[];
+		/** Grouped by billable FIRST (003-worklog-time-categories, Requirement 11.2) —
+		 *  a combined row never mixes a paid Project with an unpaid one. */
+		projectBreakdown: { paid: ProjectRangeTotal[]; unpaid: ProjectRangeTotal[] };
 		dayStartHour: number;
 		eveningHour: number;
 		timeZone: string;
@@ -196,7 +198,7 @@
 			<div class="stats-page__breakdown-row" class:stats-page__breakdown-row--solo={!showRhythm}>
 				<div class="stats-page__panel">
 					<p class="lbl stats-page__panel-label">{m.stats_breakdown_label()}</p>
-					<ProjectBreakdown {projectBreakdown} {uncoveredSeconds} />
+					<ProjectBreakdown {projectBreakdown} {uncoveredSeconds} relaxSeconds={kpi.relaxSeconds} />
 				</div>
 
 				{#if showRhythm}

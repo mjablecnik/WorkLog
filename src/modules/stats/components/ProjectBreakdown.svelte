@@ -42,21 +42,31 @@
 	import EmptyState from '$lib/ui/components/EmptyState.svelte';
 
 	interface Props {
-		/** Descending by coveredSeconds; the trailing "Other" row (if any) has projectId null. */
-		projectBreakdown: ProjectRangeTotal[];
+		/** Grouped by billable FIRST (003-worklog-time-categories, Requirement 11.2) —
+		 *  each group descending by coveredSeconds, its own trailing "Other" row (if
+		 *  any, projectId null) folded within the group, so a combined row never mixes
+		 *  a paid Project with an unpaid one. */
+		projectBreakdown: { paid: ProjectRangeTotal[]; unpaid: ProjectRangeTotal[] };
 		uncoveredSeconds: number;
+		/** Addition — the range's total Leisure_Time, shown beneath both headings,
+		 *  separated from them and never one of the bars (Requirement 11.3). */
+		relaxSeconds: number;
 		class?: string;
 	}
 
-	let { projectBreakdown, uncoveredSeconds, class: className = '' }: Props = $props();
+	let { projectBreakdown, uncoveredSeconds, relaxSeconds, class: className = '' }: Props = $props();
 
 	function fmtDuration(seconds: number): string {
 		return formatDuration(seconds, '');
 	}
 
-	/** The range's total Covered_Time — every row's share is against this, never the largest row. */
+	/** The range's total Covered_Time across BOTH groups — every row's share is
+	 *  against this, never the largest row and never just its own group's total. */
 	const totalCoveredSeconds = $derived(
-		projectBreakdown.reduce((sum, project) => sum + project.coveredSeconds, 0)
+		[...projectBreakdown.paid, ...projectBreakdown.unpaid].reduce(
+			(sum, project) => sum + project.coveredSeconds,
+			0
+		)
 	);
 
 	function sharePercent(coveredSeconds: number): number {
@@ -74,8 +84,49 @@
 
 	// A range with no records at all — nothing described and nothing left uncovered —
 	// shows the empty state instead of an empty chart (Requirement 12.12).
-	const isEmpty = $derived(projectBreakdown.length === 0 && uncoveredSeconds === 0);
+	const isEmpty = $derived(
+		projectBreakdown.paid.length === 0 &&
+			projectBreakdown.unpaid.length === 0 &&
+			uncoveredSeconds === 0 &&
+			relaxSeconds === 0
+	);
 </script>
+
+{#snippet group(projects: ProjectRangeTotal[])}
+	<ul class="breakdown__list">
+		{#each projects as project (project.projectId ?? 'other')}
+			{@const percent = sharePercent(project.coveredSeconds)}
+			<li class="row" title={rowTooltip(project)}>
+				<div class="row-head">
+					<span
+						class="swatch {project.colorIndex === null ? 'swatch--other' : projectSlotClass(project.colorIndex)}"
+					></span>
+					<span class="name">{rowLabel(project)}</span>
+					<span class="duration tabular">{fmtDuration(project.coveredSeconds)}</span>
+					<span class="share tabular">{Math.round(percent)}%</span>
+				</div>
+				<svg
+					class="bar"
+					viewBox="0 0 100 8"
+					preserveAspectRatio="none"
+					role="presentation"
+					aria-hidden="true"
+				>
+					<rect class="bar-track" x="0" y="0" width="100" height="8" rx="4" ry="4" />
+					<rect
+						class="bar-fill {project.colorIndex === null ? 'bar-fill--other' : projectSlotClass(project.colorIndex)}"
+						x="0"
+						y="0"
+						width="{percent}%"
+						height="8"
+						rx="4"
+						ry="4"
+					/>
+				</svg>
+			</li>
+		{/each}
+	</ul>
+{/snippet}
 
 {#if isEmpty}
 	<div class="breakdown-empty {className}">
@@ -84,45 +135,28 @@
 	</div>
 {:else}
 	<div class="breakdown {className}">
-		<ul class="breakdown__list">
-			{#each projectBreakdown as project (project.projectId ?? 'other')}
-				{@const percent = sharePercent(project.coveredSeconds)}
-				<li class="row" title={rowTooltip(project)}>
-					<div class="row-head">
-						<span
-							class="swatch {project.colorIndex === null ? 'swatch--other' : projectSlotClass(project.colorIndex)}"
-						></span>
-						<span class="name">{rowLabel(project)}</span>
-						<span class="duration tabular">{fmtDuration(project.coveredSeconds)}</span>
-						<span class="share tabular">{Math.round(percent)}%</span>
-					</div>
-					<svg
-						class="bar"
-						viewBox="0 0 100 8"
-						preserveAspectRatio="none"
-						role="presentation"
-						aria-hidden="true"
-					>
-						<rect class="bar-track" x="0" y="0" width="100" height="8" rx="4" ry="4" />
-						<rect
-							class="bar-fill {project.colorIndex === null ? 'bar-fill--other' : projectSlotClass(project.colorIndex)}"
-							x="0"
-							y="0"
-							width="{percent}%"
-							height="8"
-							rx="4"
-							ry="4"
-						/>
-					</svg>
-				</li>
-			{/each}
-		</ul>
+		{#if projectBreakdown.paid.length > 0}
+			<p class="lbl group-heading">{m.stats_breakdown_paid_heading()}</p>
+			{@render group(projectBreakdown.paid)}
+		{/if}
+
+		{#if projectBreakdown.unpaid.length > 0}
+			<p class="lbl group-heading group-heading--spaced">{m.stats_breakdown_unpaid_heading()}</p>
+			{@render group(projectBreakdown.unpaid)}
+		{/if}
 
 		<div class="divider"></div>
 
 		<div class="uncovered-row">
 			<span class="uncovered-label">{m.stats_breakdown_uncovered()}</span>
 			<span class="uncovered-value tabular">{fmtDuration(uncoveredSeconds)}</span>
+		</div>
+
+		<!-- Requirement 11.3: the range's total Leisure_Time, beneath both headings,
+		     separated from them and never one of the bars. -->
+		<div class="uncovered-row">
+			<span class="uncovered-label">{m.stats_breakdown_leisure()}</span>
+			<span class="uncovered-value tabular">{fmtDuration(relaxSeconds)}</span>
 		</div>
 	</div>
 {/if}
@@ -140,6 +174,14 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
+	}
+
+	.group-heading {
+		margin: 0 0 10px;
+	}
+
+	.group-heading--spaced {
+		margin-top: 18px;
 	}
 
 	.row {

@@ -54,6 +54,22 @@
 			{m.stats_kpi_overtime_share({ percent: Math.round(kpi.overtimeSharePercent) })}
 		</p>
 	</div>
+
+	<!-- Requirement 11.1: paid/unpaid/relax as individually visible figures. -->
+	<div class="kpi-panel">
+		<p class="lbl">{m.stats_kpi_paid()}</p>
+		<p class="kpi-figure tabular">{fmtDuration(kpi.paidSeconds)}</p>
+	</div>
+
+	<div class="kpi-panel">
+		<p class="lbl">{m.stats_kpi_unpaid()}</p>
+		<p class="kpi-figure tabular">{fmtDuration(kpi.unpaidSeconds)}</p>
+	</div>
+
+	<div class="kpi-panel">
+		<p class="lbl">{m.stats_kpi_relax()}</p>
+		<p class="kpi-figure tabular">{fmtDuration(kpi.relaxSeconds)}</p>
+	</div>
 </div>
 
 <style>

@@ -25,7 +25,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { getCurrentLocale } from '$lib/core/i18n';
 	import { formatDayLabel, formatDuration, formatTimeOfDay, parseTimeOfDay } from '$lib/viz/format';
-	import { projectSlotClass } from '$lib/viz/palette';
+	import { projectSlotClass, LEISURE_SLOT_CLASS } from '$lib/viz/palette';
 	import { positionPercent, widthPercent } from './rhythm-geometry';
 
 	type DayRhythmProps = {
@@ -101,6 +101,7 @@
 			{@const isToday = day.date === today}
 			{@const covered = day.covered ?? []}
 			{@const uncovered = day.uncovered ?? []}
+			{@const leisure = day.leisure ?? []}
 			<button
 				type="button"
 				class="day-rhythm__row"
@@ -136,6 +137,19 @@
 							rx="4"
 							ry="4"
 							fill="url(#day-rhythm-hatch)"
+						/>
+					{/each}
+					<!-- Requirement 11.4: Leisure_Time drawn in the Leisure_Palette_Slot, at the
+					     position it actually fell, alongside the existing covered/uncovered draws. -->
+					{#each leisure as interval, i (i)}
+						<rect
+							class="day-rhythm__segment {LEISURE_SLOT_CLASS}"
+							x="{positionPercent(interval.start, dayStartHour, timeZone)}%"
+							width="{widthPercent(interval.start, interval.end)}%"
+							y="0"
+							height="100%"
+							rx="4"
+							ry="4"
 						/>
 					{/each}
 					{#if isToday}

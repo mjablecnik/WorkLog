@@ -85,6 +85,9 @@ function daySummaryFixture(overrides: Partial<DaySummary> = {}): DaySummary {
 		trackedSeconds: 0,
 		coveredSeconds: 0,
 		uncoveredSeconds: 0,
+		paidSeconds: 0,
+		unpaidSeconds: 0,
+		relaxSeconds: 0,
 		sessionCount: 0,
 		longestBlockSeconds: 0,
 		overtimeSeconds: 0,
@@ -101,6 +104,30 @@ function projectRangeTotalFixture(overrides: Partial<ProjectRangeTotal> = {}): P
 		colorIndex: 0,
 		archived: false,
 		coveredSeconds: 0,
+		billable: true,
+		...overrides
+	};
+}
+
+/** `ProjectBreakdown`'s prop shape, task 11.1's `{ paid, unpaid }` grouping — a plain
+ *  `paid` list wrapped for call sites that only cared about one flat array before. */
+function projectBreakdownFixture(
+	paid: ProjectRangeTotal[] = [],
+	unpaid: ProjectRangeTotal[] = []
+): { paid: ProjectRangeTotal[]; unpaid: ProjectRangeTotal[] } {
+	return { paid, unpaid };
+}
+
+function kpiFixture(overrides: Partial<KpiFigures> = {}): KpiFigures {
+	return {
+		trackedSeconds: 0,
+		coveredSeconds: 0,
+		describedSharePercent: 0,
+		overtimeSeconds: 0,
+		overtimeSharePercent: 0,
+		paidSeconds: 0,
+		unpaidSeconds: 0,
+		relaxSeconds: 0,
 		...overrides
 	};
 }
@@ -119,7 +146,7 @@ describe('ProjectBreakdown', () => {
 			projectRangeTotalFixture({ projectName: 'Gamma', coveredSeconds: 200 })
 		];
 		const { container } = render(ProjectBreakdown, {
-			props: { projectBreakdown: projects, uncoveredSeconds: 0 }
+			props: { projectBreakdown: projectBreakdownFixture(projects), uncoveredSeconds: 0, relaxSeconds: 0 }
 		});
 
 		const names = [...container.querySelectorAll('.name')].map((el) => el.textContent);
@@ -136,7 +163,7 @@ describe('ProjectBreakdown', () => {
 			coveredSeconds: 120
 		});
 		const { container } = render(ProjectBreakdown, {
-			props: { projectBreakdown: [other], uncoveredSeconds: 0 }
+			props: { projectBreakdown: projectBreakdownFixture([other]), uncoveredSeconds: 0, relaxSeconds: 0 }
 		});
 
 		expect(screen.getByText(m.stats_breakdown_other())).toBeInTheDocument();
@@ -155,7 +182,7 @@ describe('ProjectBreakdown', () => {
 			projectRangeTotalFixture({ projectName: 'Gamma', coveredSeconds: 200 })
 		];
 		const { container } = render(ProjectBreakdown, {
-			props: { projectBreakdown: projects, uncoveredSeconds: 0 }
+			props: { projectBreakdown: projectBreakdownFixture(projects), uncoveredSeconds: 0, relaxSeconds: 0 }
 		});
 
 		const bars = [...container.querySelectorAll('.bar-fill')];
@@ -168,7 +195,7 @@ describe('ProjectBreakdown', () => {
 
 	it('shows the empty state instead of an empty chart for a zero range', () => {
 		const { container } = render(ProjectBreakdown, {
-			props: { projectBreakdown: [], uncoveredSeconds: 0 }
+			props: { projectBreakdown: projectBreakdownFixture(), uncoveredSeconds: 0, relaxSeconds: 0 }
 		});
 
 		expect(screen.getByText(m.stats_empty_title())).toBeInTheDocument();
@@ -180,19 +207,35 @@ describe('ProjectBreakdown', () => {
 // ========================================================================================
 describe('KpiRow', () => {
 	it('shows the overtime duration together with its share of tracked time', () => {
-		const kpi: KpiFigures = {
+		const kpi: KpiFigures = kpiFixture({
 			trackedSeconds: 36_000, // 10h
 			coveredSeconds: 25_200, // 7h
 			describedSharePercent: 70,
 			overtimeSeconds: 10_800, // 3h
 			overtimeSharePercent: 30
-		};
+		});
 		render(KpiRow, { props: { kpi } });
 
 		expect(screen.getByText(fmtDuration(kpi.overtimeSeconds))).toBeInTheDocument();
 		expect(
 			screen.getByText(m.stats_kpi_overtime_share({ percent: Math.round(kpi.overtimeSharePercent) }))
 		).toBeInTheDocument();
+	});
+
+	it('shows paidSeconds/unpaidSeconds/relaxSeconds as individually visible figures (Requirement 11.1)', () => {
+		const kpi: KpiFigures = kpiFixture({
+			paidSeconds: 3600,
+			unpaidSeconds: 1800,
+			relaxSeconds: 900
+		});
+		render(KpiRow, { props: { kpi } });
+
+		expect(screen.getByText(m.stats_kpi_paid())).toBeInTheDocument();
+		expect(screen.getByText(m.stats_kpi_unpaid())).toBeInTheDocument();
+		expect(screen.getByText(m.stats_kpi_relax())).toBeInTheDocument();
+		expect(screen.getByText(fmtDuration(kpi.paidSeconds))).toBeInTheDocument();
+		expect(screen.getByText(fmtDuration(kpi.unpaidSeconds))).toBeInTheDocument();
+		expect(screen.getByText(fmtDuration(kpi.relaxSeconds))).toBeInTheDocument();
 	});
 });
 
@@ -298,6 +341,31 @@ describe('DayRhythm', () => {
 		expect(uncovered).not.toBeNull();
 		expect(uncovered!.getAttribute('fill')).toBe('url(#day-rhythm-hatch)');
 	});
+
+	// 003-worklog-time-categories, task 11.5: a leisure interval draws in the
+	// Leisure_Palette_Slot, at the position it actually fell (Requirement 11.4).
+	it('draws a Leisure_Time interval in the Leisure_Palette_Slot at its own position', () => {
+		const dayStartHour = 3;
+		const start = new Date('2026-06-15T20:00:00.000Z');
+		const end = new Date('2026-06-15T21:00:00.000Z');
+		const day = daySummaryFixture({
+			date: '2026-06-15',
+			trackedSeconds: 0,
+			leisure: [{ start, end }]
+		});
+
+		const { container } = render(DayRhythm, {
+			props: { days: [day], dayStartHour, timeZone: TZ, today: '2026-01-01', onDayActivate: noopActivate }
+		});
+
+		const expectedX = positionPercent(start, dayStartHour, TZ);
+		const expectedWidth = widthPercent(start, end);
+
+		const segment = container.querySelector('.day-rhythm__segment.pj-relax');
+		expect(segment).not.toBeNull();
+		expect(parseFloat(segment!.getAttribute('x') ?? '')).toBeCloseTo(expectedX, 6);
+		expect(parseFloat(segment!.getAttribute('width') ?? '')).toBeCloseTo(expectedWidth, 6);
+	});
 });
 
 // ========================================================================================
@@ -338,20 +406,18 @@ describe('intervalsIncluded: false (page-level branch)', () => {
 				// no `covered`/`uncovered`/`tracked` — exactly what intervalsIncluded: false omits
 			})
 		];
-		const kpi: KpiFigures = {
+		const kpi: KpiFigures = kpiFixture({
 			trackedSeconds: 3600,
 			coveredSeconds: 1800,
-			describedSharePercent: 50,
-			overtimeSeconds: 0,
-			overtimeSharePercent: 0
-		};
-		const projectBreakdown: ProjectRangeTotal[] = [
+			describedSharePercent: 50
+		});
+		const projectBreakdown = projectBreakdownFixture([
 			projectRangeTotalFixture({ projectName: 'Client Work', coveredSeconds: 1800 })
-		];
+		]);
 
 		expect(() => render(KpiRow, { props: { kpi } })).not.toThrow();
 		expect(() =>
-			render(ProjectBreakdown, { props: { projectBreakdown, uncoveredSeconds: 1800 } })
+			render(ProjectBreakdown, { props: { projectBreakdown, uncoveredSeconds: 1800, relaxSeconds: 0 } })
 		).not.toThrow();
 		expect(() => render(RhythmPanel, { props: { days, eveningHour: 21 } })).not.toThrow();
 

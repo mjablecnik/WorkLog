@@ -48,23 +48,30 @@ export type ProjectRangeTotal = {
 	colorIndex: number | null;
 	archived: boolean;
 	coveredSeconds: number;
+	/** Addition — the group this row belongs to (003-worklog-time-categories). */
+	billable: boolean;
 };
 
 /**
- * Folds `byProject[]` across every day into range totals per project, sorted
- * descending by `coveredSeconds`, with everything past the top `TOP_PROJECT_COUNT`
- * combined into one "Other" row appended last — so no chart ever cycles the eight-slot
- * palette past what it can distinguish (Requirements 12.3, 12.14; tasks.md 8.1).
+ * Folds `byProject[]` across every day into per-project range totals, GROUPED BY
+ * `billable` FIRST (003-worklog-time-categories, Requirement 11.2), each group sorted
+ * descending by `coveredSeconds` and folded past the top `TOP_PROJECT_COUNT` into its
+ * own "Other" row — so a combined row never mixes a paid `Project` with an unpaid one,
+ * and no chart ever cycles the eight-slot palette past what it can distinguish
+ * (Requirements 12.3, 12.14; tasks.md 8.1).
  *
  * Archived projects that hold time in the range come through unchanged: spec 001's
  * `byProject[]` already carries them (`day-aggregation.ts`'s `loadProjectMeta` loads
  * every project row, active or archived, and only filters on which ids actually have
  * segments in range), so summing it here reconciles with the range total for free.
  */
-export function foldProjectTotals(days: DaySummary[]): ProjectRangeTotal[] {
+export function foldProjectTotals(days: DaySummary[]): {
+	paid: ProjectRangeTotal[];
+	unpaid: ProjectRangeTotal[];
+} {
 	const totals = new Map<
 		string,
-		{ projectName: string; colorIndex: number; archived: boolean; coveredSeconds: number }
+		{ projectName: string; colorIndex: number; archived: boolean; coveredSeconds: number; billable: boolean }
 	>();
 	for (const day of days) {
 		for (const project of day.byProject) {
@@ -74,7 +81,8 @@ export function foldProjectTotals(days: DaySummary[]): ProjectRangeTotal[] {
 					projectName: project.projectName,
 					colorIndex: project.colorIndex,
 					archived: project.archived,
-					coveredSeconds: project.coveredSeconds
+					coveredSeconds: project.coveredSeconds,
+					billable: project.billable
 				});
 			} else {
 				existing.coveredSeconds += project.coveredSeconds;
@@ -82,32 +90,39 @@ export function foldProjectTotals(days: DaySummary[]): ProjectRangeTotal[] {
 		}
 	}
 
-	const sorted = [...totals.entries()]
-		.map(([projectId, forProject]) => ({ projectId, ...forProject }))
-		.sort((a, b) => b.coveredSeconds - a.coveredSeconds);
+	function foldGroup(billable: boolean): ProjectRangeTotal[] {
+		const sorted = [...totals.entries()]
+			.filter(([, forProject]) => forProject.billable === billable)
+			.map(([projectId, forProject]) => ({ projectId, ...forProject }))
+			.sort((a, b) => b.coveredSeconds - a.coveredSeconds);
 
-	const top = sorted.slice(0, TOP_PROJECT_COUNT);
-	const rest = sorted.slice(TOP_PROJECT_COUNT);
+		const top = sorted.slice(0, TOP_PROJECT_COUNT);
+		const rest = sorted.slice(TOP_PROJECT_COUNT);
 
-	const rows: ProjectRangeTotal[] = top.map((project) => ({
-		projectId: project.projectId,
-		projectName: project.projectName,
-		colorIndex: project.colorIndex,
-		archived: project.archived,
-		coveredSeconds: project.coveredSeconds
-	}));
+		const rows: ProjectRangeTotal[] = top.map((project) => ({
+			projectId: project.projectId,
+			projectName: project.projectName,
+			colorIndex: project.colorIndex,
+			archived: project.archived,
+			coveredSeconds: project.coveredSeconds,
+			billable
+		}));
 
-	if (rest.length > 0) {
-		rows.push({
-			projectId: null,
-			projectName: null,
-			colorIndex: null,
-			archived: false,
-			coveredSeconds: rest.reduce((sum, project) => sum + project.coveredSeconds, 0)
-		});
+		if (rest.length > 0) {
+			rows.push({
+				projectId: null,
+				projectName: null,
+				colorIndex: null,
+				archived: false,
+				coveredSeconds: rest.reduce((sum, project) => sum + project.coveredSeconds, 0),
+				billable
+			});
+		}
+
+		return rows;
 	}
 
-	return rows;
+	return { paid: foldGroup(true), unpaid: foldGroup(false) };
 }
 
 export type KpiFigures = {
@@ -118,6 +133,10 @@ export type KpiFigures = {
 	overtimeSeconds: number;
 	/** `overtimeSeconds / trackedSeconds` as a 0-100 percentage; 0 when trackedSeconds is 0. */
 	overtimeSharePercent: number;
+	/** Additions (003-worklog-time-categories, Requirement 11.1). */
+	paidSeconds: number;
+	unpaidSeconds: number;
+	relaxSeconds: number;
 };
 
 /**
@@ -133,7 +152,10 @@ export function computeKpiFigures(days: DaySummary[]): KpiFigures {
 		coveredSeconds,
 		describedSharePercent: trackedSeconds > 0 ? (coveredSeconds / trackedSeconds) * 100 : 0,
 		overtimeSeconds,
-		overtimeSharePercent: trackedSeconds > 0 ? (overtimeSeconds / trackedSeconds) * 100 : 0
+		overtimeSharePercent: trackedSeconds > 0 ? (overtimeSeconds / trackedSeconds) * 100 : 0,
+		paidSeconds: sumBy(days, (d) => d.paidSeconds),
+		unpaidSeconds: sumBy(days, (d) => d.unpaidSeconds),
+		relaxSeconds: sumBy(days, (d) => d.relaxSeconds)
 	};
 }
 
