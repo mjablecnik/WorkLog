@@ -172,3 +172,25 @@
   effect as the script, just without its already-applied bookkeeping/locking — only
   needed if a fresh migration is genuinely pending.
 - Source: build, 2026-08-26T10:20Z
+
+## `worklog_test` on `worklog-pg` is the standing test database, not a throwaway
+- Project: worklog
+- Problem: this run's `verify` phase teardown dropped a database it called
+  `worklog_test` believing it to be scratch ("`worklog_test` and
+  `worklog_test_legacy` (both scratch databases...) were dropped"), but
+  `worklog_test` is exactly the database `.env`'s own `TEST_DATABASE_URL` names —
+  the persistent test database `bun run test` (and every earlier phase, per
+  `build`'s own report) actually relies on. This phase's `bun run test` failed
+  immediately with `PostgresError: database "worklog_test" does not exist`.
+- Solution: recreated it and re-applied both migrations by hand (`docker exec
+  worklog-pg psql -U worklog -d postgres -c 'CREATE DATABASE worklog_test'`, then
+  a `schema_migrations` table and each `migrations/*.sql` file piped through
+  `docker exec -i worklog-pg psql -U worklog -d worklog_test` inside a
+  `BEGIN`/`INSERT INTO schema_migrations`/`COMMIT` block, mirroring
+  `scripts/migrate.sh`'s own logic since no `psql` exists on this sandbox's own
+  PATH — see the entry above). `bun run test` then passed clean (54 files / 618
+  tests). Any phase that drops a database on `worklog-pg` to clean up its own
+  scratch state must first confirm the name isn't the one `.env`'s
+  `TEST_DATABASE_URL`/`DATABASE_URL` actually name — `worklog_test` looks
+  disposable but is not.
+- Source: docs, 2026-08-26T13:00Z
