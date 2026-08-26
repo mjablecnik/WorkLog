@@ -1,5 +1,84 @@
 # Issues
 
+## [LOW] `DayRhythm.svelte`'s covered/leisure segment rects have no `fill` CSS rule at all
+- Run: 2026-08-26-0758
+- Phase: impl
+- Status: OPEN
+- What: `src/modules/stats/components/DayRhythm.svelte` draws each day's covered
+  interval as `<rect class="day-rhythm__segment {projectSlotClass(interval.colorIndex)}">`
+  (and, as of this run, each leisure interval as `<rect class="day-rhythm__segment
+  pj-relax">`). `projectSlotClass`/`LEISURE_SLOT_CLASS` only ever set the `--pj`/
+  `--pj-tint` CSS custom properties (see `src/lib/theme/palette.css`, generated) — no
+  selector anywhere sets `fill: var(--pj)` for `.day-rhythm__segment` combined with a
+  `.pj-*` class. Every other component that colours a shape this way
+  (`ProjectBreakdown.svelte`'s `.bar-fill`, `ProjectRow.svelte`'s own bar) declares that
+  `fill: var(--pj)` rule itself; `DayRhythm.svelte` never does. Confirmed by grepping
+  the component's own `<style>` block: no `fill` rule targets `.day-rhythm__segment`
+  at all, and the component's own existing test
+  (`tests/modules/stats/components/stats.test.ts`, "renders a covered interval in its
+  project color…") only asserts the CSS *class* is present
+  (`covered!.classList.contains(projectSlotClass(3))`) and explicitly asserts there is
+  no `fill` *attribute* (`covered!.getAttribute('fill')` is `null`) — it never checks
+  the resolved `fill` colour a real browser would compute, so this has never been
+  caught by a test.
+- Impact: every covered/leisure segment on the Day_Rhythm_Strip likely renders with the
+  SVG default `fill` (black) in a real browser, rather than its project colour or the
+  Leisure_Palette_Slot — a real visual defect on `/stats`, not something this pass
+  introduced (the covered-segment version predates 003-worklog-time-categories
+  entirely; this run's leisure-segment addition just repeats the same, already-broken
+  pattern for consistency rather than fixing it silently). Not verified in a real
+  browser this run — inferred from reading the CSS; the `verify` phase should confirm
+  with a live screenshot.
+- Tried: nothing — found while implementing task 11.4 (drawing `Leisure_Time` in
+  `DayRhythm.svelte`) and reading the component's full `<style>` block to see how the
+  existing `covered` rects get their colour, since I was about to add a third kind
+  (`leisure`) the same way. Out of this task's scope to fix (it predates
+  003-worklog-time-categories and no requirement here asks for it), so the leisure
+  addition was left visually consistent with the existing (broken) covered/uncovered
+  pattern rather than silently diverging.
+- Next: add a `fill: var(--pj)` rule scoped to `.day-rhythm__segment` (or to each
+  `.pj-*`/`.pj-relax` class the way `palette.css` itself could, but that file is
+  generated from `src/lib/viz/palette.ts` and does not know about component-specific
+  class names) in `DayRhythm.svelte`'s own `<style>` block, mirroring
+  `ProjectBreakdown.svelte`'s `.bar-fill { fill: var(--pj); }`. Then strengthen the
+  existing test to assert `getComputedStyle(el).fill` resolves to a real colour, not
+  just that the class name is present.
+
+## [LOW] `gaps.spec.ts` and `preview.spec.ts` both hardcode `2024-01-19` for an unrelated `Work_Session`, and collide when run together
+- Run: 2026-08-26-0758
+- Phase: impl
+- Status: OPEN
+- What: `tests/e2e/gaps.spec.ts` (`DAY = '2024-01-19'`) creates a session
+  `2024-01-19T08:00-11:00Z`; `tests/e2e/preview.spec.ts`'s third test (`DAY3 =
+  '2024-01-19'`, added in 002-worklog-ui) tries to create its own session on the exact
+  same day (`08:00-12:00Z`, overlapping the one above) and gets rejected with 409
+  `SESSION_OVERLAP`. Neither file resets the database between files — this project's
+  own `tests/e2e/global-setup.ts` truncates once per whole `bunx playwright test`
+  invocation, not once per file — so any two spec files sharing a hardcoded date and
+  both creating a `Work_Session` on it are latently order-dependent. Alphabetical file
+  order (`gaps.spec.ts` before `preview.spec.ts`) means the full suite likely hits this
+  every time, not just my own ad hoc subset run.
+- Impact: `bun run test:e2e:local` (and `test:all`) may intermittently or
+  deterministically fail `preview.spec.ts`'s "shortening a session over pure
+  Uncovered_Time…" test, depending on which worker/order Playwright actually uses —
+  unrelated to any behaviour this pass changed (both files predate
+  003-worklog-time-categories entirely; neither touches `Project.billable` or
+  `Leisure_Entry`).
+- Tried: reproduced live, in this sandbox, running
+  `bunx playwright test tests/e2e/open-mode.spec.ts tests/e2e/preview.spec.ts
+  tests/e2e/auth.spec.ts tests/e2e/gaps.spec.ts` together (single worker, the same
+  concurrency `test-e2e.sh`'s own `bunx playwright test` uses) — `gaps.spec.ts`'s
+  session lands first, `preview.spec.ts`'s own third test then 409s. Did not fix — both
+  files are outside this run's scope (verifying 003-worklog-time-categories' own new
+  E2E coverage, all of which passed) and touching either would mean editing
+  002-worklog-ui's already-closed test files for an unrelated date collision.
+- Next: give one of the two files its own distinct date (e.g. move
+  `preview.spec.ts`'s `DAY3` off `2024-01-19` to a date no other spec file uses), or
+  make both create their session at a `Logical_Day` neither shares. Whichever file
+  changes, grep every other `tests/e2e/*.spec.ts` for the same literal date first —
+  this class of collision is easy to reintroduce by picking "another arbitrary January
+  2024 date" without checking siblings.
+
 ## [LOW] `README.md` and `CLAUDE.md` still describe the fixed E2E-harness bug as current
 - Run: 2026-08-24-0659
 - Phase: report
