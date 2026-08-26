@@ -322,6 +322,46 @@ hard way:
   project" instead. The day and range responses already carry leisure time separately
   (`relaxSeconds`, the `leisure` interval list), so no requirement needs this filter,
   and adding a magic value to a uuid-typed parameter would cost more than it returns.
+- **A `Leisure_Entry`'s partial overlap with another entry's segment is rejected
+  outright, not trimmed.** `003-worklog-time-categories/requirements.md`'s own 3.2 and
+  3.3 disagree on this — 3.2 describes the overlapping stretch being clipped out, 3.3
+  describes an unconditional 409 `ACTIVITY_OVERLAP`. The server (and every example
+  above) follows 3.3, matching `001-worklog-domain-api`'s existing rule for a
+  `Work_Entry`; the requirements text itself still needs one of the two amending.
+- **The `Activity_Dialog` defaults its category to `paid` on a day with no
+  `Work_Entry` at all** — including a pure-leisure day, which is exactly the case this
+  spec exists to support. Requirement 10.7 only defines the default when a
+  `Work_Entry` exists to copy from; `relax` is at least as defensible a fallback and
+  has not been decided either way.
+- **`TimerCategories`, `DayCategories` and `AddTaskCategories` — the three artboards
+  `003-worklog-time-categories` added — are drawn dark/desktop only.** Every screen
+  `002-worklog-ui` drew has a light and a mobile variant; these three do not, so the
+  `Leisure_Block`, the category control and the projects page's billable toggle can
+  only be conformance-checked against a drawn artboard in that one theme/viewport —
+  elsewhere they follow `DESIGN.md`'s general rules instead.
+- **`DayRhythm.svelte`'s covered and leisure segments render with no explicit fill
+  colour.** No rule in the component's own `<style>` block sets `fill` for
+  `.day-rhythm__segment`, so in a real browser they most likely paint black rather
+  than their project colour or the leisure tint. Predates this spec for the covered
+  segments; the leisure segment `003-worklog-time-categories` added repeats the same
+  (already-broken) pattern rather than diverging from it silently.
+- **`ProjectPicker`'s search input can carry `aria-activedescendant` pointing at a
+  listbox option that does not exist in the DOM**, whenever its popup is collapsed —
+  an axe `aria-valid-attr-value` violation (critical impact) on every dialog with a
+  project field, including the category-filtered picker this spec adds. Predates
+  `003-worklog-time-categories`; the wiring itself is unchanged by it.
+- **A shared accent colour marginally fails the 4.5:1 WCAG AA contrast threshold**
+  (`#a5522e` on light backgrounds, `#d18a6a` on dark) on the statistics page's
+  category totals (both the pre-existing "Bez popisu" row and this spec's own "Volný
+  čas" row share the class) and on a segmented control's active tab (both the
+  pre-existing mode control and this spec's category control share the class). One
+  underlying token, not specific to anything this spec added.
+- **A full `bun run test:e2e:local` can fail `preview.spec.ts` with `SESSION_OVERLAP`
+  on an unrelated test.** `tests/e2e/gaps.spec.ts` and `tests/e2e/preview.spec.ts`
+  (both predate this spec) hardcode the same date for an unrelated `Work_Session`, and
+  the suite does not reset the database between files — running the two together in
+  one process is order-dependent. Unrelated to `Project.billable`/`Leisure_Entry`
+  behaviour.
 
 ## Migrations
 
