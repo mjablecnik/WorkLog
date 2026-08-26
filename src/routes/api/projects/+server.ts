@@ -23,7 +23,7 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
 	try {
 		const body = parseRequest(createProjectSchema, await parseJsonBody(event.request));
-		const project = await createProject(body.name);
+		const project = await createProject(body.name, body.billable);
 		return json(project, { status: 201 });
 	} catch (err) {
 		return errorResponse(err, event.locals.requestId);

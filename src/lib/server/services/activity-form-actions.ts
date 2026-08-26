@@ -23,7 +23,7 @@ import { fail } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 import { superValidate } from 'sveltekit-superforms';
 import { zod4 } from 'sveltekit-superforms/adapters';
-import { createActivitySchema, patchActivitySchema, idParam } from '$lib/contracts/schemas';
+import { createActivitySchema, patchActivityFormSchema, idParam } from '$lib/contracts/schemas';
 import { getConfig } from '$lib/server/core/config';
 import { ApiError } from '$lib/server/core/errors';
 import {
@@ -128,7 +128,9 @@ function nothingToLogMessage(reason: unknown): string {
 
 type OverlapConflict = {
 	entryId: string;
-	projectName: string;
+	/** Null when the conflicting entry is itself a Leisure_Entry — a legitimate
+	 *  conflict source (Requirement 3.3), not only ever a Work_Entry. */
+	projectName: string | null;
 	interval: { start: string; end: string };
 };
 
@@ -180,7 +182,7 @@ function activityErrorFailure(err: ApiError, timeZone: string) {
 			const first = conflicts[0];
 			if (!first) return fail<ActivityActionFailure>(409, { toastMessage: m.errors_validation_error() });
 			const message = m.errors_activity_overlap({
-				project: first.projectName,
+				project: first.projectName ?? m.activity_leisure_label(),
 				from: formatTimeOfDay(new Date(first.interval.start), '', timeZone),
 				to: formatTimeOfDay(new Date(first.interval.end), '', timeZone)
 			});
@@ -261,14 +263,28 @@ export async function patchActivityAction(event: RequestEvent) {
 		return fail<ActivityActionFailure>(400, { toastMessage: m.fields_invalid_id() });
 	}
 
-	const form = await superValidate(formData, zod4(patchActivitySchema));
+	const form = await superValidate(formData, zod4(patchActivityFormSchema));
 	if (!form.valid) return fail(400, { form, toastMessage: m.errors_validation_error() });
+
+	// The two name contradictory outcomes — clearProject says "become a
+	// Leisure_Entry", projectId says "set/change the Project" — so silently
+	// preferring either one would discard an instruction the caller gave
+	// (Requirement 4.11).
+	if (form.data.clearProject === true && form.data.projectId !== undefined) {
+		return fail<ActivityActionFailure>(400, { toastMessage: m.errors_validation_error() });
+	}
+
+	// clearProject === true converts to a Leisure_Entry (Requirement 4.9); a FormData
+	// body cannot carry a null directly. Otherwise pass form.data.projectId through
+	// unchanged: absent leaves it unchanged, a uuid sets/changes it.
+	const projectId: string | null | undefined =
+		form.data.clearProject === true ? null : form.data.projectId;
 
 	try {
 		const result = await patchActivityService({
 			id: idResult.data,
 			description: form.data.description,
-			projectId: form.data.projectId,
+			projectId,
 			date: form.data.date,
 			startedAt: form.data.startedAt,
 			endedAt: form.data.endedAt,

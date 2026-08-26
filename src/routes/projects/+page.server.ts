@@ -144,7 +144,7 @@ export const actions: Actions = {
 		const form = await superValidate(event, zod4(createProjectSchema));
 		if (!form.valid) return fail(400, { form });
 		try {
-			await createProject(form.data.name);
+			await createProject(form.data.name, form.data.billable);
 		} catch (err) {
 			if (err instanceof ApiError && err.code === 'PROJECT_EXISTS') {
 				const { projectName } = projectExistsDetails(err);
@@ -181,6 +181,22 @@ export const actions: Actions = {
 		const form = await superValidate(event, zod4(projectIdSchema));
 		if (!form.valid) return fail(400, { form });
 		await patchProject(form.data.id, { archived: false });
+		return { form };
+	},
+
+	// Requirement 9.4: one named action per operation, mirroring archive/unarchive
+	// exactly — there is no general `patchProject` action in this file.
+	billable: async (event) => {
+		const form = await superValidate(event, zod4(projectIdSchema));
+		if (!form.valid) return fail(400, { form });
+		await patchProject(form.data.id, { billable: true });
+		return { form };
+	},
+
+	unbillable: async (event) => {
+		const form = await superValidate(event, zod4(projectIdSchema));
+		if (!form.valid) return fail(400, { form });
+		await patchProject(form.data.id, { billable: false });
 		return { form };
 	},
 
