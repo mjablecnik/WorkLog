@@ -41,7 +41,7 @@
 	import type { DayResponse } from '$lib/contracts/responses';
 	import * as m from '$lib/paraglide/messages';
 	import { formatDuration, formatTimeOfDay } from '$lib/viz/format';
-	import { projectSlotClass } from '$lib/viz/palette';
+	import { LEISURE_SLOT_CLASS, projectSlotClass } from '$lib/viz/palette';
 	import CoverageMeter from '$modules/stats/components/CoverageMeter.svelte';
 
 	interface Props {
@@ -153,6 +153,34 @@
 		{/if}
 	</div>
 
+	<div class="day-summary-panels__panel day-summary-panels__panel--category">
+		<span class="lbl">{m.day_category_panel_label()}</span>
+		<dl class="day-summary-panels__dl">
+			<div class="day-summary-panels__row">
+				<dt>{m.day_summary_paid()}</dt>
+				<dd class="day-summary-panels__value--plain">{fmtDuration(totals.paidSeconds)}</dd>
+			</div>
+			<div class="day-summary-panels__row">
+				<dt>{m.day_summary_unpaid()}</dt>
+				<dd class="day-summary-panels__value--plain">{fmtDuration(totals.unpaidSeconds)}</dd>
+			</div>
+		</dl>
+		<!-- Requirement 8.9: relaxSeconds is not part of the worked total and must never
+		     read as a share of it — visually separated below a divider. Purely
+		     decorative, so it is hidden from the accessibility tree entirely — an
+		     `<hr>`'s implicit `role="separator"` would otherwise collide with
+		     `BreakMarker.svelte`'s own use of that same role on the Day_Timeline
+		     (Requirement 12.2 e2e regression, found live: `page.getByRole('separator')`
+		     started matching this decorative line too). -->
+		<hr class="day-summary-panels__divider" aria-hidden="true" />
+		<dl class="day-summary-panels__dl">
+			<div class="day-summary-panels__row">
+				<dt>{m.day_summary_relax()}</dt>
+				<dd class="day-summary-panels__value--plain">{fmtDuration(totals.relaxSeconds)}</dd>
+			</div>
+		</dl>
+	</div>
+
 	<div class="day-summary-panels__panel day-summary-panels__panel--shape">
 		<span class="lbl">{m.day_shape_label()}</span>
 		<dl class="day-summary-panels__dl">
@@ -186,17 +214,20 @@
 			>
 				{#each orphanedEntries as entry (entry.id)}
 					{@const selected = entry.id === effectiveSelectedId}
+					{@const colorClass =
+						entry.colorIndex === null ? LEISURE_SLOT_CLASS : projectSlotClass(entry.colorIndex)}
+					{@const projectName = entry.projectName ?? m.activity_leisure_label()}
 					<button
 						type="button"
 						role="radio"
 						aria-checked={selected}
 						tabindex={selected ? 0 : -1}
-						class="day-summary-panels__orphan-row {projectSlotClass(entry.colorIndex)}"
+						class="day-summary-panels__orphan-row {colorClass}"
 						class:day-summary-panels__orphan-row--selected={selected}
 						onclick={() => selectOrphan(entry.id)}
 						onkeydown={handleRowKeydown}
 					>
-						<span class="day-summary-panels__orphan-project">{entry.projectName}</span>
+						<span class="day-summary-panels__orphan-project">{projectName}</span>
 						<span class="day-summary-panels__orphan-times">
 							{m.day_orphans_row({
 								from: timeOf(entry.requestedStartedAt),
@@ -259,12 +290,20 @@
 		--focus-gap: var(--panel);
 	}
 
-	.day-summary-panels__panel--summary {
+	.day-summary-panels__panel--summary,
+	.day-summary-panels__panel--category {
 		gap: 12px;
 	}
 
 	.day-summary-panels__panel--orphans {
 		border: 1px solid rgba(209, 138, 106, 0.28);
+	}
+
+	.day-summary-panels__divider {
+		width: 100%;
+		border: none;
+		border-top: 1px solid var(--divider);
+		margin: 2px 0;
 	}
 
 	/* `display: contents` keeps `<dl>`/`<dt>`/`<dd>` semantics without the `<dl>`
