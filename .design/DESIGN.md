@@ -30,7 +30,7 @@ Everything here is decided. Nothing in this file is a proposal, a placeholder or
 awaiting an artboard — where a number appears, it was taken from a drawing or measured, and
 where two readings were possible, one was chosen and the other recorded in § 9.
 
-Eight decisions were taken after the first version of this file, and the artboards and both
+Nine decisions were taken after the first version of this file, and the artboards and both
 specifications already carry them:
 
 1. The **corrected project palette** (§ 2) replaces the drawn one, which failed the
@@ -46,6 +46,10 @@ specifications already carry them:
    **mobile dialog** (`AddTaskMobile`) is drawn full-screen.
 8. **The orphan panel is drawn** into the day page — entries left with no time after a timer
    edit, which the timeline cannot show because they no longer sit anywhere.
+9. **`003-worklog-time-categories`'s three screens get no light or mobile artboard.**
+   `TimerCategories`, `DayCategories` and `AddTaskCategories` stay dark/desktop only; their
+   light and mobile renderings follow this file's general rules instead, checked by the
+   automated sweep in `tests/e2e/a11y.spec.ts` rather than by a drawn comparison.
 
 ---
 

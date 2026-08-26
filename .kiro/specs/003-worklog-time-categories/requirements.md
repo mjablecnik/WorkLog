@@ -61,6 +61,13 @@ visual detail, an implementer follows the closest existing convention in
 `001-worklog-domain-api`'s and `002-worklog-ui`'s own introductions already establish
 as this project's convention.
 
+This is now settled rather than open: the light-theme and mobile renderings of these
+three screens are governed by `.design/DESIGN.md`'s general rules, not by dedicated
+artboards — no light or mobile variant of `TimerCategories`, `DayCategories` or
+`AddTaskCategories` will be drawn. Conformance is instead checked by the automated
+accessibility and narrow-viewport sweep in `tests/e2e/a11y.spec.ts`, which opens the
+`Activity_Dialog` and sweeps all four pages in both themes and at 320px.
+
 ## Glossary
 
 Every term defined in `001-worklog-domain-api` and `002-worklog-ui` keeps its meaning

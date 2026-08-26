@@ -139,7 +139,21 @@
 ## [LOW] The three new artboards have no mobile or light variant, so three surfaces have no visual contract
 - Run: 2026-08-26-0758
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-26-decisions)
+- Resolution: decided in favour of the "general rules" option this entry's `Next`
+  already named — no artboards drawn. Recorded in
+  `.kiro/specs/003-worklog-time-categories/requirements.md`'s introduction and as
+  `.design/DESIGN.md`'s ninth decision. Backed by real, run automated coverage rather
+  than left as a bare policy statement: `tests/e2e/a11y.spec.ts` extended to (a) open
+  the `Activity_Dialog` under each of `paid`/`unpaid`/`relax` in both themes and run an
+  axe sweep over it (filtering the two already-logged, pre-existing violations this
+  newly finds — the `ProjectPicker aria-activedescendant` HIGH entry above and the
+  rust-orange `color-contrast` MEDIUM entry below — confirmed live that both actually
+  fire and get filtered, not vacuously passing), and (b) run the existing 320px
+  no-horizontal-scroll sweep in light theme too, plus once with the dialog open. All 23
+  tests in the file pass. UC-593/594/597 already existed for this; no new use case
+  needed for the decision itself, but see UC-599 (new) for the `Duration_Mode` sliver
+  case this investigation also turned up.
 - What: `003-worklog-time-categories/requirements.md`'s introduction states plainly that
   "the light-theme and mobile variants of these three screens are not drawn, and the
   exact placement of the `Billable` toggle within an existing project row is not
