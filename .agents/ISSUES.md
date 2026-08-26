@@ -1,5 +1,65 @@
 # Issues
 
+## [HIGH] ProjectPicker's `aria-activedescendant` points at a listbox option that does not exist while the popup is closed
+- Run: 2026-08-26-0758
+- Phase: verify
+- Status: OPEN
+- What: `src/modules/projects/components/ProjectPicker.svelte`'s search `<input>` always
+  carries `aria-activedescendant={activeOptionId}` (line ~396), computed from
+  `activeIndex`/`optionsCount` regardless of whether the `<ul role="listbox">` popup is
+  actually expanded. When the popup is collapsed, the `<li id="project-picker-…-listbox-
+  option-0">` element it names is not in the DOM at all, so the attribute references an
+  ID that does not exist anywhere on the page — an automated axe (`@axe-core/playwright`)
+  sweep of the `Activity_Dialog` under `Placeno`/`Neplaceno` (any category that renders
+  the `Project_Picker`) flags this as `aria-valid-attr-value`, `critical` impact.
+- Impact: a screen reader following `aria-activedescendant` while the combobox is closed
+  is pointed at nothing, which is exactly the kind of broken reference the rule exists to
+  catch. Reachable on every dialog that shows a project field — this run confirms it under
+  spec 003's category-filtered picker, but the wiring itself (`aria-activedescendant`
+  unconditional on open state) predates this spec: `git log` shows the attribute already
+  present in `1332f45` (`002-worklog-ui`, "build the Project_Picker combobox") and
+  spec 003's own commit (`6516829`, "narrow nullable-project consumers") only touched
+  type-narrowing around it, not this ARIA wiring. This is a pre-existing `002-worklog-ui`
+  defect, newly surfaced by this run's axe sweep (`tests/e2e/a11y.spec.ts` never scans the
+  dialog with the picker closed and rendered in this exact state) rather than a regression
+  introduced by `003-worklog-time-categories`.
+- Tried: read the component; confirmed via `git log -- ProjectPicker.svelte` that the
+  attribute predates spec 003. Not fixed here — out of this spec's scope, and the correct
+  fix (clearing `aria-activedescendant` whenever the popup is closed, or removing the
+  `<li>` ID scheme's implicit assumption that option 0 always exists) touches
+  `002-worklog-ui` behaviour this run was not chartered to change.
+- Next: a follow-up `002-worklog-ui` fix should set `aria-activedescendant` to `undefined`
+  (omit the attribute) whenever `aria-expanded` is `false`, then re-run
+  `tests/e2e/a11y.spec.ts`'s axe sweep with the dialog's project field open AND closed.
+
+## [MEDIUM] A shared rust-orange text colour marginally fails WCAG AA in two more places axe never scanned before
+- Run: 2026-08-26-0758
+- Phase: verify
+- Status: OPEN
+- What: an `@axe-core/playwright` sweep this run added (light theme at a 390px mobile
+  viewport for `/stats`; the `Activity_Dialog`'s segmented controls in dark theme) finds
+  `color-contrast` violations on: (a) light theme, `.day-rhythm__total--today` and the
+  `.uncovered-row` values for "Bez popisu" (pre-existing, `002`) and — the same shared
+  class — the statistics page's new "Volný čas" (leisure) total row (`003`'s own
+  Requirement 11.3 figure): `#a5522e` on `#e9e4dc`, 4.31:1, short of the 4.5:1 AA
+  threshold; (b) dark theme, the segmented control's active-tab text — both the category
+  control's `Placeno` tab (`003`) and the pre-existing mode control's `Přesně od–do` tab
+  (`002`, `.activity-dialog__seg-item--active`): `#d18a6a` on `#3c3435`, 4.35:1.
+- Impact: the same accent colour token is marginally under AA in a viewport/theme
+  combination `tests/e2e/a11y.spec.ts` never exercised (that suite's axe pass uses the
+  default desktop viewport only) and in a component state (an active segmented-control
+  tab) it also never scanned. Because both failing surfaces mix a pre-existing element
+  with a brand-new one sharing the identical class/token, this is a shared-token contrast
+  gap the new feature inherited by correctly reusing existing styles, not something
+  `003-worklog-time-categories`'s own code newly computed.
+- Tried: confirmed via axe's own reported foreground/background pairs and font sizes;
+  confirmed the mode control (predates `003`) fails identically to the category control,
+  and the "Bez popisu" row (predates `003`) fails identically to the new "Volný čas" row
+  — both point at one underlying token, not per-feature code.
+- Next: darken `#a5522e`/`#d18a6a` (or lighten their backgrounds) by the small margin
+  needed to clear 4.5:1, then re-run `tests/e2e/a11y.spec.ts` with its viewport widened
+  to also cover 390px and its dialog scan repeated with a segmented control active.
+
 ## [LOW] Requirements 3.2 and 3.3 disagree on what a *partial* leisure overlap should do
 - Run: 2026-08-26-0758
 - Phase: cases
