@@ -51,16 +51,18 @@ describe('cs.json / en.json key parity', () => {
 	});
 
 	it('carry the same key count in both files', () => {
-		// Observed at 256 (excluding $schema) as of the mobile-FAB follow-up task, which
-		// added aria_open_create_menu (the FAB trigger/sheet's accessible name). Earlier
-		// snapshots of this count (249-255) are stale by construction — every task that
-		// legitimately extends the catalogue bumps it again. What this test actually pins
-		// is that cs/en agree, which the count-equality assertion below already covers
-		// regardless of the literal number; the literal is a tripwire for an ACCIDENTAL
-		// catalogue change, not a ceiling, and is expected to need updating whenever a
-		// future task adds a key on purpose.
+		// Observed at 278 (excluding $schema) as of 003-worklog-time-categories task 4.4,
+		// which added the category_*/activity_category_*/activity_leisure_label,
+		// projects_billable*, day_category_panel_label/day_summary_paid/unpaid/relax,
+		// timer_paid/unpaid/relax and stats_kpi_paid/unpaid/relax/stats_breakdown_*
+		// keys. Earlier snapshots of this count are stale by construction — every task
+		// that legitimately extends the catalogue bumps it again. What this test
+		// actually pins is that cs/en agree, which the count-equality assertion below
+		// already covers regardless of the literal number; the literal is a tripwire
+		// for an ACCIDENTAL catalogue change, not a ceiling, and is expected to need
+		// updating whenever a future task adds a key on purpose.
 		expect(csKeys.size).toBe(enKeys.size);
-		expect(csKeys.size).toBe(256);
+		expect(csKeys.size).toBe(278);
 	});
 });
 
