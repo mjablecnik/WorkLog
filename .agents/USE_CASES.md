@@ -7416,13 +7416,9 @@ helpers), never by clicking through the interface.
   description — taken from the most recent `Work_Entry`, not from the later
   `Leisure_Entry`, which names no project and so could not supply a default anyway.
   Consistent with UC-557's `Quick_Log` rule.
-  **Undecided:** on a day whose only entries are leisure (`FIX-CAT-UI-LEISURE`) there is
-  no recent `Work_Entry` at all, and Requirement 10.7 does not say what the control
-  should then default to. Today's build falls back to `Placeno` with no project chosen.
-  That is a reasonable choice but it is the implementation's, not the specification's —
-  see `ISSUES.md`, `[LOW] Requirement 10.7 does not say what the category defaults to
-  when a day holds no Work_Entry`. Verify what the build does and record it; do not treat
-  either answer as a failure until the question is settled
+  On a day whose only entries are leisure (`FIX-CAT-UI-LEISURE`) there is no recent
+  `Work_Entry` at all; Requirement 10.7 now settles this explicitly — the category
+  defaults to `Placeno` with no project chosen. Confirmed via `FIX-CAT-UI-LEISURE`
 
 ## UC-583 — The Change_Preview works for a leisure draft
 - Area: activity dialog, change preview, leisure

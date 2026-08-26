@@ -445,7 +445,9 @@ actually about to log.
 7. THE Activity_Dialog SHALL default the category and, where it names a `Project`,
    the `Project` and description to those of the most recent `Work_Entry` of the
    displayed day, considering no `Leisure_Entry` when resolving that default,
-   consistent with Requirement 6.6
+   consistent with Requirement 6.6. WHERE the displayed day holds no `Work_Entry`,
+   THE Activity_Dialog SHALL default the category to `paid` with no `Project`
+   selected
 8. THE Change_Preview beneath the form SHALL be offered for a `Leisure_Entry` draft on
    the same terms as for a `Work_Entry` draft, since `Clipping` reports the same shape
    of outcome for both and the resulting `Preview_Token` is required for the write

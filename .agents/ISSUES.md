@@ -109,7 +109,11 @@
 ## [LOW] Requirement 10.7 does not say what the category defaults to when a day holds no Work_Entry
 - Run: 2026-08-26-0758
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-26-decisions)
+- Resolution: today's build behaviour (`paid`, no `Project` selected) is confirmed as
+  the intended answer — no code change. Requirement 10, criterion 7 amended with an
+  explicit clause stating this. `.agents/USE_CASES.md` UC-582 updated to state it as a
+  settled `Expected` rather than "records what the build does, not a failure either way".
 - What: Requirement 10.7 requires the `Activity_Dialog` to "default the category and,
   where it names a `Project`, the `Project` and description to those of the most recent
   `Work_Entry` of the displayed day, considering no `Leisure_Entry`". It does not say
