@@ -3,7 +3,8 @@ import { sql } from 'drizzle-orm';
 import { projects } from './projects';
 
 /**
- * Mirrors `migrations/001_init.sql`. The gist range index on the requested interval
+ * Mirrors `migrations/001_init.sql` and `migrations/002_leisure_time_categories.sql`.
+ * The gist range index on the requested interval
  * (`activity_entries_requested_range`) is not expressible here — the SQL migration is
  * the authority; this definition exists for typed queries only.
  */
@@ -11,9 +12,8 @@ export const activityEntries = pgTable(
 	'activity_entries',
 	{
 		id: uuid('id').primaryKey(),
-		projectId: uuid('project_id')
-			.notNull()
-			.references(() => projects.id, { onDelete: 'restrict' }),
+		/** Null means a Leisure_Entry — no Project at all. */
+		projectId: uuid('project_id').references(() => projects.id, { onDelete: 'restrict' }),
 		description: text('description').notNull().default(''),
 		mode: text('mode').notNull(),
 		requestedStartedAt: timestamp('requested_started_at', { withTimezone: true }),
