@@ -56,6 +56,27 @@ export type DayLayout = {
 		continues: boolean;
 	}[];
 	breaks: { after: number; interval: Interval; long: boolean }[]; // index of the block it follows
+	/**
+	 * Every Leisure_Block for the day, in chronological order — a Leisure_Entry has no
+	 * Work_Session to nest inside, so it is a second kind of top-level unit,
+	 * interleaved with `blocks`/`breaks` by the caller (003-worklog-time-categories,
+	 * Requirement 8.1).
+	 */
+	leisureBlocks: LeisureBlockUnit[];
+};
+
+/**
+ * One Leisure_Entry segment, drawn as its own top-level unit on the shared time axis
+ * — never nested inside a Work_Block. Sized from the same proportional height budget
+ * every other unit is sized from (Requirement 8.3): its duration is counted into the
+ * day's total seconds and its height comes out of the same flexible remainder,
+ * floored at MIN_BLOCK_PX exactly as a Segment_Block is.
+ */
+export type LeisureBlockUnit = {
+	entry: ActivityEntry; // category === 'relax'
+	segment: ActivitySegment;
+	interval: Interval;
+	heightPx: number;
 };
 
 export type LaidOutSegment = {
@@ -91,11 +112,12 @@ export type LaidOutSegment = {
 };
 
 type RawUnit = {
+	/** -1 for a Leisure_Block — it owns no session to be assigned to. */
 	blockIndex: number;
 	startMs: number;
 	endMs: number;
 	seconds: number;
-	kind: 'segment' | 'uncovered';
+	kind: 'segment' | 'uncovered' | 'leisure';
 	segment: ActivitySegment | null;
 	entry: ActivityEntry | null;
 };
@@ -127,8 +149,18 @@ export function layOutDay(
 	 */
 	dayBounds?: Interval
 ): DayLayout {
-	if (sessions.length === 0) {
-		return { blocks: [], breaks: [] };
+	// A Leisure_Entry has no Work_Session to nest inside, so a day of leisure with the
+	// timer never started is the ordinary case this early return must not treat as
+	// empty (Requirement 8.5) — the guard becomes "no sessions AND no leisure segments".
+	const leisureRawSegments: { segment: ActivitySegment; entry: ActivityEntry }[] = [];
+	for (const entry of entries) {
+		if (entry.category !== 'relax') continue;
+		for (const segment of entry.segments) leisureRawSegments.push({ segment, entry });
+	}
+	leisureRawSegments.sort((a, b) => a.segment.startedAt.getTime() - b.segment.startedAt.getTime());
+
+	if (sessions.length === 0 && leisureRawSegments.length === 0) {
+		return { blocks: [], breaks: [], leisureBlocks: [] };
 	}
 
 	const orderedSessions = [...sessions].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime());
@@ -177,9 +209,12 @@ export function layOutDay(
 		return { startMs, endMs, running, capped, continues };
 	});
 
-	// --- Assign every Activity_Segment to its owning session (they never overlap). ---
+	// --- Assign every Work_Entry Activity_Segment to its owning session (they never
+	// overlap). A Leisure_Entry's segments are NOT clipped to any session — they were
+	// already collected above, into `leisureRawSegments`, and are laid out separately. ---
 	const rawSegments: { segment: ActivitySegment; entry: ActivityEntry }[] = [];
 	for (const entry of entries) {
+		if (entry.category === 'relax') continue;
 		for (const segment of entry.segments) {
 			rawSegments.push({ segment, entry });
 		}
@@ -236,6 +271,19 @@ export function layOutDay(
 
 	for (const units of unitsByBlock) units.sort((a, b) => a.startMs - b.startMs);
 
+	// --- Leisure_Block units: each Leisure_Entry segment, owning no session
+	// (blockIndex -1), never clipped against any session's bounds — a Leisure_Entry
+	// is reconciled against the Unrestricted_Window, not Tracked_Time. ---
+	const leisureRawUnits: RawUnit[] = leisureRawSegments.map(({ segment, entry }) => ({
+		blockIndex: -1,
+		startMs: segment.startedAt.getTime(),
+		endMs: segment.endedAt.getTime(),
+		seconds: (segment.endedAt.getTime() - segment.startedAt.getTime()) / 1000,
+		kind: 'leisure' as const,
+		segment,
+		entry
+	}));
+
 	// --- Breaks: the gap between one (always closed) session and the next. ---
 	const breaks: DayLayout['breaks'] = [];
 	for (let i = 0; i < orderedSessions.length - 1; i++) {
@@ -271,12 +319,19 @@ export function layOutDay(
 	for (const brk of breaks) {
 		fixed += BREAK_MARKER_PX[brk.long ? 'long' : 'short'] + 2 * blockToBreakPx;
 	}
+	// A Leisure_Block belongs to no block, so it never reserves a headPx/headGapPx —
+	// only the inter-unit gap the merged render list actually draws around it
+	// (Requirement 8.3).
+	if (leisureRawUnits.length > 1) fixed += (leisureRawUnits.length - 1) * BLOCK_GAP_PX;
 	const flex = availablePx - fixed;
 
 	// --- Step 2: distribute proportionally, absorbing sub-threshold uncovered stretches
-	// into the segment that follows them within the same block. ---
+	// into the segment that follows them within the same block. Leisure_Block units
+	// share the same `totalSeconds`/`flex` budget (Requirement 8.3) but need no
+	// absorption logic — every leisure unit renders on its own. ---
 	let totalSeconds = 0;
 	for (const units of unitsByBlock) for (const u of units) totalSeconds += u.seconds;
+	for (const u of leisureRawUnits) totalSeconds += u.seconds;
 
 	type Sizeable = RawUnit & { height: number; pinned: boolean };
 	const sizeableByBlock: Sizeable[][] = unitsByBlock.map(() => []);
@@ -311,7 +366,13 @@ export function layOutDay(
 		sizeableByBlock[blockIndex] = rendered;
 	}
 
-	const allSizeable = sizeableByBlock.flat();
+	const leisureSizeable: Sizeable[] = leisureRawUnits.map((u) => ({
+		...u,
+		height: totalSeconds > 0 ? flex * (u.seconds / totalSeconds) : 0,
+		pinned: false
+	}));
+
+	const allSizeable = sizeableByBlock.flat().concat(leisureSizeable);
 
 	// --- Step 3: lift below-floor segments to the floor, repaying the deficit from the
 	// unpinned segments in descending height, one HEIGHT_STEP_PX at a time, before any
@@ -348,9 +409,10 @@ export function layOutDay(
 		}
 	}
 
-	// --- Step 4: quantise down to HEIGHT_STEP_PX, giving each block's rounding
-	// remainder back to that block's own tallest segment so its total stays exact. ---
-	for (const rendered of sizeableByBlock) {
+	// --- Step 4: quantise down to HEIGHT_STEP_PX, giving each block's (or the
+	// Leisure_Block list's own) rounding remainder back to its own tallest segment so
+	// its total stays exact. ---
+	function quantizeList(rendered: Sizeable[]): void {
 		let remainder = 0;
 		let tallestIndex = -1;
 		let tallestFlooredHeight = -1;
@@ -377,6 +439,8 @@ export function layOutDay(
 			rendered[tallestIndex].height += Math.floor(remainder);
 		}
 	}
+	for (const rendered of sizeableByBlock) quantizeList(rendered);
+	quantizeList(leisureSizeable);
 
 	// --- Assemble LaidOutSegments, part markers, description visibility and the
 	// fill-column mark. ---
@@ -429,5 +493,12 @@ export function layOutDay(
 		};
 	});
 
-	return { blocks, breaks };
+	const leisureBlocks: LeisureBlockUnit[] = leisureSizeable.map((s) => ({
+		entry: s.entry as ActivityEntry,
+		segment: s.segment as ActivitySegment,
+		interval: { start: new Date(s.startMs), end: new Date(s.endMs) },
+		heightPx: s.height
+	}));
+
+	return { blocks, breaks, leisureBlocks };
 }

@@ -101,14 +101,15 @@
 
 {#if segment.segment !== null && segment.entry !== null}
 	{@const entry = segment.entry}
+	{@const projectName = entry.projectName ?? ''}
 	<button
 		type="button"
-		class="sb sb--{density} sb--project {projectSlotClass(entry.colorIndex)} {heightClass()}"
+		class="sb sb--{density} sb--project {projectSlotClass(entry.colorIndex ?? 0)} {heightClass()}"
 		class:sb--floor={compactRow}
 		class:sb--linked={linked}
 		data-entry-id={entry.id}
 		aria-label={m.day_segment_label({
-			project: entry.projectName,
+			project: projectName,
 			from: fmtTime(segment.interval.start),
 			to: fmtTime(segment.interval.end),
 			duration: fmtDuration(durationSeconds),
@@ -125,7 +126,8 @@
 		{#if isSplit && !isFirstPart}
 			<span class="sb-notch sb-notch--top" aria-hidden="true"></span>
 		{/if}
-		<span class="sb-name">{entry.projectName}</span>
+		<span class="sb-name">{projectName}</span>
+		<span class="sb-category">{entry.category === 'paid' ? m.category_paid() : m.category_unpaid()}</span>
 		{#if entry.description}
 			<span class="sb-desc">{entry.description}</span>
 		{/if}
@@ -259,6 +261,16 @@
 	}
 	.sb--mobile .sb-name {
 		font-size: 13px;
+	}
+
+	/* Requirement 8.7: a Work_Entry's paid/unpaid state is never carried by colour
+	 * alone — a plain text tag beside the project name. */
+	.sb-category {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--text-faint);
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
 	}
 
 	.sb-desc {

@@ -24,6 +24,7 @@
 	import EmptyState from '$lib/ui/components/EmptyState.svelte';
 	import WorkBlock from './WorkBlock.svelte';
 	import BreakMarker from './BreakMarker.svelte';
+	import LeisureBlock from './LeisureBlock.svelte';
 	import { layOutDay, type DayLayout, type Density } from './timeline-geometry';
 
 	interface Props {
@@ -119,8 +120,12 @@
 		};
 	});
 
+	// A day of leisure with the timer never started is the ordinary case this
+	// specification exists to support (Requirement 8.5) — the guard becomes "no
+	// sessions AND no Leisure_Entry segments", matching layOutDay's own early return.
+	const hasLeisure = $derived(entries.some((e) => e.category === 'relax' && e.segments.length > 0));
 	const layout = $derived<DayLayout>(
-		sessions.length > 0
+		sessions.length > 0 || hasLeisure
 			? layOutDay(
 					sessions,
 					entries,
@@ -131,7 +136,7 @@
 					maxOpenSessionHours,
 					dayBounds
 				)
-			: { blocks: [], breaks: [] }
+			: { blocks: [], breaks: [], leisureBlocks: [] }
 	);
 
 	/** At most one break follows any given block index (`layOutDay` emits one break
@@ -145,6 +150,27 @@
 		for (const brk of layout.breaks) map.set(brk.after, brk);
 		return map;
 	});
+
+	/**
+	 * `WorkBlock`s and `Leisure_Block`s merged into one chronological render list by
+	 * each unit's start instant (Requirement 8.1) — a `Leisure_Block` sits between
+	 * `Work_Block` groups in chronological order, never nested inside one. Breaks stay
+	 * looked up by block index via `breakAfterBlock`, exactly as before.
+	 */
+	type RenderItem =
+		| { kind: 'block'; startMs: number; blockIndex: number }
+		| { kind: 'leisure'; startMs: number; leisureIndex: number };
+	const renderItems = $derived.by(() => {
+		const items: RenderItem[] = [];
+		layout.blocks.forEach((block, i) =>
+			items.push({ kind: 'block', startMs: block.session.startedAt.getTime(), blockIndex: i })
+		);
+		layout.leisureBlocks.forEach((unit, i) =>
+			items.push({ kind: 'leisure', startMs: unit.interval.start.getTime(), leisureIndex: i })
+		);
+		items.sort((a, b) => a.startMs - b.startMs);
+		return items;
+	});
 </script>
 
 <section
@@ -152,32 +178,45 @@
 	bind:this={columnEl}
 	aria-label={m.aria_timeline({ date })}
 >
-	{#if sessions.length === 0}
+	{#if sessions.length === 0 && !hasLeisure}
 		<div class="day-timeline__empty">
 			<p class="day-timeline__empty-title">{m.day_empty_title()}</p>
 			<EmptyState icon="info" message={m.day_empty_body()} />
 		</div>
 	{:else}
-		{#each layout.blocks as block, i (block.session.id)}
-			<WorkBlock
-				{block}
-				index={i}
-				{density}
-				{now}
-				{timeZone}
-				{locale}
-				{eveningHour}
-				{maxOpenSessionHours}
-				{hoveredEntryId}
-				{onSessionActivate}
-				{onSessionEdgeActivate}
-				{onActivityActivate}
-				{onUncoveredActivate}
-				onEntryHover={handleEntryHover}
-			/>
-			{@const brk = breakAfterBlock.get(i)}
-			{#if brk}
-				<BreakMarker {brk} {density} {timeZone} {locale} />
+		{#each renderItems as item (item.kind === 'block' ? `b-${layout.blocks[item.blockIndex].session.id}` : `l-${layout.leisureBlocks[item.leisureIndex].segment.id}`)}
+			{#if item.kind === 'block'}
+				{@const i = item.blockIndex}
+				<WorkBlock
+					block={layout.blocks[i]}
+					index={i}
+					{density}
+					{now}
+					{timeZone}
+					{locale}
+					{eveningHour}
+					{maxOpenSessionHours}
+					{hoveredEntryId}
+					{onSessionActivate}
+					{onSessionEdgeActivate}
+					{onActivityActivate}
+					{onUncoveredActivate}
+					onEntryHover={handleEntryHover}
+				/>
+				{@const brk = breakAfterBlock.get(i)}
+				{#if brk}
+					<BreakMarker {brk} {density} {timeZone} {locale} />
+				{/if}
+			{:else}
+				<LeisureBlock
+					unit={layout.leisureBlocks[item.leisureIndex]}
+					{density}
+					{timeZone}
+					{locale}
+					{hoveredEntryId}
+					{onActivityActivate}
+					onEntryHover={handleEntryHover}
+				/>
 			{/if}
 		{/each}
 	{/if}

@@ -112,6 +112,7 @@ function buildDay(shapes: SessionShape[]): BuiltDay {
 				projectId: 'project-0',
 				projectName: 'Property test project',
 				colorIndex: 0,
+				category: 'paid',
 				description: '',
 				mode: 'explicit',
 				requestedStartedAt: new Date(segStart),
@@ -231,6 +232,106 @@ describe('Feature: worklog-ui, Property 2: Layout budget and clickable floor', (
 				}
 				for (const brk of layout.breaks) {
 					total += BREAK_MARKER_PX[brk.long ? 'long' : 'short'] + 2 * BLOCK_TO_BREAK_PX[density];
+				}
+
+				expect(total).toBeLessThanOrEqual(availablePx);
+			}),
+			{ numRuns: 100 }
+		);
+	});
+});
+
+describe('Property 7 (003-worklog-time-categories): the timeline height budget still holds with Leisure_Block units present', () => {
+	/** One Leisure_Entry segment: its own duration and the gap before the next one —
+	 *  mirrors segmentShapeArb, generated well outside any Work_Session so it is never
+	 *  clipped or absorbed into a block. */
+	const leisureShapeArb = fc.record({
+		durationSec: fc.integer({ min: 3, max: 4 * 3600 }),
+		gapAfterSec: fc.integer({ min: 60, max: 900 })
+	});
+	const leisureDayArb = fc.array(leisureShapeArb, { minLength: 0, maxLength: 5 });
+
+	function buildLeisure(shapes: { durationSec: number; gapAfterSec: number }[], startMs: number): ActivityEntry[] {
+		let cursor = startMs;
+		const entries: ActivityEntry[] = [];
+		shapes.forEach((shape, i) => {
+			const start = cursor;
+			const end = start + shape.durationSec * 1000;
+			entries.push({
+				id: `leisure-entry-${i}`,
+				projectId: null,
+				projectName: null,
+				colorIndex: null,
+				category: 'relax',
+				description: '',
+				mode: 'explicit',
+				requestedStartedAt: new Date(start),
+				requestedEndedAt: new Date(end),
+				requestedDurationMinutes: null,
+				orphaned: false,
+				createdAt: new Date(start),
+				updatedAt: new Date(start),
+				segments: [{ id: `leisure-segment-${i}`, entryId: `leisure-entry-${i}`, startedAt: new Date(start), endedAt: new Date(end) }]
+			});
+			cursor = end + shape.gapAfterSec * 1000;
+		});
+		return entries;
+	}
+
+	const leisureCaseArb = fc
+		.tuple(dayShapeArb, leisureDayArb, fc.constantFrom<Density>('desktop', 'mobile'))
+		.chain(([day, leisure, density]) => {
+			const built = buildDay(day);
+			const blockPremise = computePremise(built, density);
+			const leisureCount = leisure.length;
+			const leisurePremise =
+				MIN_BLOCK_PX[density] * leisureCount + BLOCK_GAP_PX * Math.max(0, leisureCount - 1);
+			const premise = blockPremise + leisurePremise;
+			return fc
+				.integer({ min: premise, max: premise + 5000 })
+				.map((availablePx) => ({ day, leisure, density, availablePx }));
+		});
+
+	it('fits every Leisure_Block, alongside every Work_Block, inside availablePx, and never floors one under MIN_BLOCK_PX', () => {
+		fc.assert(
+			fc.property(leisureCaseArb, ({ day, leisure, density, availablePx }) => {
+				const built = buildDay(day);
+				// Placed a full day after the last built Work_Session instant, so it never
+				// overlaps or gets clipped by any session bound.
+				const lastInstant =
+					built.sessions.length > 0
+						? Math.max(...built.sessions.map((s) => (s.endedAt as Date).getTime()))
+						: BASE;
+				const leisureEntries = buildLeisure(leisure, lastInstant + 24 * 3600_000);
+				const entries = [...built.entries, ...leisureEntries];
+
+				const layout = layOutDay(
+					built.sessions,
+					entries,
+					[],
+					availablePx,
+					density,
+					NOW,
+					MAX_OPEN_SESSION_HOURS
+				);
+
+				expect(layout.leisureBlocks.length).toBe(leisureEntries.length);
+				for (const unit of layout.leisureBlocks) {
+					expect(unit.heightPx).toBeGreaterThanOrEqual(MIN_BLOCK_PX[density]);
+				}
+
+				let total = 0;
+				for (const block of layout.blocks) {
+					total += BLOCK_HEAD_PX[density] + HEAD_GAP_PX[density];
+					for (const segment of block.segments) total += segment.heightPx;
+					if (block.segments.length > 1) total += (block.segments.length - 1) * BLOCK_GAP_PX;
+				}
+				for (const brk of layout.breaks) {
+					total += BREAK_MARKER_PX[brk.long ? 'long' : 'short'] + 2 * BLOCK_TO_BREAK_PX[density];
+				}
+				for (const unit of layout.leisureBlocks) total += unit.heightPx;
+				if (layout.leisureBlocks.length > 1) {
+					total += (layout.leisureBlocks.length - 1) * BLOCK_GAP_PX;
 				}
 
 				expect(total).toBeLessThanOrEqual(availablePx);

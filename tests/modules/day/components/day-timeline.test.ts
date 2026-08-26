@@ -80,6 +80,7 @@ function mkEntry(segments: Interval[], opts: Partial<Omit<ActivityEntry, 'segmen
 		projectId: 'project-1',
 		projectName: 'Project',
 		colorIndex: 0,
+		category: 'paid',
 		description: '',
 		mode: 'explicit',
 		requestedStartedAt: segments[0].start,
@@ -325,5 +326,82 @@ describe('DayTimeline', () => {
 		expect(screen.getByText(m.day_empty_title())).toBeInTheDocument();
 		expect(screen.getByText(m.day_empty_body())).toBeInTheDocument();
 		expect(container.querySelectorAll('.wb').length).toBe(0);
+	});
+
+	// --- 003-worklog-time-categories, task 8.7 ---------------------------------------
+
+	function mkLeisureEntry(segment: Interval, description = ''): ActivityEntry {
+		const id = nextId('leisure-entry');
+		return {
+			id,
+			projectId: null,
+			projectName: null,
+			colorIndex: null,
+			category: 'relax',
+			description,
+			mode: 'explicit',
+			requestedStartedAt: segment.start,
+			requestedEndedAt: segment.end,
+			requestedDurationMinutes: null,
+			orphaned: false,
+			createdAt: segment.start,
+			updatedAt: segment.start,
+			segments: [{ id: nextId('leisure-segment'), entryId: id, startedAt: segment.start, endedAt: segment.end }]
+		};
+	}
+
+	it('places a Leisure_Block at its correct chronological position between Work_Blocks (Requirement 8.1)', () => {
+		const sessionA = mkSession(dt(9), dt(10));
+		const sessionB = mkSession(dt(14), dt(15));
+		const entryA = mkEntry([{ start: dt(9), end: dt(10) }]);
+		const entryB = mkEntry([{ start: dt(14), end: dt(15) }]);
+		const leisure = mkLeisureEntry({ start: dt(11), end: dt(12) }, 'lunch break leisure');
+
+		const { container } = renderTimeline({
+			sessions: [sessionA, sessionB],
+			entries: [entryA, entryB, leisure]
+		});
+
+		const units = Array.from(container.querySelectorAll('.wb, .sb--leisure'));
+		expect(units).toHaveLength(3);
+		// Chronological: WorkBlock (09:00), Leisure_Block (11:00), WorkBlock (14:00).
+		expect(units[0].classList.contains('wb')).toBe(true);
+		expect(units[1].classList.contains('sb--leisure')).toBe(true);
+		expect(units[2].classList.contains('wb')).toBe(true);
+	});
+
+	it('renders Leisure_Block units on a day with no Work_Session at all, rather than the empty state (Requirement 8.5)', () => {
+		const leisure = mkLeisureEntry({ start: dt(20), end: dt(21) }, 'evening off');
+		const { container } = renderTimeline({ sessions: [], entries: [leisure] });
+
+		expect(screen.queryByText(m.day_empty_title())).toBeNull();
+		expect(container.querySelectorAll('.sb--leisure').length).toBe(1);
+	});
+
+	it("names a Leisure_Block's category as text (relax) and a Work_Entry's Segment_Block names its own category (Requirement 8.7)", () => {
+		const session = mkSession(dt(9), dt(10));
+		const entry = mkEntry([{ start: dt(9), end: dt(10) }], { category: 'unpaid' });
+		const leisure = mkLeisureEntry({ start: dt(20), end: dt(21) });
+
+		renderTimeline({ sessions: [session], entries: [entry, leisure] });
+
+		expect(screen.getByText(m.category_relax())).toBeInTheDocument();
+		expect(screen.getByText(m.category_unpaid())).toBeInTheDocument();
+	});
+
+	it('floors a short Leisure_Block at MIN_BLOCK_PX, same as a Segment_Block (Requirement 8.3)', () => {
+		// A huge Work_Session dominates totalSeconds, so the 3-second Leisure_Block's
+		// proportional share of `flex` rounds to well under the floor and must be
+		// lifted, exactly as a tiny Segment_Block would be.
+		const session = mkSession(dt(0), dt(19));
+		const entry = mkEntry([{ start: dt(0), end: dt(19) }]);
+		const leisure = mkLeisureEntry({ start: dt(20), end: dt(20, 0) }, 'a few seconds');
+		leisure.segments[0].endedAt = new Date(dt(20).getTime() + 3000);
+		leisure.requestedEndedAt = leisure.segments[0].endedAt;
+
+		const { container } = renderTimeline({ sessions: [session], entries: [entry, leisure] });
+		const block = container.querySelector('.sb--leisure') as HTMLElement;
+		expect(block).toBeTruthy();
+		expect(block.className).toMatch(/tl-h-(26|36)/);
 	});
 });

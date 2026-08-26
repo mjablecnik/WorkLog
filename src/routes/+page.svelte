@@ -168,6 +168,11 @@
 		return density === 'desktop' ? formatDuration(seconds, locale) : formatDurationShort(seconds, locale);
 	}
 
+	// The Day_Gauge draws Work_Entry data only (Requirement 7.1) — a Leisure_Entry
+	// never reaches it, `byProject` (Project_Legend) already excludes it by
+	// construction.
+	let workEntries = $derived(data.entries.filter((e) => e.category !== 'relax'));
+
 	// ---------------------------------------------------------------------------
 	// Quick_Log -> Activity_Dialog fallback (Requirements 6.13, 6.18).
 	// `ActivityDialog.svelte`'s hidden submit form posts to the RELATIVE actions
@@ -322,7 +327,7 @@
 
 	<DayGauge
 		sessions={data.sessions}
-		entries={data.entries}
+		entries={workEntries}
 		uncovered={data.coverage.uncovered}
 		window={{ start: data.serverConfig.gaugeStart, end: data.serverConfig.gaugeEnd }}
 		date={data.date}
@@ -349,6 +354,22 @@
 			<span class="text-timer-figure tabular timer-page__figure-value--accent"
 				>{figureText(data.totals.uncoveredSeconds)}</span
 			>
+		</div>
+	</div>
+
+	<!-- Requirement 7.4: beside the gauge's existing readouts, not folded into them. -->
+	<div class="timer-page__figures timer-page__figures--category">
+		<div class="timer-page__figure">
+			<span class="lbl">{m.timer_paid()}</span>
+			<span class="text-timer-figure tabular">{figureText(data.totals.paidSeconds)}</span>
+		</div>
+		<div class="timer-page__figure">
+			<span class="lbl">{m.timer_unpaid()}</span>
+			<span class="text-timer-figure tabular">{figureText(data.totals.unpaidSeconds)}</span>
+		</div>
+		<div class="timer-page__figure">
+			<span class="lbl">{m.timer_relax()}</span>
+			<span class="text-timer-figure tabular">{figureText(data.totals.relaxSeconds)}</span>
 		</div>
 	</div>
 
@@ -456,6 +477,12 @@
 
 	.timer-page__figure-value--accent {
 		color: var(--accent);
+	}
+
+	/* Requirement 7.4: a separate strip beside the worked/covered/uncovered
+	 * readouts, never folded into them. */
+	.timer-page__figures--category {
+		margin-top: 14px;
 	}
 
 	/* --------------------------------------------------------------------
