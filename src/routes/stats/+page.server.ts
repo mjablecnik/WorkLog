@@ -139,13 +139,14 @@ async function loadStatsData(url: URL, locals: App.Locals) {
 			return body;
 		}
 
-		const { tracked, covered, uncovered } = await dayIntervals(tx, dayWindows, now);
+		const { tracked, covered, uncovered, leisure } = await dayIntervals(tx, dayWindows, now);
 		const body: DaysRangeResponse = {
 			days: summaries.map((s, i) => ({
 				...s,
 				tracked: tracked[i],
 				covered: covered[i],
-				uncovered: uncovered[i]
+				uncovered: uncovered[i],
+				leisure: leisure[i]
 			})),
 			suggestedWindow: suggested,
 			intervalsIncluded: true
