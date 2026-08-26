@@ -9,7 +9,7 @@
  * for. This is a deliberate, documented trade against the design's original
  * "everything in SQL" intent; see ISSUES.md.
  */
-import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import type { Interval, ProjectInterval, ProjectTotal } from '$lib/contracts/models';
 import type { CoverageResponse, DaySummary } from '$lib/contracts/responses';
 import { clamp, gaps, intersect, normalize, subtract, total } from '../domain/interval';
@@ -22,7 +22,8 @@ export type DayWindow = { date: string; window: Interval };
 
 type RawSession = { id: string; startedAt: Date; endedAt: Date | null };
 type RawSegment = { startedAt: Date; endedAt: Date; projectId: string };
-type ProjectMeta = { id: string; name: string; colorIndex: number; archived: boolean };
+type RawLeisureSegment = { startedAt: Date; endedAt: Date };
+type ProjectMeta = { id: string; name: string; colorIndex: number; archived: boolean; billable: boolean };
 
 function boundingRange(windows: DayWindow[]): Interval {
 	let start = windows[0].window.start;
@@ -51,7 +52,13 @@ async function fetchSessions(tx: Tx, range: Interval): Promise<RawSession[]> {
 	return rows;
 }
 
-async function fetchSegments(tx: Tx, range: Interval): Promise<RawSegment[]> {
+/**
+ * Work_Entry segments only — feeds Covered_Time, Uncovered_Time, byProject. Narrows
+ * `projectId` to `string` explicitly: Drizzle infers `string | null` off the
+ * now-nullable column, which the `IS NOT NULL` filter makes impossible in practice
+ * but the type system cannot see.
+ */
+async function fetchWorkSegments(tx: Tx, range: Interval): Promise<RawSegment[]> {
 	const rows = await tx
 		.select({
 			startedAt: activitySegments.startedAt,
@@ -61,9 +68,35 @@ async function fetchSegments(tx: Tx, range: Interval): Promise<RawSegment[]> {
 		.from(activitySegments)
 		.innerJoin(activityEntries, eq(activitySegments.entryId, activityEntries.id))
 		.where(
-			and(lt(activitySegments.startedAt, range.end), gt(activitySegments.endedAt, range.start))
+			and(
+				lt(activitySegments.startedAt, range.end),
+				gt(activitySegments.endedAt, range.start),
+				isNotNull(activityEntries.projectId)
+			)
 		);
-	return rows;
+	return rows.map((r) => ({ ...r, projectId: r.projectId as string }));
+}
+
+/**
+ * Leisure_Entry segments only, no project join needed — feeds Leisure_Time /
+ * relaxSeconds only. Never counted into Covered_Time (Requirement 6.1): a
+ * Leisure_Entry's segments are not a subset of Tracked_Time.
+ */
+async function fetchLeisureSegments(tx: Tx, range: Interval): Promise<RawLeisureSegment[]> {
+	return tx
+		.select({
+			startedAt: activitySegments.startedAt,
+			endedAt: activitySegments.endedAt
+		})
+		.from(activitySegments)
+		.innerJoin(activityEntries, eq(activitySegments.entryId, activityEntries.id))
+		.where(
+			and(
+				lt(activitySegments.startedAt, range.end),
+				gt(activitySegments.endedAt, range.start),
+				isNull(activityEntries.projectId)
+			)
+		);
 }
 
 /** The interval a session row contributes to Tracked_Time — capped exactly as `work-sessions.ts` does. */
@@ -80,13 +113,20 @@ async function loadProjectMeta(tx: Tx): Promise<Map<string, ProjectMeta>> {
 			id: projects.id,
 			name: projects.name,
 			colorIndex: projects.colorIndex,
-			archivedAt: projects.archivedAt
+			archivedAt: projects.archivedAt,
+			billable: projects.billable
 		})
 		.from(projects);
 	return new Map(
 		rows.map((r) => [
 			r.id,
-			{ id: r.id, name: r.name, colorIndex: r.colorIndex, archived: r.archivedAt !== null }
+			{
+				id: r.id,
+				name: r.name,
+				colorIndex: r.colorIndex,
+				archived: r.archivedAt !== null,
+				billable: r.billable
+			}
 		])
 	);
 }
@@ -103,12 +143,13 @@ export async function daySummaries(
 	tx: Tx,
 	days: DayWindow[],
 	opts: { gaugeWindows: Interval[]; eveningStarts: Date[]; now: Date }
-): Promise<Omit<DaySummary, 'tracked' | 'covered' | 'uncovered'>[]> {
+): Promise<Omit<DaySummary, 'tracked' | 'covered' | 'uncovered' | 'leisure'>[]> {
 	if (days.length === 0) return [];
 	const range = boundingRange(days);
-	const [sessions, segments, projectMeta] = await Promise.all([
+	const [sessions, segments, leisureSegments, projectMeta] = await Promise.all([
 		fetchSessions(tx, range),
-		fetchSegments(tx, range),
+		fetchWorkSegments(tx, range),
+		fetchLeisureSegments(tx, range),
 		loadProjectMeta(tx)
 	]);
 	const { maxOpenSessionHours } = getConfig();
@@ -162,16 +203,34 @@ export async function daySummaries(
 					projectName: meta?.name ?? '',
 					colorIndex: meta?.colorIndex ?? 0,
 					archived: meta?.archived ?? false,
+					billable: meta?.billable ?? true,
 					coveredSeconds: coveredSecondsForProject
 				};
 			})
 			.sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+		// coveredSeconds split by Project.billable — paidSeconds + unpaidSeconds ===
+		// coveredSeconds (Property 4).
+		const paidSeconds = byProject
+			.filter((p) => p.billable)
+			.reduce((sum, p) => sum + p.coveredSeconds, 0);
+		const unpaidSeconds = byProject
+			.filter((p) => !p.billable)
+			.reduce((sum, p) => sum + p.coveredSeconds, 0);
+
+		const leisureInDay = leisureSegments
+			.map((s) => clampOne({ start: s.startedAt, end: s.endedAt }, day.window))
+			.filter((iv): iv is Interval => iv !== null);
+		const relaxSeconds = seconds(total(normalize(leisureInDay)));
 
 		return {
 			date: day.date,
 			trackedSeconds,
 			coveredSeconds,
 			uncoveredSeconds,
+			paidSeconds,
+			unpaidSeconds,
+			relaxSeconds,
 			sessionCount,
 			longestBlockSeconds,
 			overtimeSeconds,
@@ -186,17 +245,23 @@ function clampOne(interval: Interval, window: Interval): Interval | null {
 	return result.length === 0 ? null : result[0];
 }
 
-/** Per-day tracked, covered (with projectId) and uncovered lists, clamped to each day. */
+/** Per-day tracked, covered (with projectId), uncovered and leisure lists, clamped to each day. */
 export async function dayIntervals(
 	tx: Tx,
 	days: DayWindow[],
 	now: Date
-): Promise<{ tracked: Interval[][]; covered: ProjectInterval[][]; uncovered: Interval[][] }> {
-	if (days.length === 0) return { tracked: [], covered: [], uncovered: [] };
+): Promise<{
+	tracked: Interval[][];
+	covered: ProjectInterval[][];
+	uncovered: Interval[][];
+	leisure: Interval[][];
+}> {
+	if (days.length === 0) return { tracked: [], covered: [], uncovered: [], leisure: [] };
 	const range = boundingRange(days);
-	const [sessions, segments, projectMeta] = await Promise.all([
+	const [sessions, segments, leisureSegments, projectMeta] = await Promise.all([
 		fetchSessions(tx, range),
-		fetchSegments(tx, range),
+		fetchWorkSegments(tx, range),
+		fetchLeisureSegments(tx, range),
 		loadProjectMeta(tx)
 	]);
 	const { maxOpenSessionHours } = getConfig();
@@ -205,6 +270,7 @@ export async function dayIntervals(
 	const tracked: Interval[][] = [];
 	const covered: ProjectInterval[][] = [];
 	const uncovered: Interval[][] = [];
+	const leisure: Interval[][] = [];
 
 	for (const day of days) {
 		const trackedInDay = normalize(clamp(cappedSessions, day.window));
@@ -227,8 +293,14 @@ export async function dayIntervals(
 		);
 
 		uncovered.push(subtract(trackedInDay, normalize(segmentsInDay.map((s) => s.interval))));
+
+		const leisureInDay = leisureSegments
+			.map((s) => clampOne({ start: s.startedAt, end: s.endedAt }, day.window))
+			.filter((iv): iv is Interval => iv !== null)
+			.sort((a, b) => a.start.getTime() - b.start.getTime());
+		leisure.push(normalize(leisureInDay));
 	}
-	return { tracked, covered, uncovered };
+	return { tracked, covered, uncovered, leisure };
 }
 
 /**
@@ -324,7 +396,7 @@ export async function coverageForRange(
 ): Promise<CoverageResponse> {
 	const [sessions, segments] = await Promise.all([
 		fetchSessions(tx, range),
-		fetchSegments(tx, range)
+		fetchWorkSegments(tx, range)
 	]);
 	const { maxOpenSessionHours } = getConfig();
 	const cappedSessions = sessions.map((s) => cappedInterval(s, now, maxOpenSessionHours));

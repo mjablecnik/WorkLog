@@ -32,6 +32,7 @@ function toProject(row: ProjectRow): Project {
 		id: row.id,
 		name: row.name,
 		colorIndex: row.colorIndex,
+		billable: row.billable,
 		archivedAt: row.archivedAt,
 		archived: row.archivedAt !== null,
 		createdAt: row.createdAt,
@@ -86,7 +87,11 @@ function projectExistsError(existing: ProjectRow | null): ApiError {
 	});
 }
 
-export async function createProject(tx: Tx, name: string): Promise<Project> {
+export async function createProject(
+	tx: Tx,
+	name: string,
+	billable: boolean = true
+): Promise<Project> {
 	const existing = await findByNormalizedName(tx, name);
 	if (existing !== null) throw projectExistsError(existing);
 
@@ -94,7 +99,7 @@ export async function createProject(tx: Tx, name: string): Promise<Project> {
 	try {
 		const [row] = await tx
 			.insert(projects)
-			.values({ id: randomUuidV7(), name, colorIndex })
+			.values({ id: randomUuidV7(), name, colorIndex, billable })
 			.returning();
 		return toProject(row);
 	} catch (err) {
@@ -121,17 +126,23 @@ export async function getProject(tx: Tx, id: string): Promise<Project | null> {
 export async function updateProject(
 	tx: Tx,
 	id: string,
-	patch: { name?: string; archived?: boolean; colorIndex?: number }
+	patch: { name?: string; archived?: boolean; colorIndex?: number; billable?: boolean }
 ): Promise<Project> {
 	if (patch.name !== undefined) {
 		const existing = await findByNormalizedName(tx, patch.name, id);
 		if (existing !== null) throw projectExistsError(existing);
 	}
 
-	const set: { name?: string; archivedAt?: Date | null; colorIndex?: number } = {};
+	const set: {
+		name?: string;
+		archivedAt?: Date | null;
+		colorIndex?: number;
+		billable?: boolean;
+	} = {};
 	if (patch.name !== undefined) set.name = patch.name;
 	if (patch.archived !== undefined) set.archivedAt = patch.archived ? new Date() : null;
 	if (patch.colorIndex !== undefined) set.colorIndex = patch.colorIndex;
+	if (patch.billable !== undefined) set.billable = patch.billable;
 
 	// An empty `{}` PATCH passes validation (every field is optional) but Drizzle
 	// rejects `update(...).set({})` outright — treat it as a no-op read rather than

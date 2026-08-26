@@ -109,8 +109,13 @@ export async function reclipAffected(
 		const after = normalize(result.segments);
 		outcomes.push({
 			entryId: entry.id,
-			projectName: entry.projectName,
-			colorIndex: entry.colorIndex,
+			// Non-null by construction: `entriesAffectedBy` (this function's sole input
+			// port) is filtered to Work_Entry rows only (003-worklog-time-categories,
+			// "Leisure Immunity to Re-clipping") — a Leisure_Entry never reaches this
+			// loop, so `projectName`/`colorIndex` are never actually null here even
+			// though `ActivityEntry` types them nullable for the Leisure_Entry case.
+			projectName: entry.projectName as string,
+			colorIndex: entry.colorIndex as number,
 			description: entry.description,
 			before,
 			after,

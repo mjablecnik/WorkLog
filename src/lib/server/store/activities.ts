@@ -4,10 +4,24 @@
  * every listing here selects it back in by its requested interval, which is the only
  * handle it still has.
  */
-import { and, asc, desc, eq, gt, inArray, lt, ne, notExists, or, sql as rawSql } from 'drizzle-orm';
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gt,
+	inArray,
+	isNotNull,
+	lt,
+	ne,
+	notExists,
+	or,
+	sql as rawSql
+} from 'drizzle-orm';
 import type {
 	ActivityEntry,
 	ActivityMode,
+	Category,
 	Interval,
 	NewActivityEntry
 } from '$lib/contracts/models';
@@ -24,16 +38,24 @@ function toSegment(row: SegmentRow) {
 	return { id: row.id, entryId: row.entryId, startedAt: row.startedAt, endedAt: row.endedAt };
 }
 
+/**
+ * `project === null` derives a Leisure_Entry: category `relax`, `projectId`/
+ * `projectName`/`colorIndex` all null. Otherwise a Work_Entry: category `paid` or
+ * `unpaid` from `project.billable`, re-evaluated fresh on every read (Requirements
+ * 1.5, 1.6) — never stored.
+ */
 function toEntry(
 	row: EntryRow,
-	project: Pick<ProjectRow, 'name' | 'colorIndex'>,
+	project: Pick<ProjectRow, 'name' | 'colorIndex' | 'billable'> | null,
 	segments: SegmentRow[]
 ): ActivityEntry {
+	const category: Category = project === null ? 'relax' : project.billable ? 'paid' : 'unpaid';
 	return {
 		id: row.id,
-		projectId: row.projectId,
-		projectName: project.name,
-		colorIndex: project.colorIndex,
+		projectId: project === null ? null : row.projectId,
+		projectName: project === null ? null : project.name,
+		colorIndex: project === null ? null : project.colorIndex,
+		category,
 		description: row.description,
 		mode: row.mode as ActivityMode,
 		requestedStartedAt: row.requestedStartedAt as Date,
@@ -76,10 +98,14 @@ function requestedOverlapsAny(windows: Interval[]) {
 async function hydrate(tx: Tx, entryRows: EntryRow[]): Promise<ActivityEntry[]> {
 	if (entryRows.length === 0) return [];
 	const ids = entryRows.map((r) => r.id);
-	const projectIds = [...new Set(entryRows.map((r) => r.projectId))];
+	const projectIds = [
+		...new Set(entryRows.map((r) => r.projectId).filter((id): id is string => id !== null))
+	];
 
 	const [projectRows, segmentRows] = await Promise.all([
-		tx.select().from(projects).where(inArray(projects.id, projectIds)),
+		projectIds.length === 0
+			? Promise.resolve([])
+			: tx.select().from(projects).where(inArray(projects.id, projectIds)),
 		tx.select().from(activitySegments).where(inArray(activitySegments.entryId, ids))
 	]);
 
@@ -92,6 +118,12 @@ async function hydrate(tx: Tx, entryRows: EntryRow[]): Promise<ActivityEntry[]> 
 	}
 
 	return entryRows.map((row) => {
+		// A null project_id means a Leisure_Entry — no Project to look up at all. This
+		// is never routed through the "project not found for entry" throw below, which
+		// stays reserved for a genuine referential-integrity violation.
+		if (row.projectId === null) {
+			return toEntry(row, null, segmentsByEntry.get(row.id) ?? []);
+		}
 		const project = projectById.get(row.projectId);
 		if (project === undefined)
 			throw new Error(`project ${row.projectId} not found for entry ${row.id}`);
@@ -141,7 +173,9 @@ export async function getEntry(tx: Tx, id: string): Promise<ActivityEntry | null
 export async function updateEntryMeta(
 	tx: Tx,
 	id: string,
-	patch: { description?: string; projectId?: string }
+	/** `projectId`: absent leaves it unchanged; `null` converts to a Leisure_Entry;
+	 *  a string sets/changes it, converting to (or keeping) a Work_Entry. */
+	patch: { description?: string; projectId?: string | null }
 ): Promise<ActivityEntry> {
 	// An empty meta PATCH (`{}`, or `{previewToken}`/`{dryRun}` alone) passes validation
 	// but leaves nothing for Drizzle to `.set()` — reread instead of issuing a statement
@@ -302,6 +336,27 @@ export async function mostRecentEntry(tx: Tx): Promise<ActivityEntry | null> {
 	const [row] = await tx
 		.select()
 		.from(activityEntries)
+		.orderBy(
+			desc(activityEntries.requestedStartedAt),
+			desc(activityEntries.createdAt),
+			desc(activityEntries.id)
+		)
+		.limit(1);
+	if (row === undefined) return null;
+	const [hydrated] = await hydrate(tx, [row]);
+	return hydrated;
+}
+
+/**
+ * The most recent Work_Entry only (`project_id IS NOT NULL`), by the same ordering as
+ * `mostRecentEntry` — used to resolve Quick_Log's `Project` (Requirement 6.6), which
+ * cannot attribute an entry to a `Leisure_Entry`'s absent project.
+ */
+export async function mostRecentWorkEntry(tx: Tx): Promise<ActivityEntry | null> {
+	const [row] = await tx
+		.select()
+		.from(activityEntries)
+		.where(isNotNull(activityEntries.projectId))
 		.orderBy(
 			desc(activityEntries.requestedStartedAt),
 			desc(activityEntries.createdAt),
@@ -484,6 +539,14 @@ export async function entryIdsForProject(tx: Tx, projectId: string): Promise<str
  * entry's requested interval does (Requirement 2.9) — no orphan restriction, unlike
  * the listing queries above, because an entry an earlier change emptied owns no
  * segment and this is the only way it is ever found again. Ordered deterministically.
+ *
+ * Filtered to Work_Entry rows only (`project_id IS NOT NULL`) on BOTH branches — the
+ * one filter-by-kind in this file, because this is the sole input to
+ * `reclipAffected`, which deletes an entry's segments and re-clips them against real
+ * Tracked_Time. A Leisure_Entry is reconciled against the Unrestricted_Window, never
+ * against Tracked_Time, so a Work_Session change has nothing to re-derive for it;
+ * letting one through here would silently delete the part of it outside the session
+ * (Requirement 3.11).
  */
 export async function entriesAffectedBy(tx: Tx, windows: Interval[]): Promise<ActivityEntry[]> {
 	if (windows.length === 0) return [];
@@ -491,11 +554,11 @@ export async function entriesAffectedBy(tx: Tx, windows: Interval[]): Promise<Ac
 		.selectDistinct({ id: activityEntries.id })
 		.from(activityEntries)
 		.innerJoin(activitySegments, eq(activitySegments.entryId, activityEntries.id))
-		.where(segmentOverlapsAny(windows));
+		.where(and(segmentOverlapsAny(windows), isNotNull(activityEntries.projectId)));
 	const byRequested = tx
 		.select({ id: activityEntries.id })
 		.from(activityEntries)
-		.where(requestedOverlapsAny(windows));
+		.where(and(requestedOverlapsAny(windows), isNotNull(activityEntries.projectId)));
 
 	const ids = new Set<string>();
 	for (const r of await bySegment) ids.add(r.id);
