@@ -15,14 +15,19 @@ testing, troubleshooting).
   without it.
 - [`.kiro/specs/002-worklog-ui/`](.kiro/specs/002-worklog-ui/) — the timer, the day
   timeline, projects and statistics. Depends on `001`.
+- [`.kiro/specs/003-worklog-time-categories/`](.kiro/specs/003-worklog-time-categories/)
+  — `Project.billable` and the `Leisure_Entry` (an `Activity_Entry` with no `Project`),
+  and the paid/unpaid/relax category they produce, surfaced across all four screens.
+  Depends on `002`.
 
 Each spec is three files: `requirements.md` (numbered acceptance criteria),
 `design.md` (architecture, contracts, correctness properties) and `tasks.md` (an
 ordered plan with a dependency graph). Every criterion is covered by a task and every
 task cites its criteria — there is no part of the behaviour that nothing implements.
-`.design/DESIGN.md` and `.design/artboards/` are the visual contract for `002`; where a
-screen and a criterion disagree, that is a defect to raise, not a choice to make while
-implementing.
+`.design/DESIGN.md` and `.design/artboards/` are the visual contract for `002` and
+`003`; where a screen and a criterion disagree, that is a defect to raise, not a choice
+to make while implementing. `003`'s own three artboards are drawn dark/desktop only —
+see `DOCS.md`'s Known Limitations.
 
 ## The driver deviation
 
@@ -50,8 +55,17 @@ Two streams, reconciled at write time rather than at read time:
   constraint cannot see an open row at all).
 - **`Activity_Entry`** — what the user says they worked on, as an exact interval, a
   bare duration, or nothing but a project (`Explicit_Mode` / `Duration_Mode` /
-  `Open_Mode`). Never stored as requested: **`Clipping`** (`src/lib/server/domain/clipping.ts`)
-  reduces it to the `Activity_Segment` rows that actually overlap `Tracked_Time`,
+  `Open_Mode`). Its `Project` is optional: an entry with none is a **`Leisure_Entry`**
+  — time logged with no project, reconciled against the `Unrestricted_Window` (the
+  day itself, minus what other entries already claim) instead of `Tracked_Time`, so it
+  can be logged whether or not the timer ever ran that day. Every `Project` also
+  carries a `billable` flag, so every entry resolves to a `category` of `paid`,
+  `unpaid` or (for a `Leisure_Entry`) `relax`; changing an entry's category — moving it
+  onto or off a project, or between two projects with different `billable` values — is
+  the one path that re-clips the entry against a different regime rather than just
+  patching its fields. Never stored as requested: **`Clipping`**
+  (`src/lib/server/domain/clipping.ts`) reduces it to the `Activity_Segment` rows that
+  actually overlap `Tracked_Time` (or, for a `Leisure_Entry`, the `Unrestricted_Window`),
   producing one segment per `Work_Session` a request spans — a break inside a logged
   interval stays visible rather than being smoothed over. The entry keeps its
   original requested interval (`requestedStartedAt`/`requestedEndedAt`) unchanged, for
@@ -68,9 +82,12 @@ Two streams, reconciled at write time rather than at read time:
   running timer does not invalidate a preview every second it stays open.
 
 This is exactly the property `tests/lib/server/store/overlap.property.test.ts`'s
-Property 22 checks after a random sequence of operations: every stored
-`Activity_Segment`, no matter what got created, patched or deleted along the way,
-lies entirely within `Tracked_Time` as the database then holds it.
+Property 22 checks after a random sequence of operations: every stored `Work_Entry`
+segment, no matter what got created, patched or deleted along the way, lies entirely
+within `Tracked_Time` as the database then holds it. `003-worklog-time-categories`
+amended this property to a `Work_Entry`'s own segments only — a `Leisure_Entry`'s
+segments are reconciled against the `Unrestricted_Window` instead, by design, so they
+are not expected to lie inside `Tracked_Time` at all.
 
 ## The interface
 

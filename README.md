@@ -20,6 +20,8 @@ stored                       ├───────┤     ├─────�
 
 The entry keeps its original request for auditing, while the stored segments follow the timer frame.
 
+Every project is marked billable or not, so each entry's time counts as paid or unpaid work. An entry can also skip a project entirely to log leisure time instead — a day off, an evening, a lunch walk — reconciled against the day itself rather than the timer, so it can be recorded whether or not the timer ever ran that day.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) 1.2.15 or newer
@@ -115,15 +117,16 @@ Beyond that, everything needed to build this is written down. Read it in this or
 |---|---|
 | [`.kiro/specs/001-worklog-domain-api/`](.kiro/specs/001-worklog-domain-api/) | the domain, the data layer and the REST API — requirements, design, tasks |
 | [`.kiro/specs/002-worklog-ui/`](.kiro/specs/002-worklog-ui/) | the timer, the day timeline, projects and statistics |
+| [`.kiro/specs/003-worklog-time-categories/`](.kiro/specs/003-worklog-time-categories/) | billable projects and leisure time — the paid/unpaid/relax category, surfaced across all four screens |
 | [`.design/DESIGN.md`](.design/DESIGN.md) | the visual contract — tokens, typography, dimensions, gauge geometry |
-| [`.design/artboards/`](.design/artboards/) | 21 approved artboards; [`.design/screens/`](.design/screens/) holds their renders |
+| [`.design/artboards/`](.design/artboards/) | 24 approved artboards; [`.design/screens/`](.design/screens/) holds their renders |
 
 Each spec is three files: `requirements.md` (numbered acceptance criteria), `design.md`
 (architecture, contracts, correctness properties) and `tasks.md` (an ordered plan with a
 dependency graph). Every criterion is covered by a task and every task cites its criteria,
 so there is no part of the behaviour that nothing implements.
 
-`002` depends on `001`; build the server first.
+`002` depends on `001`; `003` depends on `002`. Build them in that order.
 
 **The design is a contract, not a mood board.** Where a screen and a criterion disagree,
 that is a defect to be raised — not a choice to be made while implementing. Regenerate the
