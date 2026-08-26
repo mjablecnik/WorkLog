@@ -755,7 +755,13 @@ export async function patchActivity(
 			const previewToken = previousToken;
 			return {
 				entry: refetched as ActivityEntry,
-				discarded: [],
+				// Surface what `clip()` actually found outside Tracked_Time under the new
+				// regime — the sibling interval/duration-change branch below (which also
+				// re-clips) reports `finalResult.discarded` the same way; this branch used
+				// to hardcode `[]` and threw the computed value away even though `result`
+				// carried it, which under-reported a category-crossing re-clip that leaves
+				// part of the requested interval outside Tracked_Time (Requirement 4.3).
+				discarded: result.discarded,
 				extendedSessions: [],
 				unplacedMinutes: 0,
 				removedSeconds: 0,
