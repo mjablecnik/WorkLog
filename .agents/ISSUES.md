@@ -1,5 +1,92 @@
 # Issues
 
+## [LOW] Requirements 3.2 and 3.3 disagree on what a *partial* leisure overlap should do
+- Run: 2026-08-26-0758
+- Phase: cases
+- Status: OPEN
+- What: `.kiro/specs/003-worklog-time-categories/requirements.md` Requirement 3.2 says a
+  `Leisure_Entry`'s `Clipping` "SHALL still exclude from its `Activity_Segment` records
+  any stretch already claimed by another `Activity_Entry`" — i.e. a partial overlap is
+  *trimmed*. Requirement 3.3 says "IF a `Leisure_Entry`'s requested interval overlaps an
+  `Activity_Segment` of a different `Activity_Entry`, THEN ... HTTP 409 with error code
+  `ACTIVITY_OVERLAP`" — unconditionally, i.e. a partial overlap is *rejected*. Both
+  cannot hold for a request that overlaps an existing segment for part of its length.
+  The tension is visible again at 3.4, whose `MIN_INTERVAL_SECONDS` sliver rule has
+  almost nothing left to act on if 3.3 rejects every overlap outright, and at 3.7, which
+  speaks of a non-empty `discarded` list for a leisure write.
+- Impact: three use cases in `.agents/USE_CASES.md` Part III turn on the answer — UC-525
+  (overlap refused), UC-526 (abutment accepted) and UC-527 (sliver discarded). They are
+  written on the reading that **3.3 dominates**, because that is what
+  `001-worklog-domain-api` already does for a `Work_Entry` and what
+  `src/lib/server/services/activities.ts`'s `activityOverlapError` implements, so the
+  cases match today's build. If the intended answer is 3.2's trimming, those three cases
+  and the code both need changing, and this is a behaviour change rather than a bug fix.
+- Tried: read both criteria, `003/design.md`'s Error Handling table (which lists
+  `ACTIVITY_OVERLAP` for "a `Leisure_Entry`'s requested interval overlaps any other
+  entry's segment", supporting the 3.3 reading) and `001-worklog-domain-api`'s
+  equivalent rule. The design document leans one way but the requirements document still
+  states both, so the contradiction is in the specification, not resolved by the design.
+- Next: decide which criterion is authoritative and amend the other. If 3.3 wins — the
+  likely answer, since it matches `001` and the implementation — 3.2 should be reworded
+  to describe the *mechanism* (the overlap check) rather than promising trimming, and
+  3.4/3.7 should say where a leisure sliver can actually arise (the `Duration_Mode`
+  `Target_Day` bound, Requirement 3.9).
+
+## [LOW] Requirement 10.7 does not say what the category defaults to when a day holds no Work_Entry
+- Run: 2026-08-26-0758
+- Phase: cases
+- Status: OPEN
+- What: Requirement 10.7 requires the `Activity_Dialog` to "default the category and,
+  where it names a `Project`, the `Project` and description to those of the most recent
+  `Work_Entry` of the displayed day, considering no `Leisure_Entry`". It does not say
+  what happens when the day has **no** `Work_Entry` at all — which is precisely the
+  headline day this specification exists to support (Requirement 8.5's day of leisure
+  with the timer never started, fixture `FIX-CAT-UI-LEISURE`). Today's build falls back
+  to `paid` with no project chosen
+  (`src/modules/day/components/ActivityDialog.svelte`, `recentEntry?.category ?? 'paid'`).
+- Impact: UC-582 cannot state a settled `Expected` for that case. It is written to
+  record what the build does and explicitly not to treat either answer as a failure
+  until this is decided. A user opening the dialog on a pure-leisure day arguably wants
+  `relax` pre-selected rather than `paid`, so the current fallback may be the wrong
+  default even though it is a defensible one.
+- Tried: read Requirement 10.7 and its neighbours 10.5 and 10.6, `003/design.md`'s
+  component 11 (which specifies the `recentEntry` prop gaining a `category` but says
+  nothing about its absence), and the three artboards. None of them covers the empty
+  case.
+- Next: decide the fallback and state it as a criterion. Two defensible answers: `paid`
+  (today's build, consistent with `Project.billable` defaulting to `true`), or `relax`
+  on a day that holds only leisure. Whichever is chosen, `ActivityDialog.svelte` and
+  UC-582 should then say the same thing.
+
+## [LOW] The three new artboards have no mobile or light variant, so three surfaces have no visual contract
+- Run: 2026-08-26-0758
+- Phase: cases
+- Status: OPEN
+- What: `003-worklog-time-categories/requirements.md`'s introduction states plainly that
+  "the light-theme and mobile variants of these three screens are not drawn, and the
+  exact placement of the `Billable` toggle within an existing project row is not
+  either". `.design/artboards/` accordingly holds only `TimerCategories.dc.html`
+  (1440 × 900), `DayCategories.dc.html` (1440 × 1180) and `AddTaskCategories.dc.html`
+  (820 × 860), all dark and all desktop — while every screen `002-worklog-ui` introduced
+  has desktop-dark, desktop-light and mobile artboards (`Main`/`TimerLight`/`TimerMobile`,
+  `AddTask`/`AddTaskLight`/`AddTaskMobile`, and so on).
+- Impact: the `Leisure_Block`, the category segmented control and the projects page's
+  billable toggle can be conformance-checked in dark desktop only. UC-562, UC-570 and
+  UC-584 compare against the artboards that exist; UC-593 (leisure colour in light) and
+  UC-594 (320 px) fall back to measuring contrast and overflow against the closest
+  existing convention in `.design/DESIGN.md`, which is weaker than a drawn comparison and
+  is exactly what the requirements introduction told an implementer to flag rather than
+  guess at. `002-worklog-ui`'s own run found three real contrast violations and a 320 px
+  overflow on surfaces that *did* have artboards, so this is not a theoretical gap.
+- Tried: nothing to try — the artboards do not exist and this phase does not draw them.
+  Confirmed against `.design/artboards/canvas.json`, which lists the three new boards and
+  no variants of them.
+- Next: either draw the six missing variants (light and mobile for each of the three) and
+  add one artboard-conformance case per board to Part III, or record a deliberate
+  decision that these three screens are contract-checked at desktop-dark only and that
+  their light and mobile renderings are governed by `DESIGN.md`'s general rules instead.
+  The second is a legitimate answer; leaving it unstated is not.
+
 ## [LOW] `DayRhythm.svelte`'s covered/leisure segment rects have no `fill` CSS rule at all
 - Run: 2026-08-26-0758
 - Phase: impl
