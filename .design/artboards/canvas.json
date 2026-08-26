@@ -167,6 +167,30 @@
       "w": 390,
       "h": 844,
       "title": "Nastavení · mobil světlý"
+    },
+    {
+      "file": "TimerCategories.dc.html",
+      "x": 0,
+      "y": 7144,
+      "w": 1440,
+      "h": 900,
+      "title": "003 · Timer s kategoriemi"
+    },
+    {
+      "file": "DayCategories.dc.html",
+      "x": 1560,
+      "y": 7144,
+      "w": 1440,
+      "h": 1180,
+      "title": "003 · Den s kategoriemi"
+    },
+    {
+      "file": "AddTaskCategories.dc.html",
+      "x": 3120,
+      "y": 7144,
+      "w": 820,
+      "h": 860,
+      "title": "003 · Přidat úkol · kategorie"
     }
   ],
   "annotations": [
