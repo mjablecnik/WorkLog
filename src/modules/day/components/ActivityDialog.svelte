@@ -118,7 +118,7 @@
 	import { enhance, applyAction } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
-	import type { ActivityEntry, Interval, Project } from '$lib/contracts/models';
+	import type { ActivityEntry, Category, Interval, Project } from '$lib/contracts/models';
 	import type { CreateActivityInput, PatchActivityInput } from '$lib/contracts/schemas';
 	import { previewCreateActivity, previewPatchActivity, type Preview } from '../dry-run';
 	import type { Density } from './timeline-geometry';
@@ -150,8 +150,10 @@
 		timeZone: string;
 		/** Addition — see the doc comment above. */
 		density: Density;
-		/** Addition — Requirement 6.9's default source; see the doc comment above. */
-		recentEntry?: { projectId: string; description: string } | null;
+		/** Addition — Requirement 6.9's default source; see the doc comment above.
+		 *  `category` (003-worklog-time-categories, Requirement 10.7) is always a
+		 *  Work_Entry's — this default never considers a Leisure_Entry. */
+		recentEntry?: { projectId: string; description: string; category: Category } | null;
 		/** Addition — forwards `ProjectPicker`'s inline-creation result. */
 		onProjectCreated?: (project: Project) => void;
 		/** Task 3.7's seam, wired by task 5.5: fires with the saved `ActivityEntry`
@@ -193,6 +195,9 @@
 
 	type ActivityFormValues = {
 		mode: EntryMode;
+		/** Addition — the category control, shown above the mode control (Requirement
+		 *  10.1). `''` when `category` is `'relax'`, or between project selections. */
+		category: Category;
 		date: string;
 		from: string;
 		to: string;
@@ -208,11 +213,15 @@
 	const activityFormSchema = z
 		.object({
 			mode: z.enum(['explicit', 'duration', 'open']),
+			category: z.enum(['paid', 'unpaid', 'relax']),
 			date: z.string().regex(DATE_RE),
 			from: z.string(),
 			to: z.string(),
 			durationMinutes: z.number().int().positive().nullable(),
-			projectId: z.string().min(1),
+			// Relaxed from `.min(1)` (Requirement 10.4): a `relax` draft never has a
+			// Project at all, so the empty string must be a legal BASE value here —
+			// the superRefine below requires a non-empty value only when it applies.
+			projectId: z.string(),
 			description: z.string().max(2000)
 		})
 		.superRefine((v, ctx) => {
@@ -222,6 +231,9 @@
 			}
 			if (v.mode === 'duration' && (v.durationMinutes === null || v.durationMinutes <= 0)) {
 				ctx.addIssue({ code: 'custom', path: ['durationMinutes'], message: 'required' });
+			}
+			if (v.category !== 'relax' && v.projectId === '') {
+				ctx.addIssue({ code: 'custom', path: ['projectId'], message: 'required' });
 			}
 		});
 
@@ -233,17 +245,22 @@
 		if (mode === 'edit' && entry) {
 			return {
 				mode: entry.mode,
+				// Requirement 10.6: seeded from the entry's own derived category.
+				category: entry.category,
 				date,
 				from: timeOf(entry.requestedStartedAt),
 				to: timeOf(entry.requestedEndedAt),
 				durationMinutes: entry.requestedDurationMinutes,
-				projectId: entry.projectId,
+				projectId: entry.projectId ?? '',
 				description: entry.description
 			};
 		}
 		const range = prefill?.range;
 		return {
 			mode: prefill?.mode ?? 'explicit',
+			// Requirement 10.7: defaults from the most recent Work_Entry of the
+			// displayed day — never a Leisure_Entry — falling back to `paid`.
+			category: prefill?.projectId !== undefined ? 'paid' : (recentEntry?.category ?? 'paid'),
 			date,
 			from: range ? timeOf(range.start) : '',
 			to: range ? timeOf(range.end) : '',
@@ -287,6 +304,34 @@
 		{ value: 'duration', fullLabel: m.activity_mode_duration },
 		{ value: 'open', fullLabel: m.activity_mode_open }
 	];
+
+	// Requirement 10.1: the category control, shown ABOVE the mode control, reusing
+	// its exact segmented shape (design's own convention — a fourth instance of an
+	// already-implemented control, not a new component).
+	const CATEGORY_OPTIONS: { value: Category; label: () => string }[] = [
+		{ value: 'paid', label: m.category_paid },
+		{ value: 'unpaid', label: m.category_unpaid },
+		{ value: 'relax', label: m.category_relax }
+	];
+
+	/** Requirements 10.2, 10.3, 10.4: empty (hidden Project_Picker) for `relax`,
+	 *  otherwise every Project whose `billable` matches the selected category. */
+	const filteredProjects = $derived(
+		$form.category === 'relax' ? [] : projects.filter((p) => p.billable === ($form.category === 'paid'))
+	);
+
+	/** Requirement 10.5: clears the chosen Project when a category change leaves it
+	 *  outside the newly filtered list. */
+	function handleCategoryChange(value: Category): void {
+		$form.category = value;
+		if (value === 'relax') {
+			$form.projectId = '';
+			return;
+		}
+		if (!filteredProjects.some((p) => p.id === $form.projectId)) {
+			$form.projectId = '';
+		}
+	}
 
 	function handleSegKeydown(event: KeyboardEvent): void {
 		if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
@@ -347,7 +392,9 @@
 	let abortController: AbortController | null = null;
 
 	const canPreview = $derived.by(() => {
-		if ($form.projectId === '') return false;
+		// Requirement 10.8: a relax draft always satisfies this — the project guard
+		// applies only when the category still requires one.
+		if ($form.category !== 'relax' && $form.projectId === '') return false;
 		if (!DATE_RE.test($form.date)) return false;
 		if ($form.mode === 'explicit') return TIME_RE.test($form.from) && TIME_RE.test($form.to);
 		if ($form.mode === 'duration') return $form.durationMinutes !== null && $form.durationMinutes > 0;
@@ -355,7 +402,14 @@
 	});
 
 	function buildCreateInput(): CreateActivityInput {
-		const base = { projectId: $form.projectId, description: $form.description, untrackedPolicy, dryRun: false };
+		// `relax` posts no projectId at all — absent creates a Leisure_Entry
+		// (Requirement 2.3); a create request has no null-projectId encoding.
+		const base = {
+			...($form.category !== 'relax' ? { projectId: $form.projectId } : {}),
+			description: $form.description,
+			untrackedPolicy,
+			dryRun: false
+		};
 		if ($form.mode === 'explicit') {
 			return {
 				...base,
@@ -370,7 +424,14 @@
 	}
 
 	function buildPatchInput(): PatchActivityInput {
-		const base = { projectId: $form.projectId, description: $form.description, untrackedPolicy, dryRun: false };
+		// `relax` sends an explicit `null` — the JSON encoding of "convert to a
+		// Leisure_Entry" (Requirement 4.1); anything else sends the chosen Project.
+		const base = {
+			projectId: $form.category === 'relax' ? null : $form.projectId,
+			description: $form.description,
+			untrackedPolicy,
+			dryRun: false
+		};
 		if ($form.mode === 'explicit') {
 			return {
 				...base,
@@ -430,6 +491,7 @@
 	$effect(() => {
 		// Read every field the preview depends on so the effect re-runs on each.
 		void $form.mode;
+		void $form.category;
 		void $form.date;
 		void $form.from;
 		void $form.to;
@@ -680,7 +742,7 @@
 			0
 		);
 		return m.activity_delete_body({
-			project: e.projectName,
+			project: e.projectName ?? m.activity_leisure_label(),
 			from: timeOf(e.requestedStartedAt),
 			to: timeOf(e.requestedEndedAt),
 			duration: formatDuration(totalSeconds, '')
@@ -708,6 +770,26 @@
 >
 	<form bind:this={formEl} class="activity-dialog activity-dialog--{density}" onsubmit={handleSubmit}>
 		<input type="hidden" name="mode" value={$form.mode} />
+
+		<!-- Requirement 10.1: the category control, above and independent of the mode
+		     control, reusing its exact segmented shape (design.md's own convention). -->
+		<div class="activity-dialog__seg-group" role="radiogroup" aria-label={m.activity_category_label()}>
+			{#each CATEGORY_OPTIONS as opt (opt.value)}
+				{@const active = opt.value === $form.category}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={active}
+					tabindex={active ? 0 : -1}
+					class="activity-dialog__seg-item"
+					class:activity-dialog__seg-item--active={active}
+					onclick={() => handleCategoryChange(opt.value)}
+					onkeydown={handleSegKeydown}
+				>
+					{opt.label()}
+				</button>
+			{/each}
+		</div>
 
 		<div class="activity-dialog__seg-group" role="radiogroup" aria-label={m.activity_mode_label()}>
 			{#each MODE_OPTIONS as opt (opt.value)}
@@ -795,18 +877,24 @@
 				</FormField>
 			{/if}
 
-			<FormField label={m.activity_field_project()} required error={projectMessage}>
+			{#if $form.category !== 'relax'}
+			<FormField
+				label={`${m.activity_field_project()} (${$form.category === 'paid' ? m.category_paid() : m.category_unpaid()})`}
+				required
+				error={projectMessage}
+			>
 				{#snippet children({ id, describedBy })}
 					<div bind:this={projectPickerWrapperEl}>
 						<ProjectPicker
 							{id}
 							name="projectId"
-							{projects}
+							projects={filteredProjects}
 							value={$form.projectId === '' ? null : $form.projectId}
 							onChange={(projectId) => {
 								$form.projectId = projectId;
 							}}
 							onCreate={handleProjectCreated}
+							billable={$form.category === 'paid'}
 							required
 							error={projectMessage !== undefined}
 							aria-describedby={describedBy}
@@ -814,6 +902,7 @@
 					</div>
 				{/snippet}
 			</FormField>
+			{/if}
 		</div>
 
 		<FormField label={m.activity_field_description()}>
@@ -876,7 +965,15 @@
 	{#if mode === 'edit' && entry}
 		<input type="hidden" name="id" value={entry.id} />
 	{/if}
-	<input type="hidden" name="projectId" value={$form.projectId} />
+	<!-- Requirement 2.3: absent creates a Leisure_Entry over Create. Requirement 4.9:
+	     `clearProject` is the form-action encoding of "convert to a Leisure_Entry" over
+	     Patch, since FormData carries no null. The two are never sent together
+	     (Requirement 4.11) — this dialog only ever emits one or the other. -->
+	{#if $form.category !== 'relax'}
+		<input type="hidden" name="projectId" value={$form.projectId} />
+	{:else if mode === 'edit'}
+		<input type="hidden" name="clearProject" value="true" />
+	{/if}
 	<input type="hidden" name="description" value={$form.description} />
 	<input type="hidden" name="untrackedPolicy" value={untrackedPolicy} />
 	<input type="hidden" name="dryRun" value="false" />

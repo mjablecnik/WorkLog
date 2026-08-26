@@ -46,7 +46,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
-import type { ActivityEntry, Interval, Project } from '../../../../src/lib/contracts/models';
+import type { ActivityEntry, Category, Interval, Project } from '../../../../src/lib/contracts/models';
 import type { ActivityPreview } from '../../../../src/modules/day/dry-run';
 import { formatDuration, formatTimeOfDay } from '../../../../src/lib/viz/format';
 import * as m from '../../../../src/lib/paraglide/messages';
@@ -101,6 +101,7 @@ function mkProject(overrides: Partial<Project> = {}): Project {
 		id: `project-${idCounter}`,
 		name: `Project ${idCounter}`,
 		colorIndex: 0,
+		billable: true,
 		archivedAt: null,
 		archived: false,
 		createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -115,6 +116,7 @@ function mkEntry(overrides: Partial<ActivityEntry> = {}): ActivityEntry {
 		projectId: nextId('project'),
 		projectName: 'Client Work',
 		colorIndex: 0,
+		category: 'paid',
 		description: '',
 		mode: 'explicit',
 		requestedStartedAt: dt(9),
@@ -157,7 +159,7 @@ type ActivityDialogProps = {
 	onClose: () => void;
 	timeZone: string;
 	density: 'desktop' | 'mobile';
-	recentEntry?: { projectId: string; description: string } | null;
+	recentEntry?: { projectId: string; description: string; category: Category } | null;
 	onProjectCreated?: (project: Project) => void;
 	onSaved?: (entry: ActivityEntry) => void;
 	initialFocus?: 'project' | 'description';
@@ -296,7 +298,7 @@ describe('ActivityDialog', () => {
 		const project = mkProject({ name: 'Website Redesign' });
 		renderDialog({
 			projects: [project],
-			recentEntry: { projectId: project.id, description: 'Fixed the header layout' }
+			recentEntry: { projectId: project.id, description: 'Fixed the header layout', category: 'paid' }
 		});
 
 		const projectInput = screen.getByRole('combobox') as HTMLInputElement;
@@ -418,5 +420,98 @@ describe('ActivityDialog', () => {
 		expect(document.activeElement).toBe(opener);
 
 		opener.remove();
+	});
+
+	// --- 003-worklog-time-categories, task 9.3 ---------------------------------------
+
+	it('selecting each category filters or hides the Project_Picker (Requirements 10.2, 10.3, 10.4)', async () => {
+		const paidProject = mkProject({ name: 'Paid Client', billable: true });
+		const unpaidProject = mkProject({ name: 'Unpaid Chore', billable: false });
+		renderDialog({ projects: [paidProject, unpaidProject] });
+
+		const paidOption = screen.getByRole('radio', { name: m.category_paid() });
+		const unpaidOption = screen.getByRole('radio', { name: m.category_unpaid() });
+		const relaxOption = screen.getByRole('radio', { name: m.category_relax() });
+
+		// Defaults to paid (no recentEntry/prefill) — only the billable project shows.
+		expect(paidOption).toHaveAttribute('aria-checked', 'true');
+		expect(screen.getByRole('combobox')).toBeInTheDocument();
+		expect(screen.queryByText('Unpaid Chore')).toBeNull();
+
+		await fireEvent.click(unpaidOption);
+		expect(screen.getByRole('combobox')).toBeInTheDocument();
+
+		await fireEvent.click(relaxOption);
+		expect(screen.queryByRole('combobox')).toBeNull();
+
+		await fireEvent.click(paidOption);
+		expect(screen.getByRole('combobox')).toBeInTheDocument();
+	});
+
+	it('switching category clears an incompatible Project selection (Requirement 10.5)', async () => {
+		const paidProject = mkProject({ name: 'Paid Client', billable: true });
+		const unpaidProject = mkProject({ name: 'Unpaid Chore', billable: false });
+		renderDialog({ projects: [paidProject, unpaidProject] });
+
+		await selectProject('Paid Client');
+		expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Paid Client');
+
+		const unpaidOption = screen.getByRole('radio', { name: m.category_unpaid() });
+		await fireEvent.click(unpaidOption);
+		expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('');
+	});
+
+	it("editing a Leisure_Entry opens with category 'relax' and no Project field (Requirement 10.6)", () => {
+		const leisureEntry = mkEntry({
+			projectId: null,
+			projectName: null,
+			colorIndex: null,
+			category: 'relax',
+			description: 'evening off'
+		});
+		renderDialog({ mode: 'edit', entry: leisureEntry });
+
+		const relaxOption = screen.getByRole('radio', { name: m.category_relax() });
+		expect(relaxOption).toHaveAttribute('aria-checked', 'true');
+		expect(screen.queryByRole('combobox')).toBeNull();
+	});
+
+	it('a relax draft produces a Change_Preview and carries its previewToken into the submission (Requirement 10.8)', async () => {
+		vi.mocked(previewCreateActivity).mockResolvedValue(
+			mkActivityPreview({
+				entry: mkEntry({
+					projectId: null,
+					projectName: null,
+					colorIndex: null,
+					category: 'relax'
+				}),
+				previewToken: 'relax-preview-token'
+			})
+		);
+		const { baseElement } = renderDialog({ projects: [] });
+
+		await fireEvent.click(screen.getByRole('radio', { name: m.category_relax() }));
+
+		const fromInput = fieldByLabel(m.activity_field_from()) as HTMLInputElement;
+		const toInput = fieldByLabel(m.activity_field_to()) as HTMLInputElement;
+		await fireEvent.input(fromInput, { target: { value: '09:00' } });
+		await fireEvent.input(toInput, { target: { value: '10:00' } });
+
+		await waitFor(() => {
+			expect(previewCreateActivity).toHaveBeenCalled();
+		});
+		await waitFor(() => {
+			const hidden = baseElement.querySelector('input[name="previewToken"]') as HTMLInputElement | null;
+			expect(hidden?.value).toBe('relax-preview-token');
+		});
+	});
+
+	it('a create submission for a relax draft posts no projectId field at all (Requirement 2.3)', async () => {
+		const { baseElement } = renderDialog({ projects: [] });
+
+		await fireEvent.click(screen.getByRole('radio', { name: m.category_relax() }));
+		await tick();
+
+		expect(baseElement.querySelector('form.activity-dialog__wire-form input[name="projectId"]')).toBeNull();
 	});
 });
