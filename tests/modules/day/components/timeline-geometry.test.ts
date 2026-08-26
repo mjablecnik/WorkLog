@@ -61,6 +61,7 @@ function mkEntry(segments: Interval[], opts: Partial<Omit<ActivityEntry, 'segmen
 		projectId: 'project-1',
 		projectName: 'Project',
 		colorIndex: 0,
+		category: 'paid',
 		description: 'work',
 		mode: 'explicit',
 		requestedStartedAt: segments[0].start,

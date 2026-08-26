@@ -37,7 +37,7 @@ import type {
 
 export type Anchor = {
 	at: Date;
-	source: 'explicit' | 'last-segment' | 'first-session';
+	source: 'explicit' | 'last-segment' | 'first-session' | 'day-start';
 } | null;
 
 export type ActivityPreview = {
@@ -134,6 +134,7 @@ function reviveEntry(raw: Wire<ActivityEntry>): ActivityEntry {
 		projectId: raw.projectId,
 		projectName: raw.projectName,
 		colorIndex: raw.colorIndex,
+		category: raw.category,
 		description: raw.description,
 		mode: raw.mode,
 		requestedStartedAt: new Date(raw.requestedStartedAt),
@@ -167,6 +168,7 @@ const EMPTY_ACTIVITY_ENTRY: ActivityEntry = {
 	projectId: '',
 	projectName: '',
 	colorIndex: 0,
+	category: 'paid',
 	description: '',
 	mode: 'open',
 	requestedStartedAt: new Date(0),

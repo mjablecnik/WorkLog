@@ -31,6 +31,7 @@ function projectFixture(overrides: Partial<Project> = {}): Project {
 		id: `project-${idCounter}`,
 		name: `Project ${idCounter}`,
 		colorIndex: 0,
+		billable: true,
 		archivedAt: null,
 		archived: false,
 		createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -152,6 +153,7 @@ describe('ProjectPicker', () => {
 				id: 'project-new',
 				name: 'Design Sprint',
 				colorIndex: 3,
+				billable: true,
 				archivedAt: null,
 				archived: false,
 				createdAt: '2026-02-01T00:00:00.000Z',
@@ -173,7 +175,9 @@ describe('ProjectPicker', () => {
 				'/api/projects',
 				expect.objectContaining({
 					method: 'POST',
-					body: JSON.stringify({ name: 'Design Sprint' })
+					// billable: true is the default — this call site does not pass its own
+					// (003-worklog-time-categories, task 9.1 wires ActivityDialog's category).
+					body: JSON.stringify({ name: 'Design Sprint', billable: true })
 				})
 			);
 
@@ -181,6 +185,7 @@ describe('ProjectPicker', () => {
 				id: 'project-new',
 				name: 'Design Sprint',
 				colorIndex: 3,
+				billable: true,
 				archivedAt: null,
 				archived: false,
 				createdAt: new Date('2026-02-01T00:00:00.000Z'),

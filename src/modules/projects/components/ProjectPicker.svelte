@@ -39,6 +39,12 @@
 		/** Fired once, after a successful inline creation, so the caller can merge the
 		 * new Project into its own list/selection without a reload. */
 		onCreate: (project: Project) => void;
+		/** The `billable` value an inline-created Project is born with (Requirement
+		 * 10.10) — the caller's currently selected category. Defaults to `true`: a
+		 * project created while `paid` is selected, or by a caller not yet passing
+		 * this (e.g. this picker's other, non-category callers). `relax` never
+		 * reaches this component at all — the picker is hidden entirely for it. */
+		billable?: boolean;
 		id?: string;
 		name?: string;
 		required?: boolean;
@@ -53,6 +59,7 @@
 		value,
 		onChange,
 		onCreate,
+		billable = true,
 		id,
 		name,
 		required = false,
@@ -277,6 +284,7 @@
 		id: string;
 		name: string;
 		colorIndex: number;
+		billable: boolean;
 		archivedAt: string | null;
 		archived: boolean;
 		createdAt: string;
@@ -296,6 +304,7 @@
 			id: raw.id,
 			name: raw.name,
 			colorIndex: raw.colorIndex,
+			billable: raw.billable,
 			archivedAt: raw.archivedAt === null ? null : new Date(raw.archivedAt),
 			archived: raw.archived,
 			createdAt: new Date(raw.createdAt),
@@ -327,7 +336,7 @@
 			const res = await fetch('/api/projects', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ name: newName })
+				body: JSON.stringify({ name: newName, billable })
 			});
 			const body = await res.json();
 			if (!res.ok) {

@@ -79,6 +79,7 @@ function mkEntry(overrides: Partial<ActivityEntry> = {}): ActivityEntry {
 		projectId: nextId('project'),
 		projectName: 'Client Work',
 		colorIndex: 0,
+		category: 'paid',
 		description: '',
 		mode: 'explicit',
 		requestedStartedAt: dt(9),

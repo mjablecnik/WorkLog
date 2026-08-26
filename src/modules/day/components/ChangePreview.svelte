@@ -36,7 +36,7 @@
 	import Icon from '$lib/ui/elements/Icon.svelte';
 	import LoadingSkeleton from '$lib/ui/overlays/LoadingSkeleton.svelte';
 	import { formatDelta, formatDuration, formatTimeOfDay } from '$lib/viz/format';
-	import { projectSlotClass } from '$lib/viz/palette';
+	import { LEISURE_SLOT_CLASS, projectSlotClass } from '$lib/viz/palette';
 
 	interface Props {
 		preview: Preview | null;
@@ -258,7 +258,9 @@
 				{#each activity.entry.segments as segment (segment.id)}
 					<div class="change-preview__segment">
 						<span
-							class="change-preview__tick {projectSlotClass(activity.entry.colorIndex)}"
+							class="change-preview__tick {activity.entry.colorIndex === null
+								? LEISURE_SLOT_CLASS
+								: projectSlotClass(activity.entry.colorIndex)}"
 							aria-hidden="true"
 						></span>
 						<span class="change-preview__segment-range"

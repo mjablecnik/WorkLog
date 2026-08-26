@@ -349,12 +349,17 @@
 	const innerPieces = $derived.by(() => {
 		const pieces: InnerPiece[] = [];
 		for (const { seg, entry } of innerSegmentsSorted as { seg: ActivitySegment; entry: ActivityEntry }[]) {
-			const colorClass = projectSlotClass(entry.colorIndex);
+			// Callers filter `entries` to Work_Entry records before passing them here
+			// (Requirement 7.1) — a Leisure_Entry never reaches the gauge at all, so
+			// `projectName`/`colorIndex` are guaranteed non-null in practice even though
+			// ActivityEntry types them nullable for the Leisure_Entry case.
+			const projectName = entry.projectName ?? '';
+			const colorClass = projectSlotClass(entry.colorIndex ?? 0);
 			if (spansFullDayOrMore(seg.startedAt, seg.endedAt)) {
 				pieces.push({
 					key: `${seg.id}-circle`,
 					segmentId: seg.id,
-					projectName: entry.projectName,
+					projectName,
 					segStart: seg.startedAt,
 					segEnd: seg.endedAt,
 					colorClass,
@@ -369,7 +374,7 @@
 				pieces.push({
 					key: `${seg.id}-${i}`,
 					segmentId: seg.id,
-					projectName: entry.projectName,
+					projectName,
 					segStart: seg.startedAt,
 					segEnd: seg.endedAt,
 					colorClass,
