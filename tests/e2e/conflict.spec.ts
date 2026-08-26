@@ -64,7 +64,13 @@ test('logging an activity that overlaps an existing one is rejected and nothing 
 // 003-worklog-time-categories, task 12.2: a Leisure_Entry overlapping a Work_Entry is
 // rejected with the same conflict, named, exactly as a Work_Entry-vs-Work_Entry one.
 test('a Leisure_Entry overlapping a Work_Entry is rejected as a conflict', async ({ page }) => {
-	const day = '2024-01-21';
+	// 2024-01-21 collides with a11y.spec.ts's own new leisure fixture (also added by
+	// 003-worklog-time-categories, task 12.2's a11y sweep) — both run in the same
+	// shared database (reset once per whole suite, not once per file; see
+	// tests/e2e/global-setup.ts), so two specs independently choosing the same
+	// literal date collide with a real SESSION_OVERLAP. 2024-01-24 is unclaimed by
+	// any other spec in this directory.
+	const day = '2024-01-24';
 	await login(page);
 	await createProject(page, PROJECT_NAME);
 	const projectId = await findProjectId(page, PROJECT_NAME);
