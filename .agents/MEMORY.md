@@ -152,3 +152,23 @@
   from `$app/paths`, a Svelte-5-runes anti-pattern `$state`+`$effect` mirror that
   should be a writable `$derived`, and more) — all fixed the same phase.
 - Source: build, 2026-08-24T15:30Z
+
+## `scripts/migrate.sh` needs `psql` on PATH, which this sandbox host does not have
+- Project: worklog
+- Problem: `./scripts/migrate.sh` fails immediately with `migrate.sh: psql is
+  required but not found on PATH` — this sandbox's shell (unlike the long-running
+  `worklog-pg` Postgres container it talks to) has no `postgresql-client` installed,
+  and there is no `sudo`/root to add one.
+- Solution: this doesn't block verifying migration state. The `worklog-pg` container
+  itself bundles `psql`, and `DATABASE_URL`'s hostname (`worklog-pg`) already resolves
+  from this sandbox shell over the shared `trayline-net` Docker network (see the
+  `sandbox-docker-net` skill) — so both applying and checking migrations can go
+  through `docker exec worklog-pg psql -U worklog -d <db> -c '...'` instead of the
+  script. Concretely: `docker exec worklog-pg psql -U worklog -d worklog -tAc
+  "select filename from schema_migrations order by filename;"` lists what's applied
+  to the app database (and swap in `worklog_test` for the test one). If a real new
+  migration ever needs applying and both are already at head, running the same SQL
+  `psql` runs against the `migrations/*.sql` file via `docker exec` achieves the same
+  effect as the script, just without its already-applied bookkeeping/locking — only
+  needed if a fresh migration is genuinely pending.
+- Source: build, 2026-08-26T10:20Z
