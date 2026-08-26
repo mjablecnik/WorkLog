@@ -308,3 +308,69 @@ describe('Property 16: Every entry stays reachable', () => {
 		);
 	}, 60_000);
 });
+
+describe('Property 5 (003-worklog-time-categories): a category transition is all-or-nothing', () => {
+	// A PATCH crossing the null/non-null projectId boundary either succeeds with the
+	// entry's segments replaced under the new regime, or fails with NOTHING_TO_LOG and
+	// leaves the Activity_Entry — its projectId, its requested interval and every
+	// stored segment — exactly as it was (Requirements 4.3, 4.4).
+	it('a rejected category-transition PATCH leaves projectId, the requested interval and every segment untouched', async () => {
+		await fc.assert(
+			fc.asyncProperty(fc.integer({ min: 0, max: 100 }), async (offsetMinutes) => {
+				await resetDb();
+				const project = await bodyOf(
+					await projectsPost(
+						mockEvent({
+							method: 'POST',
+							url: `${BASE}/api/projects`,
+							body: { name: 'Category Transition Seed' }
+						})
+					)
+				);
+				await sessionsPost(
+					mockEvent({
+						method: 'POST',
+						url: `${BASE}/api/sessions`,
+						body: { startedAt: '2026-06-01T08:00:00Z', endedAt: '2026-06-01T12:00:00Z' }
+					})
+				);
+				// A Leisure_Entry well outside the Work_Session (20:00 + a small jitter) — its
+				// own Unrestricted_Window keeps it fully intact regardless of `offsetMinutes`.
+				const start = new Date(new Date('2026-06-01T20:00:00Z').getTime() + offsetMinutes * 60_000);
+				const end = new Date(start.getTime() + 15 * 60_000);
+				const created = await bodyOf(
+					await activitiesPost(
+						mockEvent({
+							method: 'POST',
+							url: `${BASE}/api/activities`,
+							body: {
+								description: 'leisure, will attempt to convert',
+								startedAt: start.toISOString(),
+								endedAt: end.toISOString()
+							}
+						})
+					)
+				);
+				const entryId = (created.entry as Record<string, unknown>).id as string;
+
+				const before = await snapshotTables();
+				// Converting to a Work_Entry re-clips against the REAL session (08:00-12:00),
+				// which this interval never overlaps at all — guaranteed NOTHING_TO_LOG.
+				const res = await activityPatch(
+					mockEvent({
+						method: 'PATCH',
+						url: `${BASE}/api/activities/${entryId}`,
+						params: { id: entryId },
+						body: { projectId: project.id }
+					})
+				);
+				expect(res.status).toBe(409);
+				expect((await bodyOf(res)).error).toBe('NOTHING_TO_LOG');
+				const after = await snapshotTables();
+
+				expect(after, 'a rejected category transition left a trace').toBe(before);
+			}),
+			{ numRuns: 15 }
+		);
+	}, 60_000);
+});

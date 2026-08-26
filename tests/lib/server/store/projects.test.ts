@@ -92,4 +92,38 @@ describe('projects store', () => {
 		const list = await withTx((tx) => listProjects(tx, true));
 		expect(list.some((x) => x.id === p.id)).toBe(false);
 	});
+
+	it('a project created without a billable argument defaults to true', async () => {
+		const p = await withTx((tx) => createProject(tx, 'Billable Default'));
+		expect(p.billable).toBe(true);
+	});
+
+	it('create/patch with an explicit billable value', async () => {
+		const unbillable = await withTx((tx) => createProject(tx, 'Unbillable Create', false));
+		expect(unbillable.billable).toBe(false);
+
+		const billable = await withTx((tx) => createProject(tx, 'Billable Create', true));
+		expect(billable.billable).toBe(true);
+
+		const flipped = await withTx((tx) => updateProject(tx, billable.id, { billable: false }));
+		expect(flipped.billable).toBe(false);
+	});
+
+	it('a patch that leaves billable absent leaves it unchanged', async () => {
+		const p = await withTx((tx) => createProject(tx, 'Billable Untouched', false));
+		const renamed = await withTx((tx) => updateProject(tx, p.id, { name: 'Billable Untouched Renamed' }));
+		expect(renamed.billable).toBe(false);
+	});
+
+	it('renaming, archiving and recolouring never change billable', async () => {
+		const p = await withTx((tx) => createProject(tx, 'Billable Stable', false));
+		const renamed = await withTx((tx) => updateProject(tx, p.id, { name: 'Billable Stable Renamed' }));
+		expect(renamed.billable).toBe(false);
+		const archived = await withTx((tx) => updateProject(tx, p.id, { archived: true }));
+		expect(archived.billable).toBe(false);
+		const unarchived = await withTx((tx) => updateProject(tx, p.id, { archived: false }));
+		expect(unarchived.billable).toBe(false);
+		const recoloured = await withTx((tx) => updateProject(tx, p.id, { colorIndex: 3 }));
+		expect(recoloured.billable).toBe(false);
+	});
 });

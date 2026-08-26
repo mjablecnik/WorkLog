@@ -131,6 +131,51 @@ describe('schema constraints', () => {
 		expect(rows).toHaveLength(2);
 	});
 
+	it('a Project created without billable defaults to true', async () => {
+		const project = await withTx((tx) => createProject(tx, 'Billable Default Project'));
+		expect(project.billable).toBe(true);
+	});
+
+	it('accepts an activity_entries row with a null project_id (a Leisure_Entry)', async () => {
+		await withTx((tx) =>
+			tx.insert(schema.activityEntries).values({
+				id: randomUuidV7(),
+				projectId: null,
+				mode: 'explicit',
+				requestedStartedAt: new Date('2026-06-04T20:00:00Z'),
+				requestedEndedAt: new Date('2026-06-04T21:00:00Z')
+			})
+		);
+	});
+
+	it('deleting a Project referenced only by Work_Entry rows still fails, unaffected by any Leisure_Entry present', async () => {
+		const projectId = randomUuidV7();
+		await withTx(async (tx) => {
+			await tx.insert(schema.projects).values({ id: projectId, name: 'Leisure Unaffected Project' });
+			await tx.insert(schema.activityEntries).values({
+				id: randomUuidV7(),
+				projectId,
+				mode: 'explicit',
+				requestedStartedAt: new Date('2026-06-04T22:00:00Z'),
+				requestedEndedAt: new Date('2026-06-04T23:00:00Z')
+			});
+			// A Leisure_Entry present at the same time must not interfere with the delete
+			// check at all — it references no project.
+			await tx.insert(schema.activityEntries).values({
+				id: randomUuidV7(),
+				projectId: null,
+				mode: 'explicit',
+				requestedStartedAt: new Date('2026-06-05T00:00:00Z'),
+				requestedEndedAt: new Date('2026-06-05T01:00:00Z')
+			});
+		});
+		await expect(
+			withTx((tx) => tx.delete(schema.projects).where(sql`id = ${projectId}`))
+		).rejects.toMatchObject({
+			cause: { code: '23503', constraint_name: 'activity_entries_project_id_fkey' }
+		});
+	});
+
 	it('rejects deleting a referenced Project', async () => {
 		const projectId = randomUuidV7();
 		await withTx(async (tx) => {

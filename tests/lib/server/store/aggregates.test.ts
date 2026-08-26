@@ -7,7 +7,11 @@ import {
 import { createProject } from '../../../../src/lib/server/store/projects';
 import { createEntry } from '../../../../src/lib/server/store/activities';
 import { insertSessions } from '../../../../src/lib/server/store/work-sessions';
-import { daySummaries, suggestedWindow } from '../../../../src/lib/server/store/aggregates';
+import {
+	daySummaries,
+	dayIntervals,
+	suggestedWindow
+} from '../../../../src/lib/server/store/aggregates';
 
 const resolver = createDayResolver('Europe/Prague', 3);
 
@@ -115,5 +119,84 @@ describe('aggregates store', () => {
 			suggestedWindow(tx, [dayWindow('2026-07-20')], new Date('2026-07-21T12:00:00Z'))
 		);
 		expect(window).not.toBeNull();
+	});
+
+	it('a day mixing a billable Work_Entry, a non-billable one, and a Leisure_Entry with no overlapping Work_Session', async () => {
+		const paidProject = await withTx((tx) => createProject(tx, 'Paid Aggregates Project', true));
+		const unpaidProject = await withTx((tx) =>
+			createProject(tx, 'Unpaid Aggregates Project', false)
+		);
+
+		await withTx((tx) =>
+			insertSessions(tx, [
+				{ start: new Date('2026-07-21T08:00:00Z'), end: new Date('2026-07-21T12:00:00Z') }
+			])
+		);
+		await withTx((tx) =>
+			createEntry(
+				tx,
+				{
+					projectId: paidProject.id,
+					description: 'paid work',
+					mode: 'explicit',
+					requestedStartedAt: new Date('2026-07-21T08:00:00Z'),
+					requestedEndedAt: new Date('2026-07-21T09:00:00Z'),
+					requestedDurationMinutes: null
+				},
+				[{ start: new Date('2026-07-21T08:00:00Z'), end: new Date('2026-07-21T09:00:00Z') }]
+			)
+		);
+		await withTx((tx) =>
+			createEntry(
+				tx,
+				{
+					projectId: unpaidProject.id,
+					description: 'unpaid work',
+					mode: 'explicit',
+					requestedStartedAt: new Date('2026-07-21T09:00:00Z'),
+					requestedEndedAt: new Date('2026-07-21T10:30:00Z'),
+					requestedDurationMinutes: null
+				},
+				[{ start: new Date('2026-07-21T09:00:00Z'), end: new Date('2026-07-21T10:30:00Z') }]
+			)
+		);
+		// Well outside the Work_Session entirely — no timer needs to have run for it.
+		await withTx((tx) =>
+			createEntry(
+				tx,
+				{
+					projectId: null,
+					description: 'evening leisure',
+					mode: 'explicit',
+					requestedStartedAt: new Date('2026-07-21T20:00:00Z'),
+					requestedEndedAt: new Date('2026-07-21T21:30:00Z'),
+					requestedDurationMinutes: null
+				},
+				[{ start: new Date('2026-07-21T20:00:00Z'), end: new Date('2026-07-21T21:30:00Z') }]
+			)
+		);
+
+		const date = '2026-07-21';
+		const [summary] = await withTx((tx) =>
+			daySummaries(tx, [dayWindow(date)], {
+				gaugeWindows: [gaugeWindowFor(date)],
+				eveningStarts: [materializeWallClock(date, 21, 0, 'Europe/Prague')],
+				now: new Date()
+			})
+		);
+
+		// coveredSeconds/uncoveredSeconds are unaffected by the leisure rows.
+		expect(summary.coveredSeconds).toBe(3600 + 90 * 60);
+		expect(summary.uncoveredSeconds).toBe(4 * 3600 - (3600 + 90 * 60));
+		// paidSeconds/unpaidSeconds/relaxSeconds each match hand computation.
+		expect(summary.paidSeconds).toBe(3600);
+		expect(summary.unpaidSeconds).toBe(90 * 60);
+		expect(summary.paidSeconds + summary.unpaidSeconds).toBe(summary.coveredSeconds);
+		expect(summary.relaxSeconds).toBe(90 * 60);
+
+		const { leisure } = await withTx((tx) => dayIntervals(tx, [dayWindow(date)], new Date()));
+		expect(leisure[0]).toHaveLength(1);
+		expect(leisure[0][0].start.toISOString()).toBe('2026-07-21T20:00:00.000Z');
+		expect(leisure[0][0].end.toISOString()).toBe('2026-07-21T21:30:00.000Z');
 	});
 });

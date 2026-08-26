@@ -13,6 +13,9 @@ type FakeEntry = {
 	requested: Interval;
 	segments: Interval[];
 	createdAt: Date;
+	/** Null models a Leisure_Entry — excluded from entriesAffectedBy below, mirroring
+	 *  the real store's filter (003-worklog-time-categories task 2.3). */
+	projectId?: string | null;
 };
 
 class FakeStore implements ReclipPorts {
@@ -20,11 +23,13 @@ class FakeStore implements ReclipPorts {
 	entries: FakeEntry[] = [];
 
 	private toActivityEntry(e: FakeEntry): ActivityEntry {
+		const projectId = e.projectId === undefined ? 'p' : e.projectId;
 		return {
 			id: e.id,
-			projectId: 'p',
-			projectName: 'P',
-			colorIndex: 0,
+			projectId,
+			projectName: projectId === null ? null : 'P',
+			colorIndex: projectId === null ? null : 0,
+			category: projectId === null ? 'relax' : 'paid',
 			description: '',
 			mode: 'explicit',
 			requestedStartedAt: e.requested.start,
@@ -48,6 +53,7 @@ class FakeStore implements ReclipPorts {
 
 	async entriesAffectedBy(window: Interval[]): Promise<ActivityEntry[]> {
 		return this.entries
+			.filter((e) => e.projectId !== null)
 			.filter((e) => {
 				const segOverlap = e.segments.some((s) => intersect([s], window).length > 0);
 				const reqOverlap = intersect([e.requested], window).length > 0;
@@ -88,6 +94,69 @@ function sortedBoundsByEntry(store: FakeStore): Record<string, { start: number; 
 	}
 	return out;
 }
+
+const scenarioWithLeisure = fc.record({
+	sessions: fc.array(rawInterval, { minLength: 0, maxLength: 4 }),
+	workRequests: fc.array(rawInterval, { minLength: 0, maxLength: 3 }),
+	leisureRequests: fc.array(rawInterval, { minLength: 1, maxLength: 3 }),
+	changes: fc.array(rawInterval, { minLength: 1, maxLength: 3 })
+});
+
+describe('Property 6: A Work_Session change never disturbs a Leisure_Entry', () => {
+	it('after any sequence of session creates/patches/deletes, every stored Leisure_Entry and its segments are byte-for-byte unchanged, and none is orphaned', async () => {
+		await fc.assert(
+			fc.asyncProperty(
+				scenarioWithLeisure,
+				async ({ sessions, workRequests, leisureRequests, changes }) => {
+					const store = new FakeStore();
+					store.sessions = normalize(sessions);
+					store.entries = [
+						...workRequests.map((requested, i) => ({
+							id: `w${i}`,
+							requested,
+							segments: [] as Interval[],
+							createdAt: new Date(BASE + i * 1000),
+							projectId: `p${i}`
+						})),
+						...leisureRequests.map((requested, i) => ({
+							id: `l${i}`,
+							requested,
+							// A Leisure_Entry's segments are whatever it was clipped to against
+							// its own Unrestricted_Window at creation time — modelled here simply
+							// as its own full requested interval, independent of any session.
+							segments: [requested] as Interval[],
+							createdAt: new Date(BASE + (workRequests.length + i) * 1000),
+							projectId: null as string | null
+						}))
+					];
+
+					const leisureBefore = store.entries
+						.filter((e) => e.projectId === null)
+						.map((e) => ({ id: e.id, segments: normalize(e.segments) }));
+
+					// Simulate a sequence of session creates/patches/deletes by re-running
+					// reclipAffected over each `changes` window in turn — the caller's own
+					// responsibility in production (services/sessions.ts), reproduced here
+					// directly since this suite tests reclipAffected in isolation.
+					const now = new Date(BASE + 2 * DAY_MS);
+					for (const change of changes) {
+						await reclipAffected(store, [change], now, MIN_MS);
+					}
+
+					const leisureAfter = store.entries
+						.filter((e) => e.projectId === null)
+						.map((e) => ({ id: e.id, segments: normalize(e.segments) }));
+
+					expect(leisureAfter).toEqual(leisureBefore);
+					for (const e of store.entries) {
+						if (e.projectId === null) expect(e.segments.length).toBeGreaterThan(0);
+					}
+				}
+			),
+			{ numRuns: 50 }
+		);
+	});
+});
 
 describe('Property 9: Re-clipping is deterministic and idempotent', () => {
 	it('applying reclipAffected twice over the same intervals produces the same segment bounds as once', async () => {

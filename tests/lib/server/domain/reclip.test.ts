@@ -17,19 +17,28 @@ type FakeEntry = {
 	requested: Interval;
 	segments: Interval[];
 	createdAt: Date;
+	/** Null models a Leisure_Entry. Defaults to a synthesized Work_Entry id below. */
+	projectId?: string | null;
 };
 
-/** An in-memory ReclipPorts fake: `sessions` is the Tracked_Time frame, `entries` the log. */
+/**
+ * An in-memory ReclipPorts fake: `sessions` is the Tracked_Time frame, `entries` the
+ * log. `entriesAffectedBy` mirrors `store/activities.ts`'s real filter (task 2.3 of
+ * 003-worklog-time-categories): a Leisure_Entry (`projectId: null`) is never returned,
+ * so `reclipAffected` — itself unmodified by that specification — never sees one.
+ */
 class FakeStore implements ReclipPorts {
 	sessions: Interval[] = [];
 	entries: FakeEntry[] = [];
 
 	private toActivityEntry(e: FakeEntry): ActivityEntry {
+		const projectId = e.projectId === undefined ? 'p-' + e.id : e.projectId;
 		return {
 			id: e.id,
-			projectId: 'p-' + e.id,
-			projectName: e.projectName,
-			colorIndex: e.colorIndex,
+			projectId,
+			projectName: projectId === null ? null : e.projectName,
+			colorIndex: projectId === null ? null : e.colorIndex,
+			category: projectId === null ? 'relax' : 'paid',
 			description: e.description,
 			mode: 'explicit',
 			requestedStartedAt: e.requested.start,
@@ -53,6 +62,7 @@ class FakeStore implements ReclipPorts {
 
 	async entriesAffectedBy(window: Interval[]): Promise<ActivityEntry[]> {
 		return this.entries
+			.filter((e) => e.projectId !== null) // Work_Entry rows only — Requirement 3.11
 			.filter((e) => {
 				const segOverlap = e.segments.some((s) => intersect([s], window).length > 0);
 				const reqOverlap = intersect([e.requested], window).length > 0;
@@ -322,5 +332,54 @@ describe('reclipAffected', () => {
 		expect(outcomes[0].removedMs).toBe(30 * 60_000);
 		expect(outcomes[0].projectName).toBe('Carried Project');
 		expect(outcomes[0].description).toBe('carried description');
+	});
+
+	it('Property 6: a Work_Session change never disturbs a Leisure_Entry — 20:00-22:00 leisure logged with no timer running, then a session added at 19:00-20:30', async () => {
+		const store = new FakeStore();
+		const leisureSegments = [iv('2026-08-12T20:00:00Z', '2026-08-12T22:00:00Z')];
+		store.entries = [
+			{
+				id: 'leisure-1',
+				projectId: null,
+				projectName: 'unused',
+				colorIndex: 0,
+				description: 'evening off',
+				requested: iv('2026-08-12T20:00:00Z', '2026-08-12T22:00:00Z'),
+				segments: leisureSegments,
+				createdAt: new Date('2026-08-12T00:00:00Z')
+			}
+		];
+		// A Work_Session created 19:00-20:30 — overlaps the Leisure_Entry's own segment
+		// window entirely on its left edge.
+		store.sessions = [iv('2026-08-12T19:00:00Z', '2026-08-12T20:30:00Z')];
+		const affected = [iv('2026-08-12T19:00:00Z', '2026-08-12T20:30:00Z')];
+
+		const outcomes = await reclipAffected(
+			store,
+			affected,
+			new Date('2026-08-12T23:00:00Z'),
+			MIN_MS
+		);
+		expect(outcomes).toHaveLength(0); // never even selected
+		expect(store.entries[0].segments).toEqual(leisureSegments); // byte-for-byte unchanged
+	});
+
+	it('a Leisure_Entry is never returned by entriesAffectedBy even when its requested interval overlaps the window', async () => {
+		const store = new FakeStore();
+		store.entries = [
+			{
+				id: 'leisure-2',
+				projectId: null,
+				projectName: 'unused',
+				colorIndex: 0,
+				description: 'orphan-shaped leisure (should never happen, but must still be excluded)',
+				requested: iv('2026-08-13T08:00:00Z', '2026-08-13T09:00:00Z'),
+				segments: [],
+				createdAt: new Date('2026-08-13T00:00:00Z')
+			}
+		];
+		const affected = [iv('2026-08-13T08:00:00Z', '2026-08-13T09:00:00Z')];
+		const found = await store.entriesAffectedBy(affected);
+		expect(found).toHaveLength(0);
 	});
 });
