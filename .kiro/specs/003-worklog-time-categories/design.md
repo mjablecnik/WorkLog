@@ -570,8 +570,8 @@ projects page post to form actions, not to the JSON API, so a change confined to
   //   clearProject === true            → projectId: null   (convert to Leisure_Entry)
   //   clearProject falsy, projectId set → projectId: <uuid> (set or change the Project)
   //   clearProject falsy, projectId absent → projectId: undefined (leave unchanged)
-  // Sending clearProject === true together with a projectId is a VALIDATION_ERROR;
-  // the two name contradictory outcomes.
+  // Sending clearProject === true together with a projectId is a VALIDATION_ERROR
+  // (Requirement 4.11); the two name contradictory outcomes.
   ```
 
 - **`src/routes/projects/+page.server.ts`** gains a `billable` and an `unbillable`
@@ -611,6 +611,8 @@ fallback, because the correct answer differs per surface:
 | `SegmentBlock.svelte` | Draws `Work_Entry` segments only — `layOutDay` no longer routes leisure segments into it (component 8) — so it narrows like `DayGauge` |
 | `DaySummaryPanels.svelte` | Renders across all entries; falls back to `LEISURE_SLOT_CLASS` and the translated leisure label when `colorIndex`/`projectName` are null |
 | `activityOverlapError` (`services/activities.ts`) | Puts `projectName`/`colorIndex` into `ACTIVITY_OVERLAP` details. A `Leisure_Entry` is a legitimate conflict source (Requirement 3.3), so the detail shape widens to nullable and whatever renders it supplies the leisure label |
+| `activity-form-actions.ts`'s local `OverlapConflict` | Declares its own `{ entryId; projectName: string; interval }` and obtains it by **cast** from `details.conflicts`, so `svelte-check` cannot see the nullability and will not flag it. Left alone it renders the literal `"null"` into `errors_activity_overlap` for a leisure conflict. `projectName` widens to `string \| null` and the render falls back to the leisure label. `session-form-actions.ts` declares a same-named local type, but its shape has no `projectName` at all and needs no change |
+| `ProjectPicker.svelte` | `reviveProject` maps a wire `Project` field by field and omits `billable`, so it stops compiling once the field is required — it gains `billable: raw.billable`. Its inline-create call also posts `{ name }` only; see component 10 |
 | `src/modules/day/dry-run.ts` | Holds the only two client-side `ActivityEntry` constructions, both upstream of `ChangePreview.svelte` — so the null arrives one layer *above* the row for it. `reviveEntry` maps the wire shape field by field and must carry `category` through, with `projectName`/`colorIndex` passed through as nullable; the `EMPTY_ACTIVITY_ENTRY` literal must gain a `category` (`'paid'`, matching its existing non-null placeholder fields). `SessionPreview.reclipped` stays non-null, consistent with `ReclipOutcome` |
 
 ### 8. Day_Timeline: `Leisure_Block` (`timeline-geometry.ts`, `DayTimeline.svelte`)
@@ -657,10 +659,17 @@ Three existing behaviours must change, none of them obvious from the addition al
    `intersect`, and still counted into `totalSeconds`, skewing every work segment's
    height. That loop skips entries whose `category === 'relax'`; they are laid out as
    `leisureBlocks` instead.
-3. **The height budget.** A `Leisure_Block` participates in the same closed budget as
-   everything else: its duration counts into `totalSeconds` and its height comes out
-   of `flex = availablePx - fixed`, floored at `MIN_BLOCK_PX` exactly as a
-   `Segment_Block` is (Requirement 8.3). This is what keeps `002-worklog-ui`'s
+3. **The height budget, and where a leisure unit lives in it.** `layOutDay` is
+   organised per session — `unitsByBlock: RawUnit[][]` and `renderableByBlock` are both
+   indexed by block, `fixed` accumulates `headPx + headGapPx` *per block*, and
+   `totalSeconds` is summed over `unitsByBlock`. A `Leisure_Block` belongs to no block,
+   so it does **not** get a synthetic one-unit block of its own: that would reserve a
+   session head it must not have. It lives in a **parallel `leisureUnits` array**,
+   folded into the same sizing pass — its duration added to the same `totalSeconds`,
+   its height drawn from the same `flex = availablePx - fixed`, floored at
+   `MIN_BLOCK_PX` exactly as a `Segment_Block` is, and contributing to `fixed` only the
+   inter-unit gap the merged render list actually draws around it, never a `headPx`
+   or `headGapPx` reservation (Requirement 8.3). This is what keeps `002-worklog-ui`'s
    Property 2 (`total <= availablePx`) true.
 
 `DayTimeline.svelte` merges `layout.blocks`, `layout.breaks` and
@@ -671,6 +680,14 @@ block index. A new sibling component, `LeisureBlock.svelte`, mirrors
 description) but tints with the `Leisure_Palette_Slot` and calls the same
 `onActivityActivate(entry.id)` callback `Segment_Block` already exposes
 (Requirement 8.4).
+
+The same artboard also draws a third side panel beside the timeline —
+`podle kategorie`, carrying `paidSeconds`, `unpaidSeconds` and `relaxSeconds` with
+leisure below a divider. That is `DaySummaryPanels.svelte`, and it is a separate
+requirement (8.9) rather than a consequence of 8.8, because 8.8 binds the timeline
+column and this panel is not part of it. The figures come straight from the page
+data's `totals`, which component 2 has already extended; the divider is what keeps
+`relaxSeconds` from reading as a share of the worked total.
 
 ### 9. Palette Addition (`src/lib/viz/palette.ts`, `scripts/generate-palette-and-heights.ts`)
 
@@ -728,9 +745,22 @@ never hand-written into the committed CSS (CLAUDE.md's standing rule for this fi
 hidden-form pattern, posting to the `?/billable` and `?/unbillable` actions of
 component 5, plus a plain text label naming the current state beside it (Requirement
 9.3 — never colour alone). `ProjectsPage.svelte`'s creation form gains the same
-two-way control, defaulting to paid. `ProjectPicker.svelte` itself needs **no change**
-— `ActivityDialog` filters the `projects` array it is given by `billable` before
-passing it in (component 11), so the picker keeps rendering whatever list it receives.
+two-way control, defaulting to paid.
+
+`ProjectPicker.svelte` needs no change to its *filtering* — `ActivityDialog` filters
+the `projects` array it is given by `billable` before passing it in (component 11), so
+the picker keeps rendering whatever list it receives. It does need two other changes:
+
+- `reviveProject` maps a wire `Project` field by field and gains `billable`
+  (component 7), or it stops compiling.
+- **Inline creation** (`handleCreate`) posts `{ name }` only. With
+  `createProjectSchema`'s `billable: z.boolean().default(true)`, a `Project` created
+  while the dialog's category is `unpaid` is born `Billable` and is then filtered out
+  of `filteredProjects` the instant it is created — it vanishes from the list it was
+  created for. The create call therefore sends `billable`, and the picker takes that
+  value from the caller: `ActivityDialog` passes its currently selected category down
+  (Requirement 10.10). `relax` never reaches this path, since the picker is hidden
+  entirely for it.
 
 Message keys follow the file's existing `projects_*` convention (`projects_archive`,
 `projects_unarchive`, …), so the new ones are `projects_billable` /
@@ -813,6 +843,13 @@ export function foldProjectTotals(days: DaySummary[]): {
   unpaid: ProjectRangeTotal[];
 };
 ```
+
+That return-shape change ripples through three files, all compile-caught:
+`src/routes/stats/+page.server.ts` (the one call site,
+`projectBreakdown: foldProjectTotals(range.days)`), `src/routes/stats/+page.svelte`
+(which forwards it), and `StatsPage.svelte`, whose prop is declared
+`projectBreakdown: ProjectRangeTotal[]` and must become the two-group shape before it
+reaches `ProjectBreakdown`.
 
 `KpiRow.svelte` adds `paidSeconds`/`unpaidSeconds`/`relaxSeconds` beside the existing
 figures (Requirement 11.1). `ProjectBreakdown.svelte` renders the two groups under
@@ -928,7 +965,7 @@ transition can hit already exists and is reused unchanged:
 
 | Code | HTTP | When (new trigger added by this specification) |
 |---|---|---|
-| `VALIDATION_ERROR` | 400 | `projectId` supplied on create but names no existing `Project` (Requirement 2.6); a form-action PATCH sending `clearProject` together with a `projectId` (Requirement 4.9) |
+| `VALIDATION_ERROR` | 400 | `projectId` supplied on create but names no existing `Project` (Requirement 2.6); a form-action PATCH sending `clearProject` together with a `projectId` (Requirement 4.11) |
 | `PROJECT_ARCHIVED` | 400 | `projectId` supplied names an archived `Project` (Requirement 2.7) |
 | `ACTIVITY_OVERLAP` | 409 | A `Leisure_Entry`'s requested interval overlaps any other entry's segment (Requirement 3.3). Its `details` carry a nullable `projectName`/`colorIndex` now, since the conflicting entry may itself be a `Leisure_Entry` |
 | `NOTHING_TO_LOG` | 409 | `Clipping` against the `Unrestricted_Window` (Requirement 3.5), `Open_Mode` leisure on a past day with no `Work_Session` (Requirement 3.12), or a category-transition re-clip (Requirement 4.4) leaves no segment |

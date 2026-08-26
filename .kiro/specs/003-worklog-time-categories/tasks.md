@@ -4,18 +4,21 @@
 
 Add `Project.billable` and `Leisure_Entry` (an `Activity_Entry` with no `Project`,
 reconciled against the `Unrestricted_Window` instead of `Tracked_Time`) to the
-existing Worklog domain, API and interface. Work proceeds bottom-up exactly as
-`001-worklog-domain-api`/`002-worklog-ui` did: schema and contracts first, then the
-store and service layers against a real database, then the form-action layer the
-interface actually writes through, then the interface itself. `clip()`'s pure math and
-`Work_Session` are untouched — every task below either adds a new field or branch
-beside existing code, changes what an existing function is called with, or narrows
-which rows one query returns. Message keys and the palette slot land before the
-components that consume them. Pure logic is covered by Vitest unit and `fast-check`
-property tests; schema and aggregation changes by integration tests against
-PostgreSQL; the interface by component tests and an extended Playwright pass. Test
-tasks are interleaved with implementation tasks, and three checkpoints mark the data,
-backend and full-stack boundaries.
+existing Worklog domain, API and interface. Work proceeds bottom-up as
+`001-worklog-domain-api`/`002-worklog-ui` did — schema and contracts, then the store
+layer against a real database — with one deliberate insertion: because the contract
+change in task 1.3 breaks every consumer of the now-nullable `projectName`/
+`colorIndex` and every fixture that builds an `ActivityEntry`, section 4 lands the
+palette slot, the message keys and the whole nullable-consumer sweep **before** the
+service layer, so the tree typechecks again at the first checkpoint that runs
+`bun run check`. The service and form-action layers follow, then the interface.
+`clip()`'s pure math and `Work_Session` are untouched — every task below either adds a
+new field or branch beside existing code, changes what an existing function is called
+with, or narrows which rows one query returns. Pure logic is covered by Vitest unit
+and `fast-check` property tests; schema and aggregation changes by integration tests
+against PostgreSQL; the interface by component tests and an extended Playwright pass.
+Test tasks are interleaved with implementation tasks, and three checkpoints mark the
+data, backend and full-stack boundaries.
 
 ## Tasks
 
@@ -213,10 +216,113 @@ backend and full-stack boundaries.
 
 - [ ] 3. Checkpoint — data layer proven against a real database
   - Start PostgreSQL, run `./scripts/migrate.sh`, then `bun run test
-    tests/lib/server/store tests/lib/server/domain`
+    tests/lib/server/store tests/lib/server/domain`. `bun run check` is **not** run
+    here: task 1.3 has already made `projectName`/`colorIndex` nullable and `category`
+    required, and section 4 is what makes the tree typecheck again
 
-- [ ] 4. Service and reconciliation layer
-  - [ ] 4.1 Widen the service argument types and normalize `effectiveProjectId`
+- [ ] 4. Palette, messages and the nullable-consumer sweep
+  - [ ] 4.1 Update `src/lib/viz/palette.ts`
+    - Add `LEISURE_SLOT`, `LEISURE_SLOT_CLASS` (`'pj-relax'`) and `leisureColor()` per
+      the design's component 9 — a ninth, reserved slot outside the `PALETTE_SIZE`-8
+      wraparound, so `projectSlotClass` can never return it
+    - The values are **decided**, not placeholders: `{ dark: '#7C8899', light:
+      '#5F6B7A' }`. Do not substitute a "nicer" hue — the design's component 9
+      records why leisure is deliberately low-chroma (0.028–0.029 against the project
+      hues' 0.137–0.150) and therefore not a ninth categorical colour. Changing it to
+      a saturated hue silently breaks that reasoning
+    - _Requirements: 8.2_
+
+  - [ ] 4.2 Update `scripts/generate-palette-and-heights.ts`
+    - `buildPaletteCss` loops `for (i = 0; i < PALETTE_SIZE; i++)` and emits a header
+      comment reading "Eight classes, `.pj-0` … `.pj-7`" — both the loop (to append
+      the reserved slot after the eight) and that comment must change
+    - Regenerate `src/lib/theme/palette.css` (`bun run generate:css`) and commit the
+      result; `bun run check` fails if a fresh generation would differ from what is
+      committed
+    - _Requirements: 8.2_
+
+  - [ ]* 4.3 Extend `tests/lib/viz/palette.test.ts`
+    - This suite pins the palette literals and asserts no slot collides with the
+      destructive token; `LEISURE_SLOT` needs the same separation assertion, plus one
+      that `projectSlotClass` never returns `LEISURE_SLOT_CLASS` for any `colorIndex`
+    - _Requirements: 8.2_
+
+  - [ ] 4.4 Add message keys to `messages/en.json` and `messages/cs.json`
+    - Category labels (`paid`/`unpaid`/`relax`) for the `Activity_Dialog`'s segmented
+      control and wherever a `Category` is displayed as text
+    - The `Billable` toggle's two states and its row label, following this file's
+      existing `projects_*` convention (`projects_archive`, `projects_unarchive`, …) —
+      so `projects_billable`/`projects_unbillable`, never `project_billable`
+    - `Leisure_Block` and `Leisure_Time` copy: the timeline block's label, the
+      statistics heading, the day-summary label, and the leisure fallback label used
+      wherever a null `projectName` is rendered (task 4.5)
+    - Both files must stay in exact key parity, and no literal string introduced by
+      this specification may appear outside them —
+      `tests/lib/i18n.test.ts` enforces both, including a no-literal-string heuristic
+      with an allowlist that may need extending
+    - _Requirements: 12.1, 12.2_
+
+  - [ ] 4.5 Narrow every `projectName`/`colorIndex` consumer
+    - `projectSlotClass(colorIndex: number)` is non-nullable, so every consumer of the
+      now-nullable fields must narrow explicitly. Work through each per the design's
+      component 7 table: `DayGauge.svelte` (receives `Work_Entry` records only — narrow
+      its local `InnerPiece` type), `ChangePreview.svelte` (its draft-entry path needs
+      `projectName ?? ''` and `LEISURE_SLOT_CLASS`; the `ReclipOutcome` path stays
+      non-null), `SegmentBlock.svelte` (only ever handed `Work_Entry` segments, since
+      task 8.2 keeps leisure out of that loop — it narrows like `DayGauge`),
+      `DaySummaryPanels.svelte` (renders across all entries — falls back to
+      `LEISURE_SLOT_CLASS` and the translated leisure label)
+    - `src/modules/day/dry-run.ts` holds the only two client-side `ActivityEntry`
+      constructions, both upstream of `ChangePreview.svelte`: `reviveEntry` must carry
+      `category` through from the wire shape and pass `projectName`/`colorIndex` as
+      nullable, and the `EMPTY_ACTIVITY_ENTRY` literal must gain a `category` field or
+      it stops compiling
+    - `ProjectPicker.svelte`'s `reviveProject` maps a wire `Project` field by field and
+      omits `billable`, so it stops compiling once task 1.3 makes the field required —
+      add `billable: raw.billable`
+    - `ActivityDialog.svelte` reads the now-nullable `entry.projectName` in
+      `deleteBodyText` and `entry.projectId` in `initialValues()`; both need a
+      fallback here, ahead of the category control of task 9.1
+    - `activityOverlapError` in `src/lib/server/services/activities.ts` puts
+      `projectName`/`colorIndex` into `ACTIVITY_OVERLAP` details, and a `Leisure_Entry`
+      is a legitimate conflict source — widen the detail shape to nullable and give
+      whatever renders it the leisure label
+    - `src/lib/server/services/activity-form-actions.ts` declares its **own** local
+      `OverlapConflict` with `projectName: string` and obtains it by a **cast** from
+      `details.conflicts`, so `svelte-check` cannot see the nullability and will not
+      flag it. Widen it by hand and fall back to the leisure label, or a leisure
+      conflict renders the literal `"null"`. `session-form-actions.ts` declares a
+      same-named local type whose shape has no `projectName` — it needs no change
+    - Completion condition: `bun run check` reports no error in the files this task
+      touches. The whole tree only typechecks again once tasks 4.6 and 4.7 land too
+    - _Requirements: 5.1, 5.3, 3.3_
+
+  - [ ] 4.6 Add the three new figures to every `totals` literal
+    - `DayResponse['totals']` gains three **required** fields in task 1.5, and three
+      sites build that object field by field with no spread, so each stops compiling
+      the moment task 1.5 lands: `src/routes/+page.server.ts` (whose `TimerPageData`
+      is `DayResponse & {…}`), `src/routes/api/days/[date]/+server.ts`, and
+      `src/routes/day/[date]/+page.server.ts`
+    - Each adds `paidSeconds`/`unpaidSeconds`/`relaxSeconds` from the `summary` it
+      already has in scope — the same `summary` its existing
+      `trackedSeconds`/`coveredSeconds`/`uncoveredSeconds` come from (task 2.6)
+    - _Requirements: 6.2, 6.3_
+
+  - [ ] 4.7 Repair the existing test factories
+    - A required `category` on `ActivityEntry` and a required `billable` on `Project`
+      break every existing fixture that builds one. These are not new tests — they are
+      existing ones that stop compiling, and `bun run check` typechecks `tests/**` as
+      well as `src/**`, so they must be repaired before the next checkpoint
+    - `tests/modules/day/components/change-preview.test.ts`,
+      `activity-dialog.test.ts`, `timeline-geometry.test.ts` and `day-timeline.test.ts`
+    - `tests/modules/timer/components/day-gauge.test.ts` together with its
+      `DayGaugeHost.svelte` fixture
+    - `tests/modules/projects/components/project-picker.test.ts`'s `projectFixture`,
+      which returns a `Project` without `billable`
+    - _Requirements: 5.1, 5.2, 5.3_
+
+- [ ] 5. Service and reconciliation layer
+  - [ ] 5.1 Widen the service argument types and normalize `effectiveProjectId`
     - `CreateActivityArgs.projectId` becomes `string | undefined`;
       `PatchActivityArgs.projectId` becomes `string | null | undefined`. The Zod
       schema changes of task 1.4 are not sufficient — these exported types are what
@@ -224,13 +330,13 @@ backend and full-stack boundaries.
     - `createActivity` resolves `effectiveProjectId = args.projectId ?? null`
     - `patchActivity` resolves `effectiveProjectId = args.projectId === undefined ?
       existing.projectId : args.projectId`
-    - Every downstream branch added or changed by tasks 4.2–4.5 tests
+    - Every downstream branch added or changed by tasks 5.2–5.5 tests
       `effectiveProjectId === null`, never `args.projectId === undefined` — on the
       PATCH path those two differ, and using `undefined` routes a convert-to-leisure
       request into the `Work_Entry` regime
     - _Requirements: 2.1, 4.1, 4.2_
 
-  - [ ] 4.2 Guard `assertProjectUsable` and implement the `Unrestricted_Window`
+  - [ ] 5.2 Guard `assertProjectUsable` and implement the `Unrestricted_Window`
     - Call `assertProjectUsable` only when `effectiveProjectId !== null`, at **both**
       call sites: `createActivity` (currently unconditional, so every leisure create
       would 400) and `patchActivity` (currently guarded by `!== undefined`, and
@@ -247,7 +353,7 @@ backend and full-stack boundaries.
       without effect
     - _Requirements: 2.1, 2.6, 2.7, 3.1, 3.6, 3.7_
 
-  - [ ] 4.3 Implement the day-start `Placement_Anchor` fallback at both catch sites
+  - [ ] 5.3 Implement the day-start `Placement_Anchor` fallback at both catch sites
     - There are **two** `NoPlacementAnchorError` catches: one in `resolveCreateWindow`
       and one inside `patchActivity` (reached by a PATCH supplying `durationMinutes`).
       Both need the fallback, or a leisure duration PATCH still 409s
@@ -269,7 +375,7 @@ backend and full-stack boundaries.
       Requirement 3.12
     - _Requirements: 3.8, 3.10, 3.12_
 
-  - [ ] 4.4 Implement category transitions in `patchActivity`
+  - [ ] 5.4 Implement category transitions in `patchActivity`
     - Add `crossesProjectBoundary(existing, args): boolean` per the design's
       component 3 signature — false when `projectId` is absent, false for a
       `Project`-to-`Project` change, true only across the null/non-null boundary
@@ -286,7 +392,7 @@ backend and full-stack boundaries.
       values, on the existing meta-only/interval-only paths
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-  - [ ] 4.5 Thread `effectiveProjectId` into the entry writes and the idempotency hash
+  - [ ] 5.5 Thread `effectiveProjectId` into the entry writes and the idempotency hash
     - Every `createEntry`/`updateEntryRequested` call site passes
       `projectId: effectiveProjectId` rather than assuming a value is present
     - `canonicalRequestHash` needs no change — it iterates keys generically and
@@ -298,7 +404,7 @@ backend and full-stack boundaries.
       invalidates nothing. Confirm, do not modify
     - _Requirements: 2.1, 2.2_
 
-  - [ ]* 4.6 Write unit tests for the service-layer branches
+  - [ ]* 5.6 Write unit tests for the service-layer branches
     - `tests/lib/server/services/activities.test.ts`: `unrestrictedTracked` for all
       three modes; the day-start anchor fallback at both catch sites, firing only when
       `effectiveProjectId` is null and the day holds neither a segment nor a session;
@@ -306,12 +412,12 @@ backend and full-stack boundaries.
       (incoming absent/null/uuid)
     - _Requirements: 3.1, 3.8, 4.3_
 
-  - [ ] 4.7 Update `src/lib/server/services/projects.ts`
+  - [ ] 5.7 Update `src/lib/server/services/projects.ts`
     - `createProject`/`patchProject`: thread `billable` through to the store calls of
       task 2.1
     - _Requirements: 1.2, 1.3_
 
-  - [ ] 4.8 Update `Quick_Log` and `recentEntry` resolution
+  - [ ] 5.8 Update `Quick_Log` and `recentEntry` resolution
     - Three files resolve the "most recent entry" this feature changes, not one:
       `src/routes/api/days/[date]/+server.ts`, `src/routes/+page.server.ts`, and
       `src/routes/day/[date]/+page.server.ts`. All three switch from `mostRecentEntry`
@@ -322,11 +428,11 @@ backend and full-stack boundaries.
       so the offered interval never overlaps a `Leisure_Entry` and then fails
       `ACTIVITY_OVERLAP` on submission
     - The same resolution supplies `ActivityDialog`'s `recentEntry` prop, which gains
-      the resolved `category` (task 10.1) — reuse the lookup rather than adding a
+      the resolved `category` (task 9.1) — reuse the lookup rather than adding a
       second query
     - _Requirements: 6.6, 10.7_
 
-  - [ ] 4.9 Update the REST API routes
+  - [ ] 5.9 Update the REST API routes
     - `src/routes/api/activities/+server.ts` and `[id]/+server.ts`: pass
       `body.projectId` through unchanged in shape (`string | undefined` on create,
       `string | null | undefined` on patch) — confirm no route-level code assumes it
@@ -339,7 +445,7 @@ backend and full-stack boundaries.
       `projectId: null` stays the one JSON encoding of the conversion
     - _Requirements: 1.2, 1.3, 2.1, 2.2, 4.1, 4.2, 4.10_
 
-  - [ ]* 4.10 Write API tests
+  - [ ]* 5.10 Write API tests
     - `tests/api/activities.test.ts`: create a `Leisure_Entry` in each of
       `Explicit_Mode`/`Duration_Mode`/`Open_Mode`, including one on a day with no
       `Work_Session` anywhere (exercises the day-start anchor); an empty description
@@ -357,7 +463,7 @@ backend and full-stack boundaries.
       silently accepted, `projectId: null` remaining the one JSON encoding
     - _Requirements: 2.1, 2.4, 2.5, 2.6, 2.7, 3.3, 3.4, 3.5, 3.8, 3.9, 3.12, 4.1, 4.2, 4.5, 4.6, 4.7, 4.10_
 
-  - [ ]* 4.11 Write API tests for projects and day figures
+  - [ ]* 5.11 Write API tests for projects and day figures
     - `tests/api/projects.test.ts`: create/patch `billable`, its default, and that
       rename/archive/recolour leave it untouched
     - `tests/api/days.test.ts`: `paidSeconds`/`unpaidSeconds`/`relaxSeconds` on both
@@ -367,27 +473,27 @@ backend and full-stack boundaries.
       unchanged by the presence of `Leisure_Entry` rows in the same range
     - _Requirements: 1.2, 1.3, 1.4, 6.1, 6.2, 6.3, 6.4_
 
-  - [ ]* 4.12 Write the category-transition atomicity property test
+  - [ ]* 5.12 Write the category-transition atomicity property test
     - **Property 5: A category transition is all-or-nothing** — belongs in
       `tests/lib/server/store/atomicity.property.test.ts`, which already exercises
       all-or-nothing write behaviour: a transition rejected with `NOTHING_TO_LOG`
       leaves `projectId`, the requested interval and every segment exactly as before
     - **Validates: Requirements 4.3, 4.4**
 
-- [ ] 5. Form actions — the path the interface actually writes through
-  - [ ] 5.1 Update `src/lib/server/services/activity-form-actions.ts`
+- [ ] 6. Form actions — the path the interface actually writes through
+  - [ ] 6.1 Update `src/lib/server/services/activity-form-actions.ts`
     - `createActivityAction`: pass `form.data.projectId` (now `string | undefined`)
       straight through — absent creates a `Leisure_Entry`, exactly as over JSON
     - `patchActivityAction`: validate against `patchActivityFormSchema` (task 1.4),
       not `patchActivitySchema`, and translate its `clearProject` field into
       `projectId: null` before calling `patchActivityService`; otherwise pass
       `form.data.projectId` through. `clearProject` true together with a `projectId`
-      is a `VALIDATION_ERROR` — the two name contradictory outcomes
+      is a `VALIDATION_ERROR` (Requirement 4.11) — the two name contradictory outcomes
     - This file is the only write path `ActivityDialog` uses; the REST routes of task
-      4.9 do not cover it
-    - _Requirements: 4.1, 4.2, 4.9_
+      5.9 do not cover it
+    - _Requirements: 4.1, 4.2, 4.9, 4.11_
 
-  - [ ] 5.2 Add the `billable`/`unbillable` actions to `src/routes/projects/+page.server.ts`
+  - [ ] 6.2 Add the `billable`/`unbillable` actions to `src/routes/projects/+page.server.ts`
     - Mirror the existing `archive`/`unarchive` pair exactly — one named action per
       operation, each validated by a row-scoped schema built from `projectIdSchema`,
       each calling `patchProject` with the corresponding value
@@ -397,75 +503,13 @@ backend and full-stack boundaries.
       `create` action
     - _Requirements: 1.2, 1.3, 9.4_
 
-- [ ] 6. Checkpoint — backend, API and form actions proven end to end
-  - Run `bun run check && bun run test` with PostgreSQL running
+- [ ] 7. Checkpoint — backend, API and form actions proven end to end
+  - Run `bun run check && bun run test` with PostgreSQL running. `check` passes here
+    because section 4 has already narrowed every nullable-project consumer, filled in
+    the three `totals` literals and repaired the test fixtures
 
-- [ ] 7. Internationalization
-  - [ ] 7.1 Add message keys to `messages/en.json` and `messages/cs.json`
-    - Category labels (`paid`/`unpaid`/`relax`) for the `Activity_Dialog`'s segmented
-      control and wherever a `Category` is displayed as text
-    - The `Billable` toggle's two states and its row label, following this file's
-      existing `projects_*` convention (`projects_archive`, `projects_unarchive`, …) —
-      so `projects_billable`/`projects_unbillable`, never `project_billable`
-    - `Leisure_Block` and `Leisure_Time` copy: the timeline block's label, the
-      statistics heading, the day-summary label, and the leisure fallback label used
-      wherever a null `projectName` is rendered (task 9.1)
-    - Both files must stay in exact key parity, and no literal string introduced by
-      this specification may appear outside them —
-      `tests/lib/i18n.test.ts` enforces both, including a no-literal-string heuristic
-      with an allowlist that may need extending
-    - _Requirements: 12.1, 12.2_
-
-- [ ] 8. Palette addition
-  - [ ] 8.1 Update `src/lib/viz/palette.ts`
-    - Add `LEISURE_SLOT`, `LEISURE_SLOT_CLASS` (`'pj-relax'`) and `leisureColor()` per
-      the design's component 9 — a ninth, reserved slot outside the `PALETTE_SIZE`-8
-      wraparound, so `projectSlotClass` can never return it
-    - The values are **decided**, not placeholders: `{ dark: '#7C8899', light:
-      '#5F6B7A' }`. Do not substitute a "nicer" hue — the design's component 9
-      records why leisure is deliberately low-chroma (0.028–0.029 against the project
-      hues' 0.137–0.150) and therefore not a ninth categorical colour. Changing it to
-      a saturated hue silently breaks that reasoning
-    - _Requirements: 8.2_
-
-  - [ ] 8.2 Update `scripts/generate-palette-and-heights.ts`
-    - `buildPaletteCss` loops `for (i = 0; i < PALETTE_SIZE; i++)` and emits a header
-      comment reading "Eight classes, `.pj-0` … `.pj-7`" — both the loop (to append
-      the reserved slot after the eight) and that comment must change
-    - Regenerate `src/lib/theme/palette.css` (`bun run generate:css`) and commit the
-      result; `bun run check` fails if a fresh generation would differ from what is
-      committed
-    - _Requirements: 8.2_
-
-  - [ ]* 8.3 Extend `tests/lib/viz/palette.test.ts`
-    - This suite pins the palette literals and asserts no slot collides with the
-      destructive token; `LEISURE_SLOT` needs the same separation assertion, plus one
-      that `projectSlotClass` never returns `LEISURE_SLOT_CLASS` for any `colorIndex`
-    - _Requirements: 8.2_
-
-- [ ] 9. Nullable-project consumers
-  - [ ] 9.1 Narrow every `projectName`/`colorIndex` consumer
-    - `projectSlotClass(colorIndex: number)` is non-nullable, so every consumer of the
-      now-nullable fields must narrow explicitly. Work through each per the design's
-      component 7 table: `DayGauge.svelte` (receives `Work_Entry` records only — narrow
-      its local `InnerPiece` type), `ChangePreview.svelte` (its draft-entry path needs
-      `projectName ?? ''` and `LEISURE_SLOT_CLASS`; the `ReclipOutcome` path stays
-      non-null), `SegmentBlock.svelte` (draws `Work_Entry` segments only after task
-      9.3), `DaySummaryPanels.svelte` (renders across all entries — falls back to
-      `LEISURE_SLOT_CLASS` and the translated leisure label)
-    - `src/modules/day/dry-run.ts` holds the only two client-side `ActivityEntry`
-      constructions, both upstream of `ChangePreview.svelte`: `reviveEntry` must carry
-      `category` through from the wire shape and pass `projectName`/`colorIndex` as
-      nullable, and the `EMPTY_ACTIVITY_ENTRY` literal must gain a `category` field or
-      it stops compiling
-    - `activityOverlapError` in `src/lib/server/services/activities.ts` puts
-      `projectName`/`colorIndex` into `ACTIVITY_OVERLAP` details, and a `Leisure_Entry`
-      is a legitimate conflict source — widen the detail shape to nullable and give
-      whatever renders it the leisure label
-    - `bun run check` passing is the completion condition for this task
-    - _Requirements: 5.1, 5.3, 3.3_
-
-  - [ ] 9.2 Filter `Leisure_Entry` out of the Day_Gauge's inputs
+- [ ] 8. Day Gauge and Day Timeline
+  - [ ] 8.1 Filter `Leisure_Entry` out of the Day_Gauge's inputs
     - In `src/routes/+page.svelte` and `src/routes/day/[date]/+page.svelte`, filter
       `entries` to `category !== 'relax'` before passing them to `DayGauge`
     - `DayGauge.svelte` and `ProjectLegend.svelte` are not otherwise modified;
@@ -477,7 +521,7 @@ backend and full-stack boundaries.
       are not otherwise touched
     - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-  - [ ] 9.3 Extend `src/modules/day/components/timeline-geometry.ts`
+  - [ ] 8.2 Extend `src/modules/day/components/timeline-geometry.ts`
     - Add `LeisureBlockUnit` and `DayLayout.leisureBlocks` per the design's component
       8. `blocks` and `breaks` keep their existing inline shapes unchanged
     - **Change the early return**: `layOutDay` currently returns `{ blocks: [],
@@ -498,27 +542,44 @@ backend and full-stack boundaries.
       overlapping the displayed day, in chronological order
     - _Requirements: 8.1, 8.3, 8.5_
 
-  - [ ] 9.4 Create `src/modules/day/components/LeisureBlock.svelte`
+  - [ ] 8.3 Create `src/modules/day/components/LeisureBlock.svelte`
     - Mirror `SegmentBlock.svelte`'s self-contained pressable-block shape (title,
       times, description), tinted with `LEISURE_SLOT_CLASS` instead of a project
       colour
     - Call `onActivityActivate(entry.id)` on click/Enter/Space — the same callback
       `Segment_Block` already exposes — opening the `Activity_Dialog` with `category`
-      pre-set to `relax` (task 10.1 seeds this from `entry.category`)
+      pre-set to `relax` (task 9.1 seeds this from `entry.category`)
     - _Requirements: 8.2, 8.4_
 
-  - [ ] 9.5 Update `src/modules/day/components/DayTimeline.svelte`
+  - [ ] 8.4 Update `src/modules/day/components/DayTimeline.svelte`
     - Merge `layout.blocks`, `layout.breaks` and `layout.leisureBlocks` into one
       chronological render list by each unit's start instant, replacing today's single
       iteration over `blocks` with a break looked up by block index
     - The component currently does not call `layOutDay` at all when there are no
       sessions, rendering its empty state instead — that condition becomes "no blocks
-      **and** no leisure blocks" to match task 9.3
+      **and** no leisure blocks" to match task 8.2
     - Keep keyboard focus order chronological across `Work_Block` and `Leisure_Block`
       units alike
-    - _Requirements: 8.1, 8.5, 8.6_
+    - Match `.design/artboards/DayCategories.dc.html`: a `Leisure_Block` carries no
+      session rail, sits between `Work_Block` groups chronologically, and names its
+      category in text beside the title
+    - `src/modules/day/components/SegmentBlock.svelte` gains the same text category
+      tag beside the `Project` name (`placeno`/`neplaceno`), which the artboard draws
+      on every work block — without it a `Work_Entry`'s category rides on colour
+      alone
+    - _Requirements: 8.1, 8.5, 8.6, 8.7, 8.8_
 
-  - [ ]* 9.6 Write component and E2E tests for the timeline
+  - [ ] 8.5 Add the category figures to `DaySummaryPanels.svelte`
+    - The day page's summary column gains `paidSeconds`/`unpaidSeconds`/`relaxSeconds`
+      beside its existing worked/described/undescribed figures, with `relaxSeconds`
+      below a divider so it never reads as a share of the worked total
+    - The figures come from the page data's `totals`, already extended by tasks 1.5
+      and 4.6 — no new query
+    - `.design/artboards/DayCategories.dc.html` draws this as the `podle kategorie`
+      panel between the day summary and the day-shape panel
+    - _Requirements: 8.9_
+
+  - [ ]* 8.6 Write component and E2E tests for the timeline
     - `tests/modules/day/components/timeline-geometry.property.test.ts`: its existing
       budget property (total rendered height never exceeds the available height) must
       still hold with `Leisure_Block` units in the generated layouts
@@ -526,28 +587,17 @@ backend and full-stack boundaries.
       Property 2, re-verified with leisure units present
     - **Validates: Requirements 8.3**
 
-  - [ ]* 9.7 Write remaining timeline component tests
+  - [ ]* 8.7 Write remaining timeline component tests
     - `tests/modules/day/components/day-timeline.test.ts`: `layOutDay` places a
       `Leisure_Block` at its correct chronological position relative to surrounding
       blocks and breaks; a day with leisure and no `Work_Session` renders blocks
       rather than the empty state; height is floored at `MIN_BLOCK_PX`
-    - Adding a required `category` field breaks every existing `ActivityEntry` test
-      factory. Update each: `tests/modules/day/components/timeline-geometry.test.ts`
-      (the non-property variant, distinct from the one in task 9.6),
-      `change-preview.test.ts`, `activity-dialog.test.ts`, and
-      `tests/modules/timer/components/day-gauge.test.ts` together with its
-      `DayGaugeHost.svelte` fixture
-    - Match `.design/artboards/DayCategories.dc.html`: a `Leisure_Block` carries no
-      session rail, sits between `Work_Block` groups chronologically, and names its
-      category in text beside the title
-    - `src/modules/day/components/SegmentBlock.svelte` gains the same text category
-      tag beside the `Project` name (`placeno`/`neplaceno`), which the artboard draws
-      on every work block — without it a `Work_Entry`'s category rides on colour
-      alone and Requirement 8.7 fails
-    - _Requirements: 8.1, 8.3, 8.5, 8.6, 8.7, 8.8_
+    - A `Segment_Block` names its `Category` as text, and a `Leisure_Block` names
+      `relax`, so neither rides on colour alone
+    - _Requirements: 8.1, 8.5, 8.7_
 
-- [ ] 10. Activity Dialog — category control
-  - [ ] 10.1 Update `src/modules/day/components/ActivityDialog.svelte`
+- [ ] 9. Activity Dialog — category control
+  - [ ] 9.1 Update `src/modules/day/components/ActivityDialog.svelte`
     - Add `category: Category` to `ActivityFormValues`, rendered as a segmented
       control above the existing mode control, reusing its `role="radiogroup"` and
       arrow-key pattern
@@ -574,16 +624,22 @@ backend and full-stack boundaries.
     - Match `.design/artboards/AddTaskCategories.dc.html`: the category control sits
       above the mode control, reuses its segmented shape, and the project field's
       label names the active filter
-    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.8, 10.9_
+    - Pass the selected category down to `ProjectPicker.svelte` so its inline
+      `handleCreate` can post `billable` alongside `name`. It posts `{ name }` only
+      today, and `createProjectSchema` defaults `billable` to `true`, so a `Project`
+      created while `unpaid` is selected is born `Billable` and is filtered straight
+      back out of `filteredProjects` — it vanishes from the list it was created for
+      (Requirement 10.10). `relax` never reaches this path; the picker is hidden
+    - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.8, 10.9, 10.10_
 
-  - [ ] 10.2 Extend the `recentEntry` prop with its category
+  - [ ] 9.2 Extend the `recentEntry` prop with its category
     - `recentEntry` carries only `{ projectId, description }` today, so the dialog
       cannot derive a default category from it — and looking the project up in
       `projects` fails when it is archived and absent from that list. Add the resolved
-      `category`, supplied by task 4.8's `mostRecentWorkEntry` resolution
+      `category`, supplied by task 5.8's `mostRecentWorkEntry` resolution
     - _Requirements: 10.7_
 
-  - [ ]* 10.3 Write component tests
+  - [ ]* 9.3 Write component tests
     - Selecting each category filters or hides the `Project_Picker`; switching
       category clears an incompatible selection; editing a `Leisure_Entry` opens with
       `category: 'relax'` and no project field; a relax draft produces a
@@ -591,24 +647,24 @@ backend and full-stack boundaries.
       submission for a relax draft posts no `projectId` field at all
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.8_
 
-- [ ] 11. Projects page — Billable toggle
-  - [ ] 11.1 Update `src/modules/projects/components/ProjectRow.svelte`
+- [ ] 10. Projects page — Billable toggle
+  - [ ] 10.1 Update `src/modules/projects/components/ProjectRow.svelte`
     - Add a two-way control posting to the `?/billable` and `?/unbillable` actions of
-      task 5.2, following the existing archive-toggle hidden-`use:enhance`-form pattern
+      task 6.2, following the existing archive-toggle hidden-`use:enhance`-form pattern
     - Add a plain text label naming the current state beside it (never colour alone)
     - _Requirements: 9.1, 9.3_
 
-  - [ ] 11.2 Update `src/modules/projects/pages/ProjectsPage.svelte`
+  - [ ] 10.2 Update `src/modules/projects/pages/ProjectsPage.svelte`
     - Add the same two-way control to the creation form, defaulting to paid
     - _Requirements: 9.2_
 
-  - [ ]* 11.3 Write component tests
+  - [ ]* 10.3 Write component tests
     - Toggling posts to the expected action; the label reflects the current state;
       creation defaults to paid
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 12. Statistics — category breakdown
-  - [ ] 12.1 Update `src/modules/stats/aggregate.ts`
+- [ ] 11. Statistics — category breakdown
+  - [ ] 11.1 Update `src/modules/stats/aggregate.ts`
     - `ProjectRangeTotal` gains `billable: boolean` — `ProjectBreakdown` consumes this
       type, not the server's `ProjectTotal`, so the flag must be threaded into it
     - `foldProjectTotals` groups by `billable` **first** and applies
@@ -623,7 +679,7 @@ backend and full-stack boundaries.
       `{ paid, unpaid }` return shape
     - _Requirements: 11.1, 11.2_
 
-  - [ ] 12.2 Update `src/modules/stats/components/ProjectBreakdown.svelte`
+  - [ ] 11.2 Update `src/modules/stats/components/ProjectBreakdown.svelte`
     - Render the two groups under a paid and an unpaid heading, each sorted descending
       exactly as today, each with its own "Other" row
     - Add the range's total `Leisure_Time` beneath both, separated from them and never
@@ -631,25 +687,25 @@ backend and full-stack boundaries.
     - Present the split as text as well as colour
     - _Requirements: 11.2, 11.3, 11.5_
 
-  - [ ] 12.3 Update `src/modules/stats/components/KpiRow.svelte`
+  - [ ] 11.3 Update `src/modules/stats/components/KpiRow.svelte`
     - Add `paidSeconds`/`unpaidSeconds`/`relaxSeconds` as individually visible
       figures, whether as additional entries or folded into the existing four
     - _Requirements: 11.1, 11.5_
 
-  - [ ] 12.4 Update `DayRhythm.svelte` and `rhythm-geometry.ts`
+  - [ ] 11.4 Update `DayRhythm.svelte` and `rhythm-geometry.ts`
     - Draw the day response's new `leisure: Interval[]` list in `LEISURE_SLOT_CLASS`,
       positioned exactly as the existing covered/uncovered draws are
     - _Requirements: 11.4_
 
-  - [ ]* 12.5 Write component tests
+  - [ ]* 11.5 Write component tests
     - `tests/modules/stats/components/stats.test.ts` passes `projectBreakdown` as a
-      flat array today and must move to the two-group shape of task 12.1
+      flat array today and must move to the two-group shape of task 11.1
     - `ProjectBreakdown` groups correctly, folds top-N within each group, and shows
       the leisure total; `KpiRow` shows all three new figures as text; `DayRhythm`
       draws a leisure interval in the correct slot and position
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-  - [ ] 12.6 Include the `leisure` interval array in the two range readers
+  - [ ] 11.6 Include the `leisure` interval array in the two range readers
     - `src/routes/api/days/+server.ts` and `src/routes/stats/+page.server.ts` both
       destructure `dayIntervals`'s arrays **by name** (`const { tracked, covered,
       uncovered } = ...`) and assign them per day. Add `leisure` in both, or
@@ -658,8 +714,8 @@ backend and full-stack boundaries.
       the rhythm strip has no leisure on it
     - _Requirements: 6.4, 11.4_
 
-- [ ] 13. Documentation and end-to-end coverage
-  - [ ] 13.1 Update `DOCS.md`
+- [ ] 12. Documentation and end-to-end coverage
+  - [ ] 12.1 Update `DOCS.md`
     - The API section documents `POST /api/projects` and every activity example with a
       mandatory `projectId` — update them for the optional/nullable field, the new
       `billable` field, the three new day figures and the `leisure` interval list
@@ -673,7 +729,7 @@ backend and full-stack boundaries.
       `pj-relax` class — update both
     - _Requirements: 3.12, 6.2, 6.3, 6.4, 8.1_
 
-  - [ ]* 13.2 Extend the E2E suite
+  - [ ]* 12.2 Extend the E2E suite
     - `tests/e2e/fixtures.ts`'s `createActivity(page, projectId, …)` helper requires a
       `projectId` — give it a leisure-capable variant **first**; every scenario below
       depends on it
@@ -689,7 +745,7 @@ backend and full-stack boundaries.
       `Leisure_Block` now in the tab order
     - _Requirements: 3.11, 7.1, 8.1, 8.5, 8.6, 9.1_
 
-- [ ] 14. Checkpoint — full stack and E2E
+- [ ] 13. Checkpoint — full stack and E2E
   - Run `bun run test:all`; manually verify in a browser: creating a leisure entry
     with the timer never started that day, converting it to a paid `Work_Entry` and
     back, adding a session across a logged leisure interval and confirming the leisure
@@ -719,8 +775,8 @@ backend and full-stack boundaries.
         "2.2",
         "2.3",
         "2.6",
-        "7.1",
-        "8.1"
+        "4.1",
+        "4.4"
       ]
     },
     {
@@ -730,79 +786,82 @@ backend and full-stack boundaries.
         "2.5",
         "2.7",
         "2.8",
-        "8.2",
-        "2.9"
+        "2.9",
+        "4.2",
+        "4.3",
+        "4.5",
+        "4.6",
+        "4.7"
       ]
     },
     {
       "id": 3,
       "tasks": [
-        "4.1",
-        "8.3"
+        "5.1",
+        "5.7",
+        "5.8"
       ]
     },
     {
       "id": 4,
       "tasks": [
-        "4.2",
-        "4.3",
-        "4.4",
-        "4.5",
-        "4.7"
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5",
+        "5.9",
+        "6.2"
       ]
     },
     {
       "id": 5,
       "tasks": [
-        "4.6",
-        "4.8",
-        "4.9",
-        "5.1",
-        "5.2"
+        "5.6",
+        "5.10",
+        "5.11",
+        "5.12",
+        "6.1"
       ]
     },
     {
       "id": 6,
       "tasks": [
-        "4.10",
-        "4.11",
-        "4.12",
+        "8.1",
+        "8.2",
+        "8.5",
         "9.1",
-        "9.2",
-        "9.3"
+        "10.1",
+        "10.2",
+        "11.1",
+        "11.6"
       ]
     },
     {
       "id": 7,
       "tasks": [
-        "9.4",
-        "10.1",
-        "11.1",
+        "8.3",
+        "8.6",
+        "9.2",
+        "10.3",
         "11.2",
-        "12.1",
-        "12.6"
+        "11.3",
+        "11.4"
       ]
     },
     {
       "id": 8,
       "tasks": [
-        "9.5",
-        "10.2",
-        "11.3",
-        "12.2",
-        "12.3",
-        "12.4"
+        "8.4",
+        "9.3",
+        "11.5"
       ]
     },
     {
       "id": 9,
       "tasks": [
-        "9.6",
-        "9.7",
-        "10.3",
-        "12.5",
-        "13.1",
-        "13.2"
+        "8.7",
+        "12.1",
+        "12.2"
       ]
     }
   ]
@@ -811,11 +870,25 @@ backend and full-stack boundaries.
 
 ## Notes
 
-- Tasks marked with `*` are optional and can be skipped for a faster path to a
-  working feature, exactly as `001-worklog-domain-api`/`002-worklog-ui` use the marker
-  — skipping them means shipping without the property/E2E safety net, not without the
-  feature itself. Task 2.8 is the one exception worth reconsidering before skipping:
-  it is the only automated guard on the data-loss regression task 2.3 fixes.
+- Tasks marked with `*` are optional and can be skipped for a faster path to a working
+  feature, exactly as `001-worklog-domain-api`/`002-worklog-ui` use the marker —
+  skipping them means shipping without the property/E2E safety net, not without the
+  feature itself. Every `*` task in this plan is genuinely test-only; task 4.7 repairs
+  *existing* fixtures that stop compiling and is therefore **not** optional, and no
+  implementation bullet lives inside a `*` task. Task 2.8 is the one worth
+  reconsidering before skipping: it is the only automated guard on the data-loss
+  regression task 2.3 fixes.
+- **Why the nullable-consumer sweep (section 4) sits before the service layer.**
+  Task 1.3 makes `projectName`/`colorIndex` nullable and `category`/`billable`
+  required in wave 0, which immediately breaks a dozen consumers and every fixture
+  that builds an `ActivityEntry` or a `Project`. `bun run check` runs `svelte-check`
+  over `src/**` *and* `tests/**`, so those breaks are checkpoint-visible. Section 4
+  therefore lands the palette slot and the message keys the narrowing needs, then the
+  narrowing itself, the three `totals` literals and the fixture repairs — before
+  anything else. Each checkpoint's commands pass at its own position as a result:
+  checkpoint 3 runs tests only (the tree does not typecheck yet, by design),
+  checkpoint 7 runs `check` and `test` once section 4 has restored it, and
+  checkpoint 13 runs `test:all`.
 - `bun run test` always runs through `scripts/run-vitest.sh`; `dev`/`build`/`preview`
   always run through `scripts/run-vite.sh` — see `DOCS.md`'s Troubleshooting section,
   unchanged by this specification.
@@ -832,11 +905,11 @@ backend and full-stack boundaries.
 - Task 2.3 fixes a silent data-loss path, not a cosmetic one: without its filter, any
   `Work_Session` written near a logged leisure interval deletes part of that interval.
   It has no visible symptom until a user notices missing history.
-- Task 4.1's `effectiveProjectId` normalization is a prerequisite for tasks 4.2–4.5,
+- Task 5.1's `effectiveProjectId` normalization is a prerequisite for tasks 5.2–5.5,
   not a style preference: `undefined` and `null` mean different things on the two
   write paths, and branching on `args.projectId !== undefined` routes every
   convert-to-leisure PATCH into the `Work_Entry` regime.
-- `LEISURE_SLOT`'s two hex values (task 8.1) and the category control's appearance are
+- `LEISURE_SLOT`'s two hex values (task 4.1) and the category control's appearance are
   both **decided**, not open. The colour is argued from measurement in the design's
   component 9 — low chroma is the encoding, not a stand-in for a hue nobody picked
   yet. The category control is the project's existing three-way segmented control,
@@ -847,10 +920,11 @@ backend and full-stack boundaries.
   `.design/artboards/{TimerCategories,DayCategories,AddTaskCategories}.dc.html` — are
   drawn, rendered and binding (Requirements 7.4, 8.8, 10.9); `DayCategories` also
   settles how a block names its category, with a text tag on work blocks and leisure
-  blocks alike. What is still undrawn is the light-theme and mobile variant of those
-  three screens, and the `Billable` toggle's exact placement in a project row — raise
-  those rather than inventing them.
-- Task 4.4's category-transition re-clip is the one genuinely new piece of
+  blocks alike, and draws the day page's own category panel (Requirement 8.9). What is
+  still undrawn is the light-theme and mobile variant of those three screens, and the
+  `Billable` toggle's exact placement in a project row — raise those rather than
+  inventing them.
+- Task 5.4's category-transition re-clip is the one genuinely new piece of
   reconciliation *logic* in this specification — everything else is a new field, a new
   query filter, or a new value fed into existing, unmodified functions. Give it the
-  most scrutiny and the most test coverage (tasks 4.6 and 4.10).
+  most scrutiny and the most test coverage (tasks 5.6 and 5.10).

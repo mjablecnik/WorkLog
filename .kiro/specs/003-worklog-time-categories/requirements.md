@@ -69,7 +69,7 @@ here unchanged, in particular **Worklog_Server**, **Worklog_UI**, **Work_Session
 **Orphaned_Entry**, **Clipping**, **Explicit_Mode**, **Duration_Mode**, **Open_Mode**,
 **Placement_Anchor**, **Target_Day**, **Untracked_Policy**, **Project**, **Logical_Day**,
 **Dry_Run**, **Preview_Token**, **Day_Gauge**, **Overtime_Arc**, **Project_Legend**,
-**Day_Timeline**, **Work_Block**, **Segment_Block**, **Break_Marker**, **MIN_BLOCK_PX**,
+**Day_Timeline**, **Work_Block**, **Segment_Block**, **MIN_BLOCK_PX**,
 **Activity_Dialog**, **Change_Preview**, **Project_Picker**, **Quick_Log**, **KPI_Row**,
 **Day_Rhythm_Strip**, **Palette_Slot**, **Design_Contract** — which this specification
 extends with the three artboards named in the Introduction.
@@ -271,6 +271,10 @@ mistake does not have to be deleted and retyped.
     Worklog_Server SHALL reject the request with HTTP 400 and error code
     `VALIDATION_ERROR`, so a null `projectId` remains the one JSON encoding of the
     conversion and a caller can never have the field silently accepted and dropped
+11. IF that dedicated boolean field is supplied together with a `projectId` in the same
+    form action, THEN THE Worklog_Server SHALL reject the request with HTTP 400 and
+    error code `VALIDATION_ERROR`, because the two name contradictory outcomes and
+    silently preferring either one would discard an instruction the caller gave
 
 ### Requirement 5: Category-Derived Wire Shape
 
@@ -389,6 +393,10 @@ without switching views.
    terms Requirement 14.16 of `002-worklog-ui` sets for every other screen — comparing
    arrangement and relative proportion rather than exact pixel heights, and excepting
    copy and example data
+9. THE day page SHALL present the `paidSeconds`, `unpaidSeconds` and `relaxSeconds`
+   figures in its day-summary column beside the existing worked/described/undescribed
+   figures, with `relaxSeconds` visually separated from the other two, because leisure
+   is not part of the worked total and must not read as a share of it
 
 ### Requirement 9: Project Management — Billable Toggle
 
@@ -441,6 +449,10 @@ actually about to log.
    either way
 9. THE Activity_Dialog SHALL match `.design/artboards/AddTaskCategories.dc.html` in the
    placement and shape of the category control, on the same terms as Requirement 8.8
+10. WHEN a `Project` is created inline from the `Project_Picker` while the
+    `Activity_Dialog` is open, THE Worklog_UI SHALL set that project's `Billable` from
+    the category currently selected, so a project created under `unpaid` is not born
+    `Billable` and immediately filtered out of the very list it was created for
 
 ### Requirement 11: Statistics — Category Breakdown
 
