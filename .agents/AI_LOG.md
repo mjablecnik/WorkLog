@@ -1,5 +1,40 @@
 # AI Log
 
+## 2026-08-26 15:10 Prague — 2026-08-26-0758
+
+Spec `003-worklog-time-categories` — billable projects and leisure time — implemented,
+built, catalogued, verified and documented. All six phases closed; none failed.
+
+- All 70 `tasks.md` boxes implemented and checked, none silently ticked. 35 commits,
+  85 files, +6340/-459 (`c08c73b..23ec36f`). `Project.billable` and `Leisure_Entry` (an
+  entry with no project, reconciled against the `Unrestricted_Window` instead of
+  `Tracked_Time`) run end to end: migration, store, service, form actions, REST routes,
+  timer, day timeline, activity dialog, projects page and statistics.
+- One severe bug found only by driving a real browser: converting an existing
+  `Work_Entry` to a `Leisure_Entry` through the actual dialog silently failed every
+  time. `sveltekit-superforms` fills a `FormData`-absent nullable field with `null`,
+  not `undefined`, so the "was `projectId` submitted?" check in
+  `activity-form-actions.ts` was always true and every `clearProject=true` submission
+  was rejected as contradictory. Fixed with `formData.has('projectId')`.
+- Two smaller fixes: the category-crossing patch path returned a hardcoded empty
+  `discarded` list; two of this spec's own new E2E fixtures collided on `2024-01-21`.
+- 90 use cases written (UC-509…UC-598, `USE_CASES.md` Part III) covering all 82
+  acceptance criteria and Properties 1-7, then all 90 executed against a real Postgres
+  and a real built instance. 88 pass; the two deliberately written as expected failures
+  (`DayRhythm` missing `fill`, the `gaps`/`preview` date collision) failed as predicted.
+- Two pre-existing `002-worklog-ui` accessibility defects newly surfaced by a broader
+  axe sweep and logged rather than fixed: `ProjectPicker`'s `aria-activedescendant`
+  pointing at an element absent from the DOM (HIGH), and a shared rust-orange token
+  marginally under AA at 390px light and on an active segmented-control tab (MEDIUM).
+- Three spec ambiguities need the user's decision, all logged LOW and none guessed:
+  requirements 3.2 vs 3.3 on a partial leisure overlap, requirement 10.7's undefined
+  default category on a `Work_Entry`-less day, and the three new screens having no
+  light or mobile artboards.
+- Two lessons recorded in `MEMORY.md`: no `psql` on this sandbox's PATH (use
+  `docker exec worklog-pg psql`), and check a database name against `.env` before
+  dropping it — `verify` dropped the standing `worklog_test`, which `docs` restored.
+- Closing summary: `.agents/runs/2026-08-26-0758/00-summary.md`.
+
 ## 2026-08-24 23:30 Prague — 2026-08-24-0659
 
 Spec `002-worklog-ui` — the Worklog browser interface — implemented, built, catalogued,
