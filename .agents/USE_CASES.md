@@ -5,7 +5,7 @@ the walkthrough in `.agents/tmp/VERIFY_TASKS.md` and every later run refer to th
 New cases are appended at the end; an obsolete case is marked `OBSOLETE` in place and
 never renumbered away.
 
-The file is in **two parts**, one per specification:
+The file is in **three parts**, one per specification:
 
 - **Part I — UC-001 … UC-236** covers the `Worklog_Server` (spec
   `.kiro/specs/001-worklog-domain-api/`): the domain, the data layer and the REST API.
@@ -15,11 +15,22 @@ The file is in **two parts**, one per specification:
   `.kiro/specs/002-worklog-ui/`): the browser interface, driven through a real browser.
   It begins after Part I's requirement-coverage table and carries its own conventions
   and fixtures.
+- **Part III — UC-509 … UC-598** covers **time categories** (spec
+  `.kiro/specs/003-worklog-time-categories/`): `Project.billable`, the `Leisure_Entry`
+  and the derived paid/unpaid/relax `Category`, across both layers. It carries its own
+  conventions and fixtures and states a `Method:` on every case, because unlike the
+  first two parts it spans the API and the interface together.
 
 Part I was written when no browser interface existed, so its cases drive the API
-directly. That remains correct and they are not superseded: the two parts test two
-layers of the same server, and a Part II case failing while its Part I counterpart
-passes localises the defect to the interface.
+directly. That remains correct and they are not superseded: the parts test the same
+server at different layers, and a Part II or Part III browser case failing while its API
+counterpart passes localises the defect to the interface.
+
+Part III **narrows** two terms Parts I and II use. `Covered_Time` is the union of every
+`Work_Entry` `Activity_Segment` only, and `001-worklog-domain-api`'s Property 22 is
+amended to speak of `Work_Entry` segments alone. Both narrowings are stated where Part
+III begins; before spec `003` the two readings described the same set, because every
+`Activity_Entry` then had a `Project`.
 
 ## Conventions — Part I
 
@@ -6296,3 +6307,1421 @@ P1 UC-452 · P2 UC-277, UC-293, UC-296 · P3 UC-453
 **Not a criterion, verified anyway**
 UC-503 (long project name) · UC-504 (rate limiting) · UC-505 (no JavaScript) ·
 UC-506 (two tabs) · UC-507 (DST days) · UC-508 (the E2E suite off this machine)
+
+---
+
+# Part III — Use Cases for Time Categories (spec `003-worklog-time-categories`)
+
+Everything that must be true for **paid / unpaid / leisure** to count as working. Parts
+I and II stay valid and are not superseded: this part adds what `003` introduces on top
+of them — `Project.billable`, the `Leisure_Entry` (an `Activity_Entry` with no
+`Project`), the `Unrestricted_Window` it reconciles against, the derived `Category` on
+the wire, the three new day figures, and every screen that draws them.
+
+Numbering continues from Part II and is equally **stable**: UC-509 onwards. The
+walkthrough in `.agents/tmp/VERIFY_TASKS.md` refers to these numbers.
+
+Two of `003`'s glossary terms **narrow** terms Part I already uses, and the cases below
+mean the narrowed sense throughout: `Covered_Time` is the union of every **`Work_Entry`**
+`Activity_Segment` (a `Leisure_Entry` segment is not `Covered_Time`), and `Uncovered_Time`
+is `Tracked_Time` minus that. `001-worklog-domain-api`'s Property 22 is amended by
+`003`'s Property 3 in the same way: every stored `Activity_Segment` **of a `Work_Entry`**
+lies within `Tracked_Time`. A `Leisure_Entry`'s segments are by design not a subset of it.
+
+## Conventions for Part III
+
+- Part I's conventions govern every case marked `Method: API` — `$BASE`, `$TOKEN`, the
+  `Authorization: Bearer $TOKEN` header on every request, `ENV-DEFAULT`, Prague wall
+  clock with an explicit offset in requests and RFC 3339 UTC in responses.
+- Part II's conventions govern every other case — `$APP`, a real browser, logged in at
+  `$APP/login`, `VP-DESKTOP` / `VP-MOBILE` / `VP-NARROW`, `dark` theme and `cs` locale
+  unless the case names otherwise, and the three non-browser methods `inspection`,
+  `artboard` and `screen reader`.
+- `Method:` is stated on **every** case in this part, because it mixes the two layers:
+  `API` (curl or equivalent against `$BASE`), `browser`, `inspection`, `artboard`,
+  `migration` (needs a database at a stated schema version, migrated forward with
+  `./scripts/migrate.sh`).
+- `Requirement:` cites `.kiro/specs/003-worklog-time-categories/requirements.md` as
+  `<requirement>.<criterion>`. `design Property N` cites **that** spec's Correctness
+  Properties (1–7), never `001`'s or `002`'s — where a `001`/`002` property is meant it
+  is written out (`001 Property 22`, `002 Property 2`).
+- `D` = **2026-08-20** as in Part I. `L` = **2026-08-13**, a plain CEST Thursday in the
+  past that **no other fixture in this file claims** — it is the leisure-only day, and it
+  is a distinct date precisely so a leisure fixture can be seeded alongside Part I's
+  without a `SESSION_OVERLAP`. `TODAY` is the current `Logical_Day` as Part II defines it.
+- The three category values are the literal strings `paid`, `unpaid` and `relax`
+  everywhere they appear — on the wire, in the segmented control's values, and in the
+  `pj-relax` palette class. Their user-facing Czech and English labels are a separate
+  matter and are checked by UC-591 and UC-592.
+- A case's `Expected` is the **specified** behaviour. Where the current implementation is
+  known to deviate, the case says so and names the `ISSUES.md` entry — the case still
+  fails until the code matches, which is the point.
+
+## Fixtures for Part III
+
+Built on Part I's and Part II's. Every one starts from `FIX-CLEAN` and is seeded
+**through the API** with the bearer token (or by the E2E `resetDb`/`createActivityViaApi`
+helpers), never by clicking through the interface.
+
+- **FIX-CAT-PROJECTS** — `FIX-CLEAN`, then `POST /api/projects` `Alpha` with **no**
+  `billable` field, then `Beta` with `{"billable": false}`, then `Gamma` with no
+  `billable`; `Gamma` is then archived with `PATCH {"archived": true}`. Expected colour
+  indices 0, 1, 2. So: **Alpha paid, Beta unpaid, Gamma paid and archived**. This is
+  Part I's `FIX-PROJECTS` with the billable dimension added, and it is deliberately not
+  all-paid — a fixture where every project is billable cannot tell `paid` from
+  "category not implemented".
+- **FIX-CAT-FRAME** — `FIX-CAT-PROJECTS` plus Part I's `FIX-FRAME` sessions on `D`:
+  S1 `2026-08-20T08:00+02:00 → 14:48+02:00`, S2 `15:12+02:00 → 18:00+02:00`.
+  `Tracked_Time` of `D` = 34 560 s; the break is 14:48–15:12.
+- **FIX-CAT-MIXED** — `FIX-CAT-FRAME` plus three `Explicit_Mode` entries on `D`:
+  Alpha `09:00 → 11:00` (`paid`, 7 200 s), Beta `16:00 → 17:00` (`unpaid`, 3 600 s), and
+  one **`Leisure_Entry`** `19:00 → 20:30` (`relax`, 5 400 s), all `+02:00`. The leisure
+  interval lies **wholly outside** `Tracked_Time`, which is the whole point of it.
+  Expected day figures: `trackedSeconds` 34 560, `coveredSeconds` 10 800,
+  `paidSeconds` 7 200, `unpaidSeconds` 3 600, `uncoveredSeconds` 23 760,
+  `relaxSeconds` 5 400. One day, all three categories, and every arithmetic identity
+  this specification claims is checkable against it.
+- **FIX-CAT-LEISUREONLY** — `FIX-CAT-PROJECTS` plus one `Leisure_Entry` `Explicit_Mode`
+  on `L` = 2026-08-13, `10:00+02:00 → 12:00+02:00`, description `procházka`, with **no
+  `Work_Session` anywhere on `L`**. The headline case of the whole specification.
+- **FIX-CAT-NINE** — Part II's `FIX-UI-NINE` (nine projects, so `colorIndex` 8 wraps to
+  `Palette_Slot` 0) plus one `Leisure_Entry` on `L`. The fixture that can tell a
+  reserved ninth slot from a wraparound.
+- **FIX-CAT-LEGACY** — a database at the **`001`/`002` schema**: `migrations/001_*.sql`
+  applied and `migrations/002_leisure_time_categories.sql` **not**, holding two projects
+  and one `Activity_Entry` created against that schema, then migrated forward with
+  `./scripts/migrate.sh`. The only fixture that can observe the backfill.
+- **FIX-CAT-UI-DAY** — `FIX-CAT-PROJECTS` plus, on `TODAY`: two closed sessions
+  `08:00 → 12:30` and `13:15 → 17:00`; an Alpha `Explicit_Mode` entry `08:00 → 10:15`
+  (`paid`, "Oprava filtrů ve flotile"); a Beta `Explicit_Mode` entry `13:15 → 14:00`
+  (`unpaid`, "Účetnictví"); and one `Leisure_Entry` `Explicit_Mode` `18:00 → 19:30`
+  (`relax`, "Běh v parku") outside every session. Part II's `FIX-UI-DAY` with all three
+  categories present. The everyday categorised day.
+- **FIX-CAT-UI-LEISURE** — `FIX-CAT-PROJECTS` plus, on `TODAY`, two `Leisure_Entry`
+  records `Explicit_Mode` `09:00 → 10:30` ("Procházka") and `14:00 → 16:00` ("Čtení"),
+  and **no `Work_Session` at all**. `FIX-CAT-LEISUREONLY` moved onto `TODAY` so the day
+  page, the timer page and the gauge all have the no-timer day to draw.
+- **FIX-CAT-UI-FOLD** — `FIX-CLEAN` plus **nine billable** projects and **nine
+  non-billable** projects, one closed session per day across a seven-day range ending on
+  `TODAY`, and at least one `Work_Entry` on each of the eighteen projects plus one
+  `Leisure_Entry` somewhere in the range. Eighteen is chosen against
+  `TOP_PROJECT_COUNT = 7`: each group folds independently, so each shows seven rows plus
+  its own combined row. Seeded by script — eighteen projects is not a hand-written
+  fixture.
+- **FIX-CAT-UI-MANY** — `FIX-CAT-UI-DAY` plus fifty further `Work_Entry` records of about
+  nine minutes each inside the two sessions, so every `Segment_Block` **and** the
+  `Leisure_Block` are pushed to the `MIN_BLOCK_PX` floor (36 desktop, 26 mobile) and the
+  page scrolls. Part II's `FIX-UI-MANY` with a leisure unit in the budget.
+
+---
+## UC-509 — A project created without `billable` is paid
+- Area: projects, category
+- Requirement: 1.1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CLEAN
+- Steps: `POST $BASE/api/projects` with `{"name": "Alpha"}` — no `billable` field — then
+  `GET $BASE/api/projects`
+- Expected: 201, and the created `Project` carries `billable: true`. The listing reports
+  the same. `createProjectSchema` declares `billable: z.boolean().default(true)`, so the
+  default is applied at the contract, not left to the database
+
+## UC-510 — A project can be created unpaid
+- Area: projects, category
+- Requirement: 1.2
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CLEAN
+- Steps: `POST $BASE/api/projects` with `{"name": "Beta", "billable": false}`
+- Expected: 201 with `billable: false`. A subsequent `GET /api/projects` reports
+  `billable: false` on that row and nothing else about it differs from a paid project
+
+## UC-511 — `billable` can be changed on an existing project
+- Area: projects, category
+- Requirement: 1.3
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS
+- Steps: `PATCH $BASE/api/projects/{Alpha}` with `{"billable": false}`; then
+  `PATCH` it back with `{"billable": true}`
+- Expected: HTTP 200 on both, each returning the updated `Project` with the new value.
+  No other field of the project changes — name, `colorIndex` and `archived` are as they
+  were
+
+## UC-512 — Renaming, archiving, unarchiving and recolouring leave `billable` alone
+- Area: projects, category
+- Requirement: 1.4
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS
+- Steps: on `Beta` (which is `billable: false`), issue four separate `PATCH` requests in
+  turn: `{"name": "Beta II"}`, `{"archived": true}`, `{"archived": false}`,
+  `{"colorIndex": 5}`
+- Expected: each returns 200 and `billable` is still `false` afterwards. Repeat the same
+  four on `Alpha` (`billable: true`) and it is still `true`. `billable` is only ever
+  changed by a request that names it
+
+## UC-513 — An entry's category is derived from its project's `billable`
+- Area: activities, category
+- Requirement: 1.5, 5.2
+- design Property 1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `GET $BASE/api/activities?from=2026-08-20&to=2026-08-20`
+- Expected: the Alpha entry reports `category: "paid"` (Alpha is `billable: true`), the
+  Beta entry reports `category: "unpaid"` (Beta is `billable: false`), and the
+  `Leisure_Entry` reports `category: "relax"`. No entry stores a category — the value is
+  computed per read from `projectId` and the project's `billable`
+
+## UC-514 — Flipping a project's `billable` reclassifies every entry already logged against it
+- Area: projects, activities, category
+- Requirement: 1.6
+- design Property 1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read the Alpha entry and note `category: "paid"`; `PATCH
+  $BASE/api/projects/{Alpha}` with `{"billable": false}`; read the same entry again
+  **without touching it**; then read `GET $BASE/api/days/2026-08-20`
+- Expected: the entry now reports `category: "unpaid"`, with no write to the entry at
+  all and `updatedAt` unchanged. The day's `paidSeconds` drops by 7 200 and
+  `unpaidSeconds` rises by the same 7 200; `coveredSeconds` is unchanged. This is the
+  observable difference between a derived category and a stored one
+
+## UC-515 — The migration backfills `billable` on every project that predates the specification
+- Area: schema, migration
+- Requirement: 1.7
+- Method: migration
+- Preconditions: a database at the `001`/`002` schema — `migrations/002_leisure_time_categories.sql` **not** applied
+- Data needed: FIX-CAT-LEGACY
+- Steps: confirm `projects` has no `billable` column and `activity_entries.project_id`
+  is `NOT NULL`; run `./scripts/migrate.sh` (never raw SQL — `infra-project-structure`'s
+  rule and this project's own); then `GET $BASE/api/projects` and inspect the columns
+- Expected: the migration applies cleanly against data. Every pre-existing project
+  reports `billable: true`, which is what `ADD COLUMN billable boolean NOT NULL DEFAULT
+  true` gives without a separate `UPDATE`. `activity_entries.project_id` is now
+  nullable, and the pre-existing entry still names its project and reports
+  `category: "paid"`. No row is lost and no `Activity_Segment` moves
+
+## UC-516 — An activity created with no `projectId` is a Leisure_Entry
+- Area: activities, leisure
+- Requirement: 2.1, 2.3
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with `{"date": "2026-08-20", "startedAt":
+  "2026-08-20T19:00+02:00", "endedAt": "2026-08-20T20:30+02:00", "description":
+  "procházka"}` — no `projectId` key at all
+- Expected: 201. The entry reports `projectId: null`, `projectName: null`,
+  `colorIndex: null`, `category: "relax"`, and one `Activity_Segment` of the full
+  5 400 s, even though 19:00–20:30 lies entirely outside `Tracked_Time`. The
+  mode-selection rule is the one a `Work_Entry` uses: `startedAt` + `endedAt` selects
+  `Explicit_Mode`
+
+## UC-517 — Leisure works in Duration_Mode
+- Area: activities, leisure
+- Requirement: 2.1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with `{"date": "2026-08-20", "durationMinutes": 45,
+  "description": "oběd"}` and no `projectId`
+- Expected: 201, `category: "relax"`, and 2 700 s of segment placed from the
+  `Placement_Anchor` forward. `durationMinutes` alone selects `Duration_Mode` exactly as
+  it does for a `Work_Entry`
+
+## UC-518 — Leisure works in Open_Mode
+- Area: activities, leisure
+- Requirement: 2.1
+- Method: API
+- Preconditions: server running; the day has a `Work_Session` (see UC-535 for the day that has none)
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with `{"date": "2026-08-20"}` only — no
+  `projectId`, no interval, no duration
+- Expected: 201 and `category: "relax"`. `Open_Mode` runs from the `Placement_Anchor` to
+  the end of the day's last `Work_Session` (18:00), so the entry lands on whatever of
+  that stretch is not already claimed. The mode is selected by exactly the same rule as
+  for a `Work_Entry`
+
+## UC-519 — A `projectId` still creates a Work_Entry
+- Area: activities, leisure
+- Requirement: 2.2
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with `projectId` naming `Alpha` and an
+  `Explicit_Mode` interval inside `Tracked_Time`
+- Expected: 201, `category: "paid"`, `projectName: "Alpha"`, `colorIndex: 0`, and
+  `Clipping` against real `Tracked_Time` exactly as before this specification. Nothing
+  about a `Work_Entry` changed
+
+## UC-520 — A Leisure_Entry may have an empty description
+- Area: activities, leisure
+- Requirement: 2.4
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with no `projectId`, an `Explicit_Mode` interval
+  outside `Tracked_Time`, and either `"description": ""` or no `description` key
+- Expected: 201 with `description: ""`. The same allowance a `Work_Entry` already has —
+  an empty description is not what makes an entry leisure
+
+## UC-521 — Leisure is bound by the same validation as work
+- Area: activities, leisure, validation
+- Requirement: 2.5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: four `POST $BASE/api/activities` requests, all with **no** `projectId`:
+  (a) a description of 2 001 characters; (b) an `endedAt` more than
+  `FUTURE_TOLERANCE_SECONDS` (300) beyond now; (c) `startedAt` + `endedAt` **and**
+  `durationMinutes` together; (d) `endedAt` before `startedAt`
+- Expected: (a) 400 `VALIDATION_ERROR`; (b) 400 `FUTURE_TIMESTAMP`; (c) 400
+  `AMBIGUOUS_MODE`; (d) 400 `INVALID_INTERVAL`. Byte for byte the responses a
+  `Work_Entry` gets for the same four mistakes — the `Unrestricted_Window` relaxes
+  reconciliation, not validation
+
+## UC-522 — A `projectId` naming no project is refused
+- Area: activities, validation
+- Requirement: 2.6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS
+- Steps: `POST $BASE/api/activities` with a well-formed but unused UUID as `projectId`
+- Expected: HTTP 400, `error: "VALIDATION_ERROR"`, with `details.fields.projectId`
+  naming the bad id. Not 404, and not silently treated as absent — an unresolvable
+  `projectId` must never fall through into creating a `Leisure_Entry`
+
+## UC-523 — A `projectId` naming an archived project is refused
+- Area: activities, validation
+- Requirement: 2.7
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS (`Gamma` is archived)
+- Steps: `POST $BASE/api/activities` with `projectId` naming `Gamma`
+- Expected: HTTP 400 with `error: "PROJECT_ARCHIVED"` and `details` carrying
+  `projectId` and `projectName`. Distinct from `VALIDATION_ERROR`, so the interface can
+  say which of the two went wrong
+
+## UC-524 — A leisure interval entirely outside Tracked_Time survives whole
+- Area: leisure, clipping
+- Requirement: 3.1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST $BASE/api/activities` with no `projectId` and `Explicit_Mode`
+  `2026-08-20T19:00+02:00 → 20:30+02:00` — a stretch with no `Work_Session` under any
+  part of it
+- Expected: 201 with one segment of exactly 19:00–20:30 (5 400 s), `discarded: []`, and
+  no `OUTSIDE_TRACKED_TIME` anywhere. A `Work_Entry` with the identical interval would
+  be refused or emptied; that difference is the `Unrestricted_Window`
+
+## UC-525 — A leisure interval overlapping another entry's segment is refused
+- Area: leisure, clipping, conflicts
+- Requirement: 3.2, 3.3
+- design Property 2
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: (a) `POST` a leisure entry `2026-08-20T10:00+02:00 → 10:30+02:00`, inside the
+  existing Alpha `Work_Entry`'s segment; (b) `POST` a second leisure entry
+  `2026-08-20T20:00+02:00 → 21:00+02:00`, overlapping the existing `Leisure_Entry`
+- Expected: both 409 `ACTIVITY_OVERLAP`. `details.conflictCount` is 1 and
+  `details.conflicts[0]` names the blocking entry — for (a) `projectName: "Alpha"` with
+  its `colorIndex`, for (b) `projectName: null` and `colorIndex: null`, because the
+  blocker is itself a `Leisure_Entry`. Leisure conflicts with work and with leisure by
+  the same rule: only one thing is ever logged as happening at a given instant
+
+## UC-526 — A leisure interval that merely abuts another segment is accepted
+- Area: leisure, clipping
+- Requirement: 3.2
+- design Property 2
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED (the `Leisure_Entry` ends at 20:30)
+- Steps: `POST` a leisure entry `2026-08-20T20:30+02:00 → 21:30+02:00`
+- Expected: 201, with a full 3 600 s segment. Touching at an instant is not overlapping;
+  the exclusion rule is half-open exactly as it is for every `Work_Entry`, and the
+  `activity_segments_no_overlap` constraint accepts the pair
+
+## UC-527 — A leisure sliver below the floor is discarded
+- Area: leisure, clipping
+- Requirement: 3.4
+- Method: API
+- Preconditions: server running, `MIN_INTERVAL_SECONDS=60`
+- Data needed: FIX-CAT-MIXED
+- Steps: `POST` a leisure entry `2026-08-20T18:59:30+02:00 → 20:30+02:00` — its first
+  30 s sit before the existing `Leisure_Entry`'s 19:00 start, and the rest is entirely
+  claimed by it
+- Expected: 409 `NOTHING_TO_LOG` with `details.reason: "all-slivers"`. The 30 s remnant
+  is below `MIN_INTERVAL_SECONDS` and is discarded rather than stored, by the same rule
+  that governs every `Activity_Entry`. Where a longer remnant survives, it is stored and
+  the sliver appears in `discarded`
+
+## UC-528 — A leisure write with nothing left to store is refused
+- Area: leisure, clipping
+- Requirement: 3.5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `POST` a leisure entry whose interval is exactly the existing `Leisure_Entry`'s
+  19:00–20:30
+- Expected: 409. Either `ACTIVITY_OVERLAP` (the whole interval is claimed) or
+  `NOTHING_TO_LOG` — the case is satisfied by a 409 that names one of the two and stores
+  nothing; a 201 creating a zero-segment entry is a failure. Confirm afterwards with
+  `GET /api/activities` that no new entry exists
+
+## UC-529 — `untrackedPolicy` is accepted on a leisure write and does nothing
+- Area: leisure, clipping
+- Requirement: 3.6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST` the identical leisure entry (`19:00 → 20:30`, no `projectId`) three
+  times over a reset fixture, once with `"untrackedPolicy": "clip"`, once `"extend"`,
+  once `"reject"`
+- Expected: all three 201, all three producing exactly the same single 5 400 s segment
+  and the same `discarded: []`. In particular `"reject"` does **not** refuse the write:
+  the `Unrestricted_Window` leaves nothing in `Untracked_Time` for the policy to act on.
+  The field is accepted rather than rejected, so a caller may send its usual default
+
+## UC-530 — A clean leisure write reports nothing discarded and nothing unplaced
+- Area: leisure, clipping
+- Requirement: 3.7
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME
+- Steps: `POST` the leisure entry of UC-524 and read the full response body
+- Expected: `discarded` is `[]` and `unplacedMinutes` is `0` — not absent, not null. A
+  leisure write that lost nothing says so explicitly, so a caller can tell "nothing was
+  lost" from "the field was not reported"
+
+## UC-531 — The leisure Placement_Anchor falls back through three rungs
+- Area: leisure, anchor
+- Requirement: 3.8
+- Method: API
+- Preconditions: server running
+- Data needed: three separate fixtures, seeded in turn — (a) FIX-CAT-MIXED,
+  (b) FIX-CAT-FRAME, (c) FIX-CAT-LEISUREONLY reduced to FIX-CAT-PROJECTS on `L`
+- Steps: in each, `POST` a `Duration_Mode` leisure entry (`durationMinutes: 30`, no
+  `projectId`) for that day, and read `anchor`
+- Expected: (a) `source: "last-segment"`, `at` = the end of the day's latest
+  `Activity_Segment`; (b) `source: "first-session"`, `at` = 08:00, the start of the
+  day's earliest `Work_Session`; (c) `source: "day-start"`, `at` = the start of the
+  `Target_Day` (`2026-08-13T03:00+02:00`). The first two rungs are the `Work_Entry`
+  rule unchanged; the third exists only for leisure
+
+## UC-532 — Duration_Mode leisure is bounded at the end of the Target_Day
+- Area: leisure, clipping
+- Requirement: 3.9
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS, plus one leisure entry on `L` `2026-08-14T01:00+02:00 → 02:00+02:00` (inside `L`'s `Logical_Day`, which ends at `2026-08-14T03:00+02:00`)
+- Steps: `POST` a `Duration_Mode` leisure entry for `L` with `durationMinutes: 600`,
+  which from the anchor would run past the end of the day
+- Expected: the stored segments stop at `2026-08-14T03:00+02:00`, the end of `L`'s
+  `Logical_Day`, and the remainder is reported in `unplacedMinutes`. The
+  `Unrestricted_Window` in `Duration_Mode` is the `Target_Day`'s bounds, not "anywhere"
+  — a leisure entry never leaks into the next day
+
+## UC-533 — The day-start anchor is reported with its own source value
+- Area: leisure, anchor
+- Requirement: 3.10
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS with **no** `Work_Session` and no entry on `L`
+- Steps: `POST` a `Duration_Mode` leisure entry for `L` and read `anchor.source`; then
+  `GET $BASE/api/days/2026-08-13` and read `quickLog.anchorSource`
+- Expected: `anchor.source` is the literal string `"day-start"`, a fourth value beside
+  `explicit`, `last-segment` and `first-session`, so a caller can tell the leisure
+  fallback apart from a work anchor. `quickLog.anchorSource` remains restricted to
+  `last-segment` / `first-session` and never reports `day-start` — `Quick_Log` resolves
+  against `Work_Entry` data only and has no such fallback
+
+## UC-534 — A Work_Session change never re-clips a Leisure_Entry
+- Area: leisure, sessions, reclip
+- Requirement: 3.11
+- design Property 6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: record the `Leisure_Entry`'s segments and `updatedAt`. Then, in turn:
+  `POST /api/sessions` adding a new session `2026-08-20T19:15+02:00 → 19:45+02:00`
+  (underneath the leisure interval — expect whatever the session rules say about it);
+  `PATCH` S2 to end at 17:00 instead of 18:00; `DELETE` S1; `DELETE` S2. After each,
+  re-read the `Leisure_Entry`
+- Expected: after every one of the four, the `Leisure_Entry`'s segments are
+  byte-for-byte identical — not shortened, not split, none added, none deleted — and it
+  is never `orphaned`. The Alpha and Beta `Work_Entry` records re-clip normally, which
+  is what proves re-clipping ran at all and simply excluded leisure
+
+## UC-535 — Open_Mode leisure on a past day with no session has nothing to log
+- Area: leisure, clipping
+- Requirement: 3.12
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS with no `Work_Session` and no entry on `L`
+- Steps: `POST $BASE/api/activities` with `{"date": "2026-08-13"}` and no `projectId`,
+  no interval, no duration
+- Expected: 409 `NOTHING_TO_LOG`. `Open_Mode`'s end for a past day is the end of that
+  day's last `Work_Session`, of which there is none, and the day-start fallback makes
+  the resolved interval empty. This is the specification's own documented dead end
+  (`DOCS.md`'s Known Limitations): `Explicit_Mode` and `Duration_Mode` are the supported
+  ways to log leisure on such a day, and both must be shown to work — see UC-516, UC-517
+
+## UC-536 — A PATCH setting `projectId` to null converts work into leisure
+- Area: activities, transitions
+- Requirement: 4.1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `PATCH $BASE/api/activities/{Alpha entry}` with `{"projectId": null}`
+- Expected: 200. The entry now reports `projectId: null`, `projectName: null`,
+  `colorIndex: null` and `category: "relax"`, with segments re-placed under the
+  `Unrestricted_Window`. `GET /api/days/2026-08-20` afterwards shows `paidSeconds` down
+  by that entry's duration and `relaxSeconds` up by it, with `coveredSeconds` reduced to
+  match
+
+## UC-537 — A PATCH naming a project converts leisure into work
+- Area: activities, transitions
+- Requirement: 4.2
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED, with the `Leisure_Entry` moved to `2026-08-20T09:00+02:00 → 10:00+02:00` so it lies inside `Tracked_Time` and clear of the Alpha entry
+- Steps: `PATCH $BASE/api/activities/{leisure entry}` with `{"projectId": "<Beta>"}`
+- Expected: 200, `category: "unpaid"`, `projectName: "Beta"`, `colorIndex: 1`, and the
+  segments re-clipped against real `Tracked_Time`. The entry is now `Covered_Time` and
+  counts into `coveredSeconds` and `unpaidSeconds`
+
+## UC-538 — Crossing the boundary re-clips even when the interval is untouched
+- Area: activities, transitions, clipping
+- Requirement: 4.3
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-FRAME plus one `Leisure_Entry` `Explicit_Mode` `2026-08-20T14:00+02:00 → 16:00+02:00`, which spans the 14:48–15:12 break and is stored as **one** 7 200 s segment because the `Unrestricted_Window` does not know about the break
+- Steps: `PATCH` that entry with `{"projectId": "<Alpha>"}` and **nothing else** — no
+  interval, no duration, no description
+- Expected: 200, and the entry now holds **two** segments, 14:00–14:48 and 15:12–16:00
+  (9 360 s total), with 1 440 s reported as `discarded`. The requested interval is
+  unchanged; what changed is the regime it is reconciled against. A meta-only PATCH that
+  crosses the null/non-null boundary must re-clip, or the entry would keep segments that
+  no longer lie inside `Tracked_Time`
+
+## UC-539 — A transition that would empty the entry is refused and changes nothing
+- Area: activities, transitions
+- Requirement: 4.4
+- design Property 5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED (the `Leisure_Entry` sits at 19:00–20:30, wholly outside `Tracked_Time`)
+- Steps: record the `Leisure_Entry`'s `projectId`, requested interval, segments and
+  `updatedAt`. `PATCH` it with `{"projectId": "<Alpha>"}` — converting it to work, whose
+  `Clipping` against `Tracked_Time` finds nothing at 19:00–20:30. Re-read the entry
+- Expected: 409 `NOTHING_TO_LOG`, and the entry is **exactly** as it was: still
+  `category: "relax"`, still `projectId: null`, same requested interval, same segments,
+  same `updatedAt`. All or nothing — no partial write, no orphaned entry, no half-applied
+  conversion
+
+## UC-540 — A description-only PATCH and a project-to-project PATCH keep the old rules
+- Area: activities, transitions
+- Requirement: 4.5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: (a) `PATCH` the Alpha entry with `{"description": "jiný text"}`; (b) `PATCH` it
+  with `{"projectId": "<Beta>"}`
+- Expected: (a) 200, segments byte-for-byte unchanged — a meta-only PATCH never
+  re-clips; the category stays `paid`. (b) 200, segments **also** unchanged, but
+  `category` becomes `unpaid` because Beta is not billable. Neither request crosses the
+  null/non-null boundary, so neither triggers UC-538's re-clip. The category changing
+  without the segments changing is the point
+
+## UC-541 — A Leisure_Entry deletes like any other entry
+- Area: activities, leisure
+- Requirement: 4.6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `DELETE $BASE/api/activities/{leisure entry}`; then `GET
+  /api/activities?from=2026-08-20&to=2026-08-20` and `GET /api/days/2026-08-20`
+- Expected: 204. The entry and its segments are gone, `relaxSeconds` returns to 0, and
+  `trackedSeconds`, `coveredSeconds`, `paidSeconds`, `unpaidSeconds` and
+  `uncoveredSeconds` are all unchanged — deleting leisure disturbs no work figure. The
+  `dry_run` / `preview_token` query parameters behave as they do for a `Work_Entry`
+
+## UC-542 — A Leisure_Entry lists, pages and orders like a Work_Entry
+- Area: activities, leisure
+- Requirement: 4.7
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `GET $BASE/api/activities?from=2026-08-20&to=2026-08-20`; then page through
+  with the returned cursor; then `GET /api/days/2026-08-20`
+- Expected: the `Leisure_Entry` appears in the same list as the two `Work_Entry` records,
+  in the same chronological ordering rule, in the same page shape, with the same cursor
+  mechanics — no separate collection and no filtering it out. The day response's
+  `entries` array carries it too
+
+## UC-543 — A Leisure_Entry can never become an Orphaned_Entry
+- Area: leisure, sessions
+- Requirement: 4.8
+- design Property 6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `DELETE` **both** `Work_Session` records of day `D`; then read every entry of
+  the day
+- Expected: the two `Work_Entry` records become `orphaned: true` with no segments, as
+  `001-worklog-domain-api` requires. The `Leisure_Entry` is untouched — segments intact,
+  `orphaned: false`. There is no sequence of session operations that can strand a
+  `Leisure_Entry`, because none of them ever re-clips one
+
+## UC-544 — The form action converts to leisure through `clearProject`
+- Area: activities, transitions, form actions
+- Requirement: 4.9
+- Method: API
+- Preconditions: server running, logged in with the **session cookie** (a form action is
+  not a JSON endpoint)
+- Data needed: FIX-CAT-UI-DAY
+- Steps: `POST` a `multipart/form-data` (or `application/x-www-form-urlencoded`) body to
+  `$APP/day/<TODAY>?/patchActivity` with `id=<the Alpha entry>` and `clearProject=true`,
+  and no `projectId` field
+- Expected: the action succeeds and the entry becomes a `Leisure_Entry` — the same
+  outcome `{"projectId": null}` produces over JSON. `FormData` carries no null and cannot
+  distinguish an absent field from an empty one, which is exactly why this second
+  encoding exists
+
+## UC-545 — `clearProject` is rejected by the JSON API
+- Area: activities, validation
+- Requirement: 4.10
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `PATCH $BASE/api/activities/{Alpha entry}` with
+  `{"clearProject": true}`
+- Expected: HTTP 400 `VALIDATION_ERROR`. `patchActivitySchema` is `.strict()` and does
+  not carry the field, so the request is refused rather than accepted with the field
+  silently dropped. Confirm the entry is unchanged afterwards. `projectId: null` stays
+  the one JSON encoding of the conversion
+
+## UC-546 — `clearProject` together with a `projectId` is rejected
+- Area: activities, validation, form actions
+- Requirement: 4.11
+- Method: API
+- Preconditions: server running, logged in with the session cookie
+- Data needed: FIX-CAT-UI-DAY
+- Steps: `POST` to `$APP/day/<TODAY>?/patchActivity` with `id=<entry>`,
+  `clearProject=true` **and** `projectId=<Beta>`
+- Expected: the action fails with HTTP 400 and the validation-error message, and the
+  entry is unchanged. The two fields name contradictory outcomes; silently preferring
+  either would discard an instruction the caller gave
+
+## UC-547 — A Leisure_Entry reports a null project on the wire
+- Area: contracts, leisure
+- Requirement: 5.1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read the `Leisure_Entry` from `GET /api/activities`, from
+  `GET /api/days/2026-08-20`, and from the `POST` response that created it
+- Expected: `projectId` and `projectName` are both `null` in every one of the three —
+  not absent, not `""`, not a placeholder name. A caller can see plainly that the entry
+  has no project without joining anything
+
+## UC-548 — Every activity carries a category
+- Area: contracts, category
+- Requirement: 5.2
+- design Property 1
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read every entry the API can return one from — `GET /api/activities`, the day
+  response's `entries`, a `POST` response, a `PATCH` response, and a `dryRun` preview
+- Expected: every `Activity_Entry` object in every one of them carries `category`, whose
+  value is one of exactly `"paid"`, `"unpaid"`, `"relax"`. No caller needs its own
+  `Project` list to tell entries apart, which is the entire reason the field exists
+
+## UC-549 — A Leisure_Entry reports a null `colorIndex`
+- Area: contracts, leisure, palette
+- Requirement: 5.3
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read the `Leisure_Entry` and inspect `colorIndex`
+- Expected: `null`. Not `0`, not `8`, not omitted — none of the eight `Palette_Slot`
+  values represents leisure, and a numeric value would send every consumer to the
+  categorical scale for a colour that is deliberately not in it
+
+## UC-550 — Leisure never takes a Palette_Slot through the wraparound
+- Area: contracts, leisure, palette
+- Requirement: 5.4
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-NINE
+- Steps: read all nine projects' `colorIndex` values, confirming the ninth wraps to slot
+  0 as `002-worklog-ui` requires; then read the `Leisure_Entry` on the same fixture
+- Expected: the ninth project shares `Palette_Slot` 0 with the first — the wraparound is
+  working. The `Leisure_Entry`'s `colorIndex` is still `null`, so it participates in
+  neither the eight slots nor the wraparound. The reserved leisure colour is a distinct
+  constant (`pj-relax`) that the modular rule can never reach
+
+## UC-551 — Every project total carries `billable`
+- Area: contracts, aggregation
+- Requirement: 5.5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read `byProject` from `GET /api/days/2026-08-20` and from
+  `GET /api/days?from=…&to=…`
+- Expected: every `ProjectTotal` row carries `billable` beside `projectId`,
+  `projectName`, `colorIndex`, `archived` and `coveredSeconds` — Alpha `true`, Beta
+  `false`. A caller can split a per-project breakdown into paid and unpaid without a
+  second `Project` lookup, which is what the statistics page does
+
+## UC-552 — Covered and Uncovered are computed from work alone and still reconstruct Tracked
+- Area: aggregation, coverage
+- Requirement: 6.1
+- design Property 3 (amending `001` Property 22)
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED, then the same fixture with three further `Leisure_Entry`
+  records added outside `Tracked_Time`
+- Steps: read `GET /api/days/2026-08-20`, `GET /api/days?from=2026-08-20&to=2026-08-20&include=intervals`
+  and `GET /api/coverage?from=2026-08-20&to=2026-08-20` before and after adding the
+  three leisure entries
+- Expected: `coveredSeconds` (10 800), `uncoveredSeconds` (23 760), the `byProject`
+  breakdown and every `/api/coverage` figure and gap are **identical** before and after.
+  `covered` and `uncovered` intervals together still reconstruct the `tracked` intervals
+  exactly, with no gap and no overlap. Leisure segments — which are not subsets of
+  `Tracked_Time` — never inflate `Covered_Time` past `Tracked_Time`. This is the one
+  guarantee the whole specification could silently have broken
+
+## UC-553 — The paid/unpaid split is a true partition of covered time
+- Area: aggregation, category
+- Requirement: 6.2
+- design Property 4
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read `paidSeconds`, `unpaidSeconds` and `coveredSeconds` from
+  `GET /api/days/2026-08-20`'s `totals`, and from each `DaySummary` of
+  `GET /api/days?from=…&to=…`; then flip Alpha to `billable: false` and read again
+- Expected: `paidSeconds + unpaidSeconds === coveredSeconds` exactly, in both places,
+  before and after the flip — 7 200 + 3 600 = 10 800 first, then 0 + 10 800 = 10 800. No
+  `Work_Entry` second is counted twice or dropped between the buckets, and `relaxSeconds`
+  is in neither of them
+
+## UC-554 — `relaxSeconds` is the leisure total clamped to the day
+- Area: aggregation, leisure
+- Requirement: 6.3
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: read `relaxSeconds` from `GET /api/days/2026-08-20`'s `totals` and from the
+  matching `DaySummary` in `GET /api/days?from=…&to=…`
+- Expected: 5 400 in both, matching the single `Leisure_Entry` segment. It is wholly
+  separate from `trackedSeconds`, `coveredSeconds` and `uncoveredSeconds` — none of them
+  moves when leisure is added or removed (UC-552), and `relaxSeconds` is not a share of
+  any of them
+
+## UC-555 — `include=intervals` returns the leisure intervals
+- Area: aggregation, leisure
+- Requirement: 6.4
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `GET $BASE/api/days?from=2026-08-20&to=2026-08-20&include=intervals`
+- Expected: each `DaySummary` carries `leisure` alongside the existing `tracked`,
+  `covered` and `uncovered` collections — one `Interval` of 19:00–20:30 UTC-encoded,
+  clamped to the `Logical_Day`'s bounds. `intervalsIncluded` is `true` and governs all
+  four together: a response either has all four or none. Without `include=intervals`,
+  `leisure` is absent while `relaxSeconds` is still present. A range beyond
+  `MAX_INTERVAL_RANGE_DAYS` (62) drops all four, `leisure` included
+
+## UC-556 — A Leisure_Entry does not block a project deletion
+- Area: projects, leisure
+- Requirement: 6.5
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS plus one `Leisure_Entry` on `L` and **no** `Work_Entry`
+  anywhere
+- Steps: `DELETE $BASE/api/projects/{Beta}`
+- Expected: 204. A `Leisure_Entry` references no project, so it is not among the entries
+  that make a project `PROJECT_IN_USE`, and the `ON DELETE RESTRICT` foreign key is never
+  evaluated against a NULL. The `Leisure_Entry` still exists afterwards, unchanged. For
+  contrast, adding one `Work_Entry` on Beta and repeating gives 409 `PROJECT_IN_USE`
+  with `details.entryCount: 1` — counting the work entry only
+
+## UC-557 — Quick_Log takes its project from work but anchors around leisure
+- Area: quick log, leisure
+- Requirement: 6.6
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-UI-DAY (the latest entry of the day is the 18:00–19:30 `Leisure_Entry`; the latest `Work_Entry` is Beta's 13:15–14:00)
+- Steps: `GET $BASE/api/days/<TODAY>` and read the `quickLog` object
+- Expected: the offered `projectId`/`projectName` is **Beta** — the most recent
+  `Work_Entry` — never the `Leisure_Entry`, which has no project to offer. But the
+  offered interval's own `Placement_Anchor` still accounts for **every**
+  `Activity_Segment` including the leisure one, so the offered interval starts no earlier
+  than 19:30 and does not overlap it. `anchorSource` is `last-segment` or
+  `first-session`, never `day-start`. Submitting the offered `Quick_Log` unchanged
+  succeeds rather than failing `ACTIVITY_OVERLAP` — that is the whole reason the
+  exclusion is scoped to project resolution only
+
+## UC-558 — The Day_Gauge's inner arc excludes leisure
+- Area: timer, gauge, leisure
+- Requirement: 7.1
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY, then the same day with the `Leisure_Entry` deleted
+- Steps: open `$APP/`, capture the gauge's inner-arc geometry (the drawn segments and
+  their angular extents); delete the `Leisure_Entry` over the API; reload and capture
+  again
+- Expected: the two captures are identical. The inner arc draws the Alpha and Beta
+  `Work_Entry` segments and nothing else — no grey arc appears at 18:00–19:30 where the
+  leisure sits, in either capture. The page filters `category !== 'relax'` before the
+  gauge ever sees the entries
+
+## UC-559 — Nothing else on the gauge moves when leisure is present
+- Area: timer, gauge, leisure
+- Requirement: 7.2
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY, and Part II's FIX-UI-DAY (the same day without leisure)
+- Steps: open `$APP/` on each in turn and compare the outer arc, the `Uncovered_Time`
+  dashes, any `Overtime_Arc` decoration, and the worked / covered / uncovered readouts
+- Expected: identical in both. None of them derives from anything a `Leisure_Entry`
+  produces, so adding 90 minutes of leisure changes none of the four numbers and moves
+  no dash. The one visible difference between the two fixtures is the category figures
+  strip of UC-561
+
+## UC-560 — The Project_Legend gains no leisure entry
+- Area: timer, gauge, leisure
+- Requirement: 7.3
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/` and read every row of the `Project_Legend` beneath the gauge
+- Expected: exactly two rows — `Alpha` and `Beta`. No `Volno` row, no grey swatch, no
+  `pj-relax` class anywhere in the legend. The gauge draws no leisure arc, so there is
+  nothing for the legend to name; a legend entry for an arc that is not drawn would be
+  worse than none
+
+## UC-561 — The timer page shows paid, unpaid and leisure beside the existing readouts
+- Area: timer, category
+- Requirement: 7.4
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/` and read the figures beside the gauge
+- Expected: the existing worked / covered / uncovered readouts are unchanged and
+  unmerged, and a **second** figures row carries three more — `placeno`, `neplaceno`,
+  `volno` (`timer_paid`, `timer_unpaid`, `timer_relax`) — showing `paidSeconds`,
+  `unpaidSeconds` and `relaxSeconds` from the day totals. Paid + unpaid equals the
+  covered readout; leisure stands apart from all of them and is never folded into the
+  worked total
+
+## UC-562 — Artboard conformance: `TimerCategories` (timer page, 1440 × 900)
+- Area: timer, design contract
+- Requirement: 7.4
+- Design_Contract: `.design/artboards/TimerCategories.dc.html`, rendered to `.design/screens/TimerCategories.png`
+- Method: artboard
+- Preconditions: logged in, viewport 1440 × 900, `dark` theme, `cs` locale
+- Data needed: FIX-CAT-UI-DAY
+- Steps: render `$APP/` at the artboard's frame size and compare against the artboard
+- Expected: matches in layout, proportion and palette on Requirement 14.16 of
+  `002-worklog-ui`'s terms — arrangement and relative proportion compared, exact pixel
+  heights, copy and example data excepted. Specifically: the `Day_Gauge` and its
+  `Project_Legend` are drawn exactly as the unmodified `Main` artboard draws them, and
+  the category figures sit as one strip beside the existing readouts rather than
+  replacing or interleaving with them
+
+## UC-563 — One Leisure_Block per leisure segment, top-level and chronological
+- Area: day timeline, leisure
+- Requirement: 8.1
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>` and read the timeline's top-level children in DOM order
+- Expected: one `Leisure_Block` for the 18:00–19:30 segment, sitting **after** both
+  `Work_Block` groups on the shared time axis because it starts later than both — not
+  nested inside either one, not appended to the end regardless of time, and not
+  collapsed into a `Segment_Block`. It carries no session rail, because it belongs to no
+  session. A second leisure segment placed between the two sessions must appear between
+  them, which `FIX-CAT-UI-LEISURE`'s two-block fixture confirms
+
+## UC-564 — The Leisure_Block is tinted with the reserved slot and carries its own text
+- Area: day timeline, leisure, palette
+- Requirement: 8.2
+- Design_Contract: `003/design.md` § 9 — `LEISURE_SLOT` `#7C8899` dark / `#5F6B7A` light
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>`, inspect the `Leisure_Block`'s classes and computed
+  colours, and read its text
+- Expected: it carries `pj-relax` and takes its background from `--pj-tint` and its left
+  border from `--pj`, resolving to `#7C8899` in `dark` (and `#5F6B7A` in `light`). It
+  never carries `pj-0` … `pj-7`. It shows the entry's description ("Běh v parku") and
+  its times (18:00–19:30), the same three pieces of information a `Segment_Block` shows,
+  plus the category name `Volno`
+
+## UC-565 — A Leisure_Block is sized from the same height budget as every other unit
+- Area: day timeline, leisure, layout
+- Requirement: 8.3
+- design Property 7 (`002` Property 2)
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP` and again `VP-MOBILE`
+- Data needed: FIX-CAT-UI-MANY
+- Steps: open `$APP/day/<TODAY>`, measure every rendered unit's height, and sum them
+  against the timeline's available height; check the `Leisure_Block`'s own height against
+  `MIN_BLOCK_PX` (36 desktop, 26 mobile)
+- Expected: the sum never exceeds the available height — `002-worklog-ui`'s Property 2
+  still holds with a leisure unit in the mix. The `Leisure_Block`'s duration is counted
+  into the day's total seconds and its height comes from the same flexible remainder,
+  floored at `MIN_BLOCK_PX` exactly as a `Segment_Block` is. It reserves **no** session
+  head or head gap, because it belongs to no block. Being a top-level unit means it is
+  not nested, not that it is sized outside the budget
+
+## UC-566 — Activating a Leisure_Block opens the dialog already set to relax
+- Area: day timeline, activity dialog, leisure
+- Requirement: 8.4
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>`, click the `Leisure_Block`; then close and repeat with
+  `Enter`, and again with `Space`, having reached it by keyboard
+- Expected: each opens the `Activity_Dialog` for that `Leisure_Entry`, in edit mode, with
+  the category control already on `Volno` and the `Project_Picker` hidden. The
+  description and times are seeded from the entry. The block calls the same activation
+  callback a `Segment_Block` does, so all three input routes behave identically
+
+## UC-567 — A day of pure leisure renders its blocks, not the empty state
+- Area: day timeline, leisure
+- Requirement: 8.5
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-LEISURE (no `Work_Session` at all on `TODAY`)
+- Steps: open `$APP/day/<TODAY>`
+- Expected: two `Leisure_Block` units are drawn on the time axis, at 09:00–10:30 and
+  14:00–16:00. The timeline's empty state ("the timer never ran") is **not** shown. This
+  is the headline case the whole specification exists to support, and the one an early
+  return on `sessions.length === 0` silently breaks. The day summary shows
+  `relaxSeconds` of 12 600 with worked, covered and uncovered all zero
+
+## UC-568 — Every Leisure_Block is reachable by keyboard in chronological order
+- Area: day timeline, leisure, accessibility
+- Requirement: 8.6
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY, then FIX-CAT-UI-LEISURE
+- Steps: focus the timeline and press `Tab` repeatedly, recording the order in which
+  units receive focus, on both fixtures
+- Expected: every `Work_Block`, `Segment_Block` and `Leisure_Block` is reachable, in the
+  same chronological order they are drawn in — the leisure unit is not skipped, not
+  placed last out of order, and not focusable twice. Each has a visible focus ring.
+  Requirement 4.15 of `002-worklog-ui` already demanded this across the whole timeline;
+  a new top-level unit must not be the exception
+
+## UC-569 — A work block names its category as text, not only as colour
+- Area: day timeline, category, accessibility
+- Requirement: 8.7
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>` and read each `Segment_Block`'s text
+- Expected: the Alpha block reads its project name **and** `Placeno`; the Beta block
+  reads its project name **and** `Neplaceno`. The paid/unpaid distinction is never
+  carried by colour alone — Alpha and Beta have different `Palette_Slot` colours for
+  project identity, which says nothing about category. Same rule as UC-574 on the
+  projects page and UC-590 on statistics
+
+## UC-570 — Artboard conformance: `DayCategories` (day page, 1440 × 1180)
+- Area: day timeline, design contract
+- Requirement: 8.8
+- Design_Contract: `.design/artboards/DayCategories.dc.html`, rendered to `.design/screens/DayCategories.png`
+- Method: artboard
+- Preconditions: logged in, viewport 1440 × 1180, `dark` theme, `cs` locale
+- Data needed: FIX-CAT-UI-DAY
+- Steps: render `$APP/day/<TODAY>` at the artboard's frame size and compare
+- Expected: matches in layout, proportion and palette on Requirement 14.16's terms.
+  Specifically: paid, unpaid and `Leisure_Block` units share one time axis; the leisure
+  unit is visibly a top-level sibling of the work groups rather than indented inside one;
+  the leisure tint is unmistakably lower-chroma than any project hue; and the third side
+  panel (`podle kategorie`) sits beside the timeline as drawn
+
+## UC-571 — The day summary shows the three figures with leisure separated
+- Area: day timeline, category
+- Requirement: 8.9
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>` and read the day-summary column
+- Expected: a `podle kategorie` panel beside the existing worked / described /
+  undescribed figures, listing `Placeno` and `Neplaceno`, then a **visual divider**, then
+  `Volno` beneath it. The divider is what keeps `relaxSeconds` from reading as a share of
+  the worked total, since it is not part of it. The divider is decorative and must not be
+  exposed as a separator to assistive technology — `BreakMarker` already uses that role
+  on this page and two of them would collide
+
+## UC-572 — Every project row carries a two-way billable control
+- Area: projects, category
+- Requirement: 9.1
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-PROJECTS
+- Steps: open `$APP/projects` and inspect each row
+- Expected: every row offers a control setting `Billable`, beside the existing colour and
+  archive controls, not buried in a menu or a detail page. Activating it on `Alpha`
+  (paid) makes it unpaid; activating it again makes it paid. The row's other controls are
+  unaffected. At `VP-MOBILE` the same operation is reachable from the row's bottom sheet
+
+## UC-573 — Creating a project offers the choice and defaults to paid
+- Area: projects, category
+- Requirement: 9.2
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CLEAN
+- Steps: open `$APP/projects`, inspect the creation form before typing; create `Delta`
+  without touching the control; then create `Epsilon` after switching the control to
+  unpaid
+- Expected: the creation form offers a paid/unpaid choice, pre-set to **paid**, as a
+  labelled radio group rather than an unlabelled toggle. `Delta` is created
+  `billable: true` and `Epsilon` `billable: false`, confirmed over `GET /api/projects`.
+  The choice is submitted with the creation, not as a second request afterwards
+
+## UC-574 — The billable state is readable as text
+- Area: projects, category, accessibility
+- Requirement: 9.3
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP` and again `VP-MOBILE`
+- Data needed: FIX-CAT-PROJECTS
+- Steps: open `$APP/projects` and read each row's billable control without relying on
+  colour; then read its accessible name
+- Expected: `Alpha` and `Gamma` show the word `Placeno`, `Beta` shows `Neplaceno` —
+  legible in both themes and at both widths. Note the deliberate asymmetry: the
+  **visible** text names the current *state*, while the **accessible name** names the
+  *action* the control performs (`Označit jako placený` / `Označit jako neplacený`), so a
+  screen-reader user is told what pressing it will do. Both must be present; neither
+  alone satisfies this
+
+## UC-575 — The billable change goes through its own named form action
+- Area: projects, form actions
+- Requirement: 9.4
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: read `src/routes/projects/+page.server.ts`'s exported actions and the form each
+  row's billable control posts to
+- Expected: two named actions, `billable` and `unbillable`, mirroring the existing
+  `archive` / `unarchive` pair — one action per operation, each validated by a row-scoped
+  schema and each calling `patchProject` with the corresponding value. There is no
+  general-purpose `patchProject` action absorbing both, and the control posts to
+  `?/billable` or `?/unbillable` according to the row's current state. This follows the
+  convention the file already establishes rather than introducing a second one
+
+## UC-576 — The category control sits above the mode control
+- Area: activity dialog, category
+- Requirement: 10.1
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>` and open the `Activity_Dialog` for a new entry; inspect
+  the two segmented controls
+- Expected: a three-way segmented control offering `Placeno`, `Neplaceno`, `Volno`,
+  rendered **above** the existing `Explicit_Mode` / `Duration_Mode` / `Open_Mode`
+  control, and independent of it — changing the category does not change the mode and
+  vice versa. It is the same segmented shape the mode control and the theme picker
+  already use, a fourth instance of a known component rather than a new one, and it is
+  exposed as a labelled radio group navigable with arrow keys
+
+## UC-577 — Paid filters the picker to billable projects
+- Area: activity dialog, category, project picker
+- Requirement: 10.2
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-PROJECTS plus FIX-CAT-UI-DAY's sessions
+- Steps: open the `Activity_Dialog`, select `Placeno`, open the `Project_Picker`
+- Expected: the list offers `Alpha` and no other — `Beta` is filtered out because it is
+  not billable, and `Gamma` because it is archived (the picker's pre-existing rule). The
+  project field's label names the active filter, so it is visible **why** the list is
+  short rather than looking like a bug
+
+## UC-578 — Unpaid filters the picker to non-billable projects
+- Area: activity dialog, category, project picker
+- Requirement: 10.3
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-PROJECTS plus FIX-CAT-UI-DAY's sessions
+- Steps: open the `Activity_Dialog`, select `Neplaceno`, open the `Project_Picker`
+- Expected: the list offers `Beta` and no other. The two filters are exact complements
+  over the non-archived projects — no project appears under both, and none disappears
+  from both
+
+## UC-579 — Relax hides the project field entirely
+- Area: activity dialog, category, project picker
+- Requirement: 10.4
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-LEISURE
+- Steps: open the `Activity_Dialog`, select `Volno`, and inspect the form; then fill only
+  a description and an interval and submit
+- Expected: the `Project_Picker` and its label are **removed from the form**, not
+  rendered empty and not disabled — an empty picker reads as "no projects exist", which
+  is a different and wrong message. Nothing but the description and the mode fields is
+  required, and the submission succeeds, creating a `Leisure_Entry`. No `projectId` is
+  posted at all
+
+## UC-580 — Changing category clears a project that is no longer offered
+- Area: activity dialog, category, project picker
+- Requirement: 10.5
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-PROJECTS plus FIX-CAT-UI-DAY's sessions
+- Steps: open the `Activity_Dialog`, select `Placeno`, choose `Alpha`, then switch to
+  `Neplaceno`; then choose `Beta` and switch to `Volno`; then switch back to `Neplaceno`
+- Expected: each switch that makes the chosen project fall outside the newly filtered
+  list clears the choice, leaving the picker empty rather than silently keeping a project
+  the new category forbids. Switching back does **not** silently restore it. A form that
+  kept `Alpha` selected under `Neplaceno` would submit a contradiction
+
+## UC-581 — Opening an entry for editing seeds the category from the entry
+- Area: activity dialog, category
+- Requirement: 10.6
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open `$APP/day/<TODAY>` and open the dialog in turn for the Alpha entry, the
+  Beta entry and the `Leisure_Entry`
+- Expected: the control opens on `Placeno`, `Neplaceno` and `Volno` respectively, read
+  from the entry's own `category` field rather than looked up in a projects list — which
+  matters because the entry's project may be archived and absent from that list. The
+  picker is filtered accordingly, and for the leisure entry it is absent
+
+## UC-582 — A new entry defaults from the most recent work entry, never from leisure
+- Area: activity dialog, category, quick log
+- Requirement: 10.7
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY (the day's latest entry is the `Leisure_Entry`; the latest `Work_Entry` is Beta's)
+- Steps: open `$APP/day/<TODAY>` and open the `Activity_Dialog` for a **new** entry
+- Expected: the category defaults to `Neplaceno` and the project to `Beta` with Beta's
+  description — taken from the most recent `Work_Entry`, not from the later
+  `Leisure_Entry`, which names no project and so could not supply a default anyway.
+  Consistent with UC-557's `Quick_Log` rule.
+  **Undecided:** on a day whose only entries are leisure (`FIX-CAT-UI-LEISURE`) there is
+  no recent `Work_Entry` at all, and Requirement 10.7 does not say what the control
+  should then default to. Today's build falls back to `Placeno` with no project chosen.
+  That is a reasonable choice but it is the implementation's, not the specification's —
+  see `ISSUES.md`, `[LOW] Requirement 10.7 does not say what the category defaults to
+  when a day holds no Work_Entry`. Verify what the build does and record it; do not treat
+  either answer as a failure until the question is settled
+
+## UC-583 — The Change_Preview works for a leisure draft
+- Area: activity dialog, change preview, leisure
+- Requirement: 10.8
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-DAY
+- Steps: open the `Activity_Dialog`, select `Volno`, enter an interval overlapping
+  nothing, and watch the `Change_Preview` beneath the form; then repeat with an interval
+  overlapping the existing 18:00–19:30 `Leisure_Entry`; then submit the first one
+- Expected: the preview appears for the leisure draft on the same terms as for a work
+  draft — `Clipping` reports the same shape of outcome for both. The overlapping draft
+  is previewed as a conflict rather than silently accepted. The successful submission
+  carries the `Preview_Token` the preview produced: the write path requires it either
+  way, so a dialog that never previews a leisure draft would also never be able to write
+  one. Confirm the created entry exists afterwards
+
+## UC-584 — Artboard conformance: `AddTaskCategories` (activity dialog, 820 × 860)
+- Area: activity dialog, design contract
+- Requirement: 10.9
+- Design_Contract: `.design/artboards/AddTaskCategories.dc.html`, rendered to `.design/screens/AddTaskCategories.png`
+- Method: artboard
+- Preconditions: logged in, dialog open at the artboard's frame size, `dark` theme, `cs` locale
+- Data needed: FIX-CAT-UI-DAY
+- Steps: render the open `Activity_Dialog` at 820 × 860 and compare
+- Expected: matches in the placement and shape of the category control specifically —
+  above the mode control, the same segmented shape and proportions, the project field's
+  label naming the active filter — and in layout, proportion and palette generally, on
+  Requirement 14.16's terms
+
+## UC-585 — A project created inline inherits the selected category
+- Area: activity dialog, project picker, projects
+- Requirement: 10.10
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-PROJECTS plus FIX-CAT-UI-DAY's sessions
+- Steps: open the `Activity_Dialog`, select `Neplaceno`, open the `Project_Picker`, type
+  a new name and create it inline; then repeat under `Placeno` with a second new name
+- Expected: the project created under `Neplaceno` is born `billable: false` and stays
+  visible in the filtered list, selected and ready to submit. The one created under
+  `Placeno` is born `billable: true`. Confirm both over `GET /api/projects`. A project
+  created under `unpaid` that defaulted to billable would vanish from the very list it
+  was created for the instant it appeared, which is the failure this criterion exists to
+  prevent. `Volno` never reaches this path, since the picker is hidden for it
+
+## UC-586 — The KPI row shows paid, unpaid and leisure as separate figures
+- Area: statistics, category
+- Requirement: 11.1
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-FOLD
+- Steps: open `$APP/stats` for the seven-day range and read the `KPI_Row`
+- Expected: `placeno`, `neplaceno` and `volno` are each individually visible as figures —
+  whether as three additional tiles or folded into the existing tiles' presentation, but
+  never blended into one number and never omitted. Paid plus unpaid equals the range's
+  covered figure; leisure is separate from it
+
+## UC-587 — The per-project breakdown groups by billable and folds within each group
+- Area: statistics, category
+- Requirement: 11.2
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-FOLD (nine billable and nine non-billable projects, against `TOP_PROJECT_COUNT = 7`)
+- Steps: open `$APP/stats` and read the per-project breakdown
+- Expected: two headings — paid and unpaid — each listing its own projects sorted
+  descending exactly as before, and each folding its own tail into its **own** combined
+  row: seven named rows plus one combined row under each heading, eight rows per group.
+  No combined row ever mixes a paid project with an unpaid one, which is what folding
+  before grouping would produce and is the specific failure this criterion names. A
+  group with no projects at all shows no heading rather than an empty one
+
+## UC-588 — The range's leisure total sits beneath both headings, never as a bar
+- Area: statistics, leisure
+- Requirement: 11.3
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-FOLD
+- Steps: open `$APP/stats` and read what follows the two project groups
+- Expected: the range's total `Leisure_Time` (`Volný čas`) appears beneath both headings,
+  visually separated from them, as a plain figure row alongside the uncovered figure —
+  **not** as one of the bars and not inside either group. Leisure has no project, so a
+  bar in a per-project breakdown would be a category error, and its inclusion among the
+  bars would make the bar lengths stop summing to covered time
+
+## UC-589 — The Day_Rhythm_Strip draws leisure where it actually fell
+- Area: statistics, leisure, palette
+- Requirement: 11.4
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`; a **live browser screenshot**, not a DOM assertion — see below
+- Data needed: FIX-CAT-UI-FOLD
+- Steps: open `$APP/stats` and inspect each day's rhythm strip, both by class and by the
+  **resolved computed `fill`** of each drawn segment, in `dark` and again in `light`
+- Expected: each day's leisure intervals are drawn at the horizontal position the leisure
+  actually fell — not at the start of the row and not merged with covered time — in the
+  `Leisure_Palette_Slot` (`#7C8899` dark, `#5F6B7A` light), alongside the existing
+  covered and uncovered treatments.
+  **This case is expected to FAIL on today's build.** `ISSUES.md`'s
+  `[LOW] DayRhythm.svelte's covered/leisure segment rects have no fill CSS rule at all`
+  records that no selector sets `fill: var(--pj)` for `.day-rhythm__segment`, so both the
+  covered and the leisure rects most likely render **black** (the SVG default) in a real
+  browser. The defect predates this specification for covered segments; the leisure
+  segments repeat the same pattern. It is written as a failure rather than skipped
+  because the existing component test asserts only the class name and explicitly asserts
+  there is no `fill` attribute, so nothing but a real browser can measure it
+
+## UC-590 — The paid, unpaid and leisure split is given as text, not only as colour
+- Area: statistics, category, accessibility
+- Requirement: 11.5
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP`
+- Data needed: FIX-CAT-UI-FOLD
+- Steps: open `$APP/stats` and, ignoring every colour on the page, determine how much of
+  the range was paid, how much unpaid and how much leisure
+- Expected: all three are answerable from text alone — named labels with figures beside
+  them, not a chart legend that depends on matching a swatch to a bar. Every chart on the
+  page may carry colour in addition, but none of the three numbers may be available only
+  through it. The same rule Requirement 12.13 of `002-worklog-ui` already sets for this
+  page
+
+## UC-591 — Every new string exists in both Czech and English
+- Area: i18n, category
+- Requirement: 12.1
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: compare `messages/cs.json` and `messages/en.json` for the keys this
+  specification introduces — the three category labels, the category control's own label,
+  the leisure label used when naming a conflicting `Leisure_Entry`, the day panel's
+  label and its three rows, the three timer figures, the three statistics figures, the
+  two breakdown headings and the leisure row, and the projects page's billable toggle
+  labels and its radio-group label
+- Expected: every key is present in **both** catalogues with a translated value — not an
+  English string copied into `cs.json`, and not a key present in one file only. The
+  catalogue-parity test's pinned key count is updated to match rather than loosened. Then
+  switch the interface to `en` and confirm every surface UC-561 … UC-590 touches renders
+  English
+
+## UC-592 — No literal user-facing text was introduced
+- Area: i18n
+- Requirement: 12.2
+- Method: inspection
+- Preconditions: none
+- Data needed: none
+- Steps: read every component this specification adds or changes — the leisure block, the
+  category control, the billable toggle and creation control, the day category panel, the
+  timer figures, and the statistics KPI tiles, headings and leisure row — for any
+  user-visible string not coming from a Paraglide message
+- Expected: none. Every visible label, heading, `aria-label` and `title` resolves through
+  a message key. The literal category **values** `paid`, `unpaid` and `relax` are not
+  user-facing text — they are wire values and CSS class fragments, and appear as such.
+  Known and accepted: the project field's label is composed at runtime from the existing
+  project-field key plus the paid/unpaid category label, rather than from a dedicated
+  key — that is a documented implementer decision, not a literal
+
+## UC-593 — The leisure colour reads as "not a project" in both themes
+- Area: palette, leisure, accessibility
+- Requirement: not a criterion — `003/design.md` § 9's stated contrast and chroma targets
+- Method: browser
+- Preconditions: logged in
+- Data needed: FIX-CAT-UI-DAY
+- Steps: on `/day/<TODAY>` and `/stats`, in `dark` and then `light`, measure the leisure
+  colour's contrast against the ground it is drawn on and compare its saturation against
+  the eight project hues
+- Expected: `#7C8899` on `--bg` `#0F1319` in dark and `#5F6B7A` on `--bg` `#F3EEE6` and
+  `--dialog` `#FBF7F1` in light, each clearing 4.5:1 — which matters because a
+  `Leisure_Block` carries text on it. Its chroma (≈ 0.029) is roughly a fifth of any
+  project hue's (0.137–0.150), so it reads unmistakably as grey rather than as a ninth
+  project colour. It is never assigned to a project and never reached by the `colorIndex`
+  wraparound (UC-550)
+
+## UC-594 — The new controls survive the narrow viewport
+- Area: responsiveness, category
+- Requirement: not a criterion — Requirement 14.1 of `002-worklog-ui` sets 320 px as the floor
+- Method: browser
+- Preconditions: logged in, `VP-NARROW` (320 × 720)
+- Data needed: FIX-CAT-UI-DAY, then FIX-CLEAN for the projects page
+- Steps: at 320 px visit `/`, `/day/<TODAY>`, `/projects` (including the creation form)
+  and `/stats`, and open the `Activity_Dialog`; check for horizontal overflow of the page
+  body and for any control clipped or overlapping
+- Expected: no horizontal scrolling of the page body anywhere, the projects creation form
+  wrapping rather than overflowing now that it carries a billable control, the three
+  category figures wrapping rather than truncating, the category segmented control
+  usable, and the `Leisure_Block` legible at the mobile `MIN_BLOCK_PX` of 26. The
+  requirements document states the mobile variants of the three new artboards were never
+  drawn, so this is the closest existing convention rather than an artboard comparison
+
+## UC-595 — Leisure crossing the day boundary is clamped, not double counted
+- Area: aggregation, leisure, logical day
+- Requirement: not a criterion — follows from 6.3's "clamped to its boundaries"
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-PROJECTS plus one `Leisure_Entry` `Explicit_Mode` `2026-08-13T23:00+02:00 → 2026-08-14T04:00+02:00`, crossing `L`'s `Logical_Day` boundary at `2026-08-14T03:00+02:00`
+- Steps: `GET $BASE/api/days/2026-08-13` and `GET $BASE/api/days/2026-08-14`, then
+  `GET /api/days?from=2026-08-13&to=2026-08-14&include=intervals`
+- Expected: `2026-08-13` reports `relaxSeconds` of 14 400 (23:00 → 03:00) and
+  `2026-08-14` reports 3 600 (03:00 → 04:00); the two sum to the entry's full 18 000 s
+  with nothing counted twice and nothing lost. Each day's `leisure` interval list is
+  clamped to that day's own bounds. The same clamping `trackedSeconds` already applies
+
+## UC-596 — Filtering activities by project cannot select leisure
+- Area: activities, leisure, known limitation
+- Requirement: not a criterion — `DOCS.md`'s Known Limitations
+- Method: API
+- Preconditions: server running
+- Data needed: FIX-CAT-MIXED
+- Steps: `GET $BASE/api/activities?project_id=<Alpha>`; then look for any documented way
+  to ask the same endpoint for leisure entries only
+- Expected: the project filter returns the Alpha entry and excludes the `Leisure_Entry`,
+  which is correct — it names no project. There is **no** filter that selects leisure
+  entries alone, and `DOCS.md` says so rather than leaving a caller to discover it. This
+  case exists so the gap stays a recorded limitation rather than quietly becoming a bug
+  report
+
+## UC-597 — An accessibility sweep of the categorised surfaces finds nothing new
+- Area: accessibility, category
+- Requirement: not a criterion — Requirement 14 of `002-worklog-ui` applies to every new surface
+- Method: browser
+- Preconditions: logged in, `VP-DESKTOP` and again `VP-MOBILE`, both themes
+- Data needed: FIX-CAT-UI-DAY, FIX-CAT-UI-LEISURE, FIX-CAT-UI-FOLD
+- Steps: run an automated accessibility sweep over `/`, `/day/<TODAY>`, `/projects` and
+  `/stats` with leisure present and the billable toggles rendered, and over the open
+  `Activity_Dialog` with each of the three categories selected
+- Expected: no violation that is not already recorded in `ISSUES.md` from the
+  `002-worklog-ui` run. In particular: the category control and the projects creation
+  control are exposed as labelled radio groups; each billable toggle has an accessible
+  name; the day panel's divider is not announced as a separator (UC-571); and the leisure
+  tint meets the contrast floor (UC-593)
+
+## UC-598 — The leisure additions to the E2E suite run in a full suite pass
+- Area: testing, tooling
+- Requirement: not a criterion
+- Method: inspection
+- Preconditions: a full `bun run test:e2e:local` run, not a hand-picked subset
+- Data needed: whatever the suite seeds itself
+- Steps: run the whole Playwright suite in one process and record which specs fail
+- Expected: the leisure scenarios added for this specification pass.
+  **A known unrelated failure is expected alongside them:** `ISSUES.md`'s
+  `[LOW] gaps.spec.ts and preview.spec.ts both hardcode 2024-01-19 …` records that those
+  two `002-worklog-ui` specs collide on a `SESSION_OVERLAP` when run in the same process,
+  because the database is truncated once per invocation rather than once per file. That
+  failure must be distinguished from a category failure rather than masking one — if the
+  suite is red, this is the first thing to rule out
+
+---
+
+## Requirement coverage — `003-worklog-time-categories`
+
+Every one of the 82 acceptance criteria of
+`.kiro/specs/003-worklog-time-categories/requirements.md`, and the use case (or cases)
+that exercise it. Nothing in the specification is left without a home.
+
+**Requirement 1 — Project Billable Classification**
+1.1 UC-509 · 1.2 UC-510 · 1.3 UC-511 · 1.4 UC-512 · 1.5 UC-513, UC-548 · 1.6 UC-514 ·
+1.7 UC-515
+
+**Requirement 2 — Leisure Entry Creation**
+2.1 UC-516, UC-517, UC-518 · 2.2 UC-519 · 2.3 UC-516 · 2.4 UC-520 · 2.5 UC-521 ·
+2.6 UC-522 · 2.7 UC-523
+
+**Requirement 3 — Leisure Entry Reconciliation Against the Unrestricted Window**
+3.1 UC-524 · 3.2 UC-525, UC-526 · 3.3 UC-525 · 3.4 UC-527 · 3.5 UC-528 · 3.6 UC-529 ·
+3.7 UC-530 · 3.8 UC-531 · 3.9 UC-532 · 3.10 UC-533 · 3.11 UC-534 · 3.12 UC-535
+
+**Requirement 4 — Leisure Entry Editing, Deletion and Category Transitions**
+4.1 UC-536 · 4.2 UC-537 · 4.3 UC-538 · 4.4 UC-539 · 4.5 UC-540 · 4.6 UC-541 ·
+4.7 UC-542 · 4.8 UC-543 · 4.9 UC-544 · 4.10 UC-545 · 4.11 UC-546
+
+**Requirement 5 — Category-Derived Wire Shape**
+5.1 UC-547 · 5.2 UC-548, UC-513 · 5.3 UC-549 · 5.4 UC-550 · 5.5 UC-551
+
+**Requirement 6 — Category Totals and Category-Aware Aggregation Reads**
+6.1 UC-552 · 6.2 UC-553 · 6.3 UC-554, UC-595 · 6.4 UC-555 · 6.5 UC-556 ·
+6.6 UC-557, UC-582
+
+**Requirement 7 — Day Gauge Excludes Leisure Time**
+7.1 UC-558 · 7.2 UC-559 · 7.3 UC-560 · 7.4 UC-561, UC-562
+
+**Requirement 8 — Day Timeline Leisure Blocks**
+8.1 UC-563 · 8.2 UC-564 · 8.3 UC-565 · 8.4 UC-566 · 8.5 UC-567 · 8.6 UC-568 ·
+8.7 UC-569 · 8.8 UC-570 · 8.9 UC-571
+
+**Requirement 9 — Project Management — Billable Toggle**
+9.1 UC-572 · 9.2 UC-573 · 9.3 UC-574 · 9.4 UC-575
+
+**Requirement 10 — Activity Dialog — Category Selection**
+10.1 UC-576 · 10.2 UC-577 · 10.3 UC-578 · 10.4 UC-579 · 10.5 UC-580 · 10.6 UC-581 ·
+10.7 UC-582 · 10.8 UC-583 · 10.9 UC-584 · 10.10 UC-585
+
+**Requirement 11 — Statistics — Category Breakdown**
+11.1 UC-586 · 11.2 UC-587 · 11.3 UC-588 · 11.4 UC-589 · 11.5 UC-590
+
+**Requirement 12 — Internationalization**
+12.1 UC-591 · 12.2 UC-592
+
+**Correctness Properties of `003-worklog-time-categories/design.md`**
+P1 UC-513, UC-514, UC-548 · P2 UC-525, UC-526 · P3 UC-552 · P4 UC-553 · P5 UC-539 ·
+P6 UC-534, UC-543 · P7 UC-565
+
+**Not a criterion, verified anyway**
+UC-593 (leisure colour in both themes) · UC-594 (320 px) · UC-595 (leisure across the
+day boundary) · UC-596 (no leisure filter on `/api/activities`) · UC-597 (accessibility
+sweep) · UC-598 (the full E2E suite)
+
+**Known to fail on today's build**
+UC-589 — the `Day_Rhythm_Strip`'s leisure and covered rects have no `fill` rule
+(`ISSUES.md`, `[LOW] DayRhythm.svelte's covered/leisure segment rects…`). Written as a
+failure rather than omitted, so `verify` measures it rather than skipping it.
+UC-598 is expected to surface the unrelated `gaps.spec.ts` / `preview.spec.ts` date
+collision alongside the leisure scenarios it is actually checking.
