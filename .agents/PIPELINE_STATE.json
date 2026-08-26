@@ -26,11 +26,11 @@
       "finished_at": "2026-08-26T11:05:00Z"
     },
     "verify": {
-      "status": "pending",
-      "start_sha": null,
-      "end_sha": null,
-      "issues_opened": 0,
-      "finished_at": null
+      "status": "done",
+      "start_sha": "c3ca0bed9a528e4e467adced36cbff9dd303ac75",
+      "end_sha": "f814298832a5a93362e0d256fb59c5da5946ffda",
+      "issues_opened": 2,
+      "finished_at": "2026-08-26T12:36:05Z"
     },
     "docs": {
       "status": "pending",
