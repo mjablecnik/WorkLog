@@ -38,6 +38,8 @@ export type Project = {
 	name: string;
 	/** 0..7, stable slot in the eight-colour categorical palette (see 002-worklog-ui). */
 	colorIndex: number;
+	/** Whether a Work_Entry attributed to this Project is paid (true) or unpaid (false). */
+	billable: boolean;
 	archivedAt: Date | null;
 	/** `archivedAt !== null`, sent so no caller has to derive the flag it filters on. */
 	archived: boolean;
@@ -46,6 +48,13 @@ export type Project = {
 };
 
 export type ActivityMode = 'explicit' | 'duration' | 'open';
+
+/**
+ * The three-way classification of an Activity_Entry, derived at read time and never
+ * stored — `paid` for a Work_Entry whose Project is billable, `unpaid` for a
+ * Work_Entry whose Project is not billable, `relax` for a Leisure_Entry.
+ */
+export type Category = 'paid' | 'unpaid' | 'relax';
 
 export type ActivitySegment = {
 	id: string;
@@ -56,11 +65,16 @@ export type ActivitySegment = {
 
 export type ActivityEntry = {
 	id: string;
-	projectId: string;
-	/** Joined, read-only. */
-	projectName: string;
-	/** Joined, read-only — Requirement 7.15. */
-	colorIndex: number;
+	/** Null for a Leisure_Entry. */
+	projectId: string | null;
+	/** Joined, read-only. Null for a Leisure_Entry. */
+	projectName: string | null;
+	/** Joined, read-only — Requirement 7.15. Null for a Leisure_Entry — none of the
+	 *  eight Palette_Slot values represents it. */
+	colorIndex: number | null;
+	/** Derived: paid/unpaid from the Project's billable flag, or relax when projectId
+	 *  is null. Never stored. */
+	category: Category;
 	description: string;
 	mode: ActivityMode;
 
@@ -83,7 +97,8 @@ export type ActivityEntry = {
 
 /** What `createEntry` is given: the entry row before the database assigns anything. */
 export type NewActivityEntry = {
-	projectId: string;
+	/** Null creates a Leisure_Entry. */
+	projectId: string | null;
 	description: string;
 	mode: ActivityMode;
 	requestedStartedAt: Date;
@@ -98,6 +113,9 @@ export type ProjectTotal = {
 	/** So an archived project holding time in a range is still recognisable. */
 	archived: boolean;
 	coveredSeconds: number;
+	/** Lets a caller split a per-project breakdown into paid and unpaid without a
+	 *  second Project lookup. */
+	billable: boolean;
 };
 
 /**
@@ -113,6 +131,11 @@ export type ProjectInterval = Interval & { projectId: string; colorIndex: number
  * because `SessionChangePreview` (`responses.ts`) carries a list of these on the wire,
  * and `lib/contracts` may not import from `lib/server` — the domain module imports the
  * type from here instead, exactly as it does `Interval`.
+ */
+/**
+ * Non-nullable by design: `entriesAffectedBy` (`store/activities.ts`) is filtered to
+ * Work_Entry rows only, so no Leisure_Entry ever reaches `reclipAffected` and neither
+ * field below can be null here — unlike `ActivityEntry`'s nullable fields.
  */
 export type ReclipOutcome = {
 	entryId: string;

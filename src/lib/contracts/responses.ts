@@ -42,7 +42,7 @@ export type ActivityResponse = {
 	 * The Placement_Anchor this write resolved, or null in Explicit_Mode where none
 	 * was needed (Requirement 5.16). Present on the success path, not only on failure.
 	 */
-	anchor: { at: string; source: 'explicit' | 'last-segment' | 'first-session' } | null;
+	anchor: { at: string; source: 'explicit' | 'last-segment' | 'first-session' | 'day-start' } | null;
 	dryRun: boolean;
 	previewToken: PreviewToken;
 };
@@ -106,6 +106,13 @@ export type DaySummary = {
 	trackedSeconds: number;
 	coveredSeconds: number;
 	uncoveredSeconds: number;
+	/** Addition — coveredSeconds split by Project.billable. paidSeconds + unpaidSeconds
+	 *  === coveredSeconds. */
+	paidSeconds: number;
+	unpaidSeconds: number;
+	/** Addition — total Leisure_Entry segment duration in the day. NOT part of
+	 *  coveredSeconds. */
+	relaxSeconds: number;
 	/** Work_Session ROWS that began in this day — Requirement 8.9. */
 	sessionCount: number;
 	/**
@@ -118,13 +125,16 @@ export type DaySummary = {
 	/** Tracked time after the Evening_Hour — Requirement 8.19. */
 	eveningSeconds: number;
 	/**
-	 * The shape of the day. All three are present only when the request asked for
+	 * The shape of the day. All four are present only when the request asked for
 	 * `include=intervals` AND the range is at most MAX_INTERVAL_RANGE_DAYS long; all
-	 * three are absent otherwise (Requirements 8.18, 8.23).
+	 * four are absent otherwise (Requirements 8.18, 8.23).
 	 */
 	tracked?: Interval[];
 	covered?: ProjectInterval[];
 	uncovered?: Interval[];
+	/** Addition — Leisure_Time intervals, clamped to the day's boundaries, under the
+	 *  same include=intervals gating as tracked/covered/uncovered. */
+	leisure?: Interval[];
 	byProject: ProjectTotal[];
 };
 
@@ -138,8 +148,8 @@ export type DaysRangeResponse = {
 	 */
 	suggestedWindow: { start: string; end: string } | null;
 	/**
-	 * True when every DaySummary carries `tracked`, `covered` and `uncovered`; false
-	 * when they were left out. False is a normal 200, never an error.
+	 * True when every DaySummary carries `tracked`, `covered`, `uncovered` and
+	 * `leisure`; false when they were left out. False is a normal 200, never an error.
 	 */
 	intervalsIncluded: boolean;
 };
@@ -193,6 +203,10 @@ export type DayResponse = {
 		trackedSeconds: number;
 		coveredSeconds: number;
 		uncoveredSeconds: number;
+		/** Addition — mirrors DaySummary's paidSeconds/unpaidSeconds/relaxSeconds. */
+		paidSeconds: number;
+		unpaidSeconds: number;
+		relaxSeconds: number;
 		/** ProjectTotal, so `archived` is present — Requirement 8.5 needs it. */
 		byProject: ProjectTotal[];
 		/**
@@ -209,7 +223,9 @@ export type DayResponse = {
 	 * but the end of that day's last Work_Session for a day in the past.
 	 *
 	 * Null when the day has no anchor, or when no Activity_Entry exists anywhere to
-	 * take a project from.
+	 * take a project from. Deliberately does NOT gain a 'day-start' anchor source:
+	 * Quick_Log resolves against Work_Entry data only (Requirement 6.6) and has no
+	 * day-start fallback.
 	 */
 	quickLog: {
 		start: string;

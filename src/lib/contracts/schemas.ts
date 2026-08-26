@@ -59,7 +59,8 @@ const untrackedPolicy = z.enum(['clip', 'extend', 'reject']).default('clip');
 // POST /api/activities — one schema covers all three modes; the handler picks the mode.
 export const createActivitySchema = z
 	.object({
-		projectId: z.uuid(),
+		/** Absent creates a Leisure_Entry (Requirement 2.3). */
+		projectId: z.uuid().optional(),
 		description: z.string().max(2000).default(''),
 		/** Target_Day for Duration_Mode and Open_Mode. Defaults to the current Logical_Day. */
 		date: dateString.optional(),
@@ -77,36 +78,82 @@ export type CreateActivityInput = z.infer<typeof createActivitySchema>;
  * PATCH also carries the orphan rescue path (Requirements 7.16-7.19). Supplying both
  * bounds clears `requestedDurationMinutes` and sets `mode` to `explicit`.
  */
+const patchActivityFields = {
+	/**
+	 * Three states, all meaningful (Requirements 4.1, 4.2): absent leaves projectId
+	 * unchanged; null clears it, converting to a Leisure_Entry; a uuid sets/changes
+	 * it, converting to (or keeping) a Work_Entry. Reachable only over the JSON
+	 * API — the form-action path uses `clearProject` instead.
+	 */
+	projectId: z.uuid().nullable().optional(),
+	description: z.string().max(2000).optional(),
+	startedAt: isoOffset.optional(),
+	endedAt: isoOffset.optional(),
+	durationMinutes: z.number().int().positive().optional(),
+	/** Required whenever `durationMinutes` is sent — Requirement 7.21. */
+	date: dateString.optional(),
+	untrackedPolicy,
+	...dryRunFields
+};
+
+// Requirement 7.20: the two bounds travel together or not at all.
+const patchActivityBoundsRefine = (v: { startedAt?: Date; endedAt?: Date }) =>
+	(v.startedAt === undefined) === (v.endedAt === undefined);
+// Requirement 7.21: a duration must say which Target_Day to walk.
+const patchActivityDurationDateRefine = (v: { durationMinutes?: number; date?: string }) =>
+	v.durationMinutes === undefined || v.date !== undefined;
+// Requirement 7.25: a PATCH names exactly one mode, as a create does.
+const patchActivityModeRefine = (v: { durationMinutes?: number; endedAt?: Date }) =>
+	!(v.durationMinutes !== undefined && v.endedAt !== undefined);
+
 export const patchActivitySchema = z
-	.object({
-		projectId: z.uuid().optional(),
-		description: z.string().max(2000).optional(),
-		startedAt: isoOffset.optional(),
-		endedAt: isoOffset.optional(),
-		durationMinutes: z.number().int().positive().optional(),
-		/** Required whenever `durationMinutes` is sent — Requirement 7.21. */
-		date: dateString.optional(),
-		untrackedPolicy,
-		...dryRunFields
-	})
+	.object(patchActivityFields)
 	.strict()
-	// Requirement 7.20: the two bounds travel together or not at all.
-	.refine((v) => (v.startedAt === undefined) === (v.endedAt === undefined), {
+	.refine(patchActivityBoundsRefine, {
 		message: 'startedAt and endedAt must be supplied together',
 		path: ['startedAt']
 	})
-	// Requirement 7.21: a duration must say which Target_Day to walk.
-	.refine((v) => v.durationMinutes === undefined || v.date !== undefined, {
+	.refine(patchActivityDurationDateRefine, {
 		message: 'date is required when durationMinutes is supplied',
 		path: ['date']
 	})
-	// Requirement 7.25: a PATCH names exactly one mode, as a create does.
-	.refine((v) => !(v.durationMinutes !== undefined && v.endedAt !== undefined), {
+	.refine(patchActivityModeRefine, {
 		message: 'endedAt and durationMinutes must not be supplied together',
 		path: ['durationMinutes']
 	});
 
 export type PatchActivityInput = z.infer<typeof patchActivitySchema>;
+
+/**
+ * The form-action variant, and the ONLY schema carrying `clearProject` — the
+ * form-action encoding of "convert to a Leisure_Entry" (Requirement 4.9). A FormData
+ * body carries no null and cannot distinguish an absent field from an empty one, so
+ * `patchActivitySchema`'s `projectId: null` is unrepresentable on that path.
+ * `patchActivityAction` translates a true value into `projectId: null` before calling
+ * the service; the service itself never sees this field.
+ *
+ * Declared as a separate schema rather than a field on the shared one deliberately:
+ * `patchActivitySchema` is `.strict()`, so keeping `clearProject` out of it makes the
+ * JSON route REJECT the field with `VALIDATION_ERROR` instead of accepting and
+ * silently dropping it. `projectId: null` stays the one JSON encoding of the
+ * conversion (Requirement 4.10).
+ */
+export const patchActivityFormSchema = z
+	.object({ ...patchActivityFields, clearProject: z.coerce.boolean().optional() })
+	.strict()
+	.refine(patchActivityBoundsRefine, {
+		message: 'startedAt and endedAt must be supplied together',
+		path: ['startedAt']
+	})
+	.refine(patchActivityDurationDateRefine, {
+		message: 'date is required when durationMinutes is supplied',
+		path: ['date']
+	})
+	.refine(patchActivityModeRefine, {
+		message: 'endedAt and durationMinutes must not be supplied together',
+		path: ['durationMinutes']
+	});
+export type PatchActivityFormInput = z.infer<typeof patchActivityFormSchema>;
 
 export const createSessionSchema = z
 	.object({
@@ -154,7 +201,9 @@ export type DeleteSessionQuery = z.infer<typeof deleteSessionQuery>;
 
 export const createProjectSchema = z
 	.object({
-		name: z.string().trim().min(1).max(200)
+		name: z.string().trim().min(1).max(200),
+		/** Defaults to true (Requirement 1.1). */
+		billable: z.boolean().default(true)
 	})
 	.strict();
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -163,7 +212,8 @@ export const patchProjectSchema = z
 	.object({
 		name: z.string().trim().min(1).max(200).optional(),
 		archived: z.boolean().optional(),
-		colorIndex: z.number().int().min(0).max(7).optional()
+		colorIndex: z.number().int().min(0).max(7).optional(),
+		billable: z.boolean().optional()
 	})
 	.strict();
 export type PatchProjectInput = z.infer<typeof patchProjectSchema>;
