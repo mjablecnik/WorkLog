@@ -181,11 +181,14 @@ run that day, so that rest is not gated behind an unrelated work session.
    `Unrestricted_Window` in place of `Tracked_Time`, so no part of its requested
    interval or resolved duration is discarded, extended against or rejected for lying
    outside a timer frame
-2. THE Worklog_Server SHALL still exclude from a `Leisure_Entry`'s `Activity_Segment`
-   records any stretch already claimed by another `Activity_Entry`'s
-   `Activity_Segment` — `Work_Entry` or `Leisure_Entry` alike — by the same overlap
-   rule that governs every `Activity_Entry`, so only one thing is ever logged as
-   happening at a given instant
+2. WHEN placing a `Leisure_Entry` created in `Duration_Mode`, THE Worklog_Server SHALL
+   advance forward and consume only time that is not already claimed by another
+   `Activity_Entry`'s `Activity_Segment` — `Work_Entry` or `Leisure_Entry` alike — by
+   the same rule as `001-worklog-domain-api` Requirement 5.8, so only one thing is
+   ever logged as happening at a given instant. This governs `Duration_Mode` only:
+   `Explicit_Mode` and `Open_Mode` have a fixed requested interval instead of a
+   forward walk, and criterion 3 governs those unconditionally — an overlap there is
+   rejected outright, never trimmed
 3. IF a `Leisure_Entry`'s requested interval overlaps an `Activity_Segment` of a
    different `Activity_Entry`, THEN THE Worklog_Server SHALL return HTTP 409 with
    error code `ACTIVITY_OVERLAP`, exactly as for a `Work_Entry`
