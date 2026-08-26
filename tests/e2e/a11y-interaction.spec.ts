@@ -95,6 +95,51 @@ test('a keyboard-only walk reaches a timeline block, opens the dialog, and submi
 	await expect(page.getByText('Updated via keyboard')).toBeVisible();
 });
 
+// 003-worklog-time-categories, task 12.2: the Day_Timeline's keyboard tab order
+// visits a Leisure_Block in the same chronological order as a Work_Block
+// (Requirement 8.6), never skipped.
+test('a keyboard-only walk reaches the Leisure_Block in the same tab order as a Work_Block', async ({
+	page
+}) => {
+	const day = '2024-01-23';
+	await login(page);
+	await createProject(page, 'Focus');
+	const projectId = await findProjectId(page, 'Focus');
+	// Leisure at 06:00, well before the 08:00-09:00 Work_Session/entry — chronological
+	// tab order must reach the Leisure_Block first.
+	await createActivityViaApi(page, null, `${day}T06:00:00.000Z`, `${day}T06:30:00.000Z`, 'Early leisure');
+	await createSessionViaApi(page, `${day}T08:00:00.000Z`, `${day}T09:00:00.000Z`);
+	await createActivityViaApi(page, projectId, `${day}T08:00:00.000Z`, `${day}T09:00:00.000Z`, 'Focused work');
+
+	await page.goto(`/day/${day}`);
+
+	await tabUntil(
+		page,
+		() => page.evaluate(() => document.activeElement?.hasAttribute('data-entry-id') ?? false),
+		25
+	);
+	const firstIsLeisure = await page.evaluate(
+		() => document.activeElement?.classList.contains('sb--leisure') ?? false
+	);
+	expect(firstIsLeisure).toBe(true);
+
+	// The Work_Block that follows may interpose its own session-edge controls before
+	// its Segment_Block, so search forward for the next entry rather than asserting
+	// on the very next Tab press.
+	await page.keyboard.press('Tab');
+	await tabUntil(
+		page,
+		() => page.evaluate(() => document.activeElement?.hasAttribute('data-entry-id') ?? false),
+		10
+	);
+	const secondIsWork = await page.evaluate(
+		() =>
+			(document.activeElement?.hasAttribute('data-entry-id') ?? false) &&
+			!document.activeElement?.classList.contains('sb--leisure')
+	);
+	expect(secondIsWork).toBe(true);
+});
+
 test('a keyboard-focused control shows a visible focus ring', async ({ page }) => {
 	// Formerly documented the CURRENT (broken) state as a regression test — see
 	// .agents/ISSUES.md, "src/app.css is never imported" (now RESOLVED,

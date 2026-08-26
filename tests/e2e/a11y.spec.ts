@@ -74,6 +74,9 @@ async function seedADay(page: Page): Promise<void> {
 	const projectId = await findProjectId(page, 'Focus');
 	await createSessionViaApi(page, '2024-01-21T08:00:00.000Z', '2024-01-21T11:00:00.000Z');
 	await createActivityViaApi(page, projectId, '2024-01-21T08:00:00.000Z', '2024-01-21T09:00:00.000Z', 'Writing');
+	// 003-worklog-time-categories, task 12.2: a Leisure_Block present in the swept day,
+	// well outside the Work_Session above — no timer needs to have run for it.
+	await createActivityViaApi(page, null, '2024-01-21T20:00:00.000Z', '2024-01-21T21:00:00.000Z', 'Evening off');
 }
 
 /**

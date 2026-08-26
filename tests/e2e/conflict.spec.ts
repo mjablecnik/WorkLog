@@ -60,3 +60,38 @@ test('logging an activity that overlaps an existing one is rejected and nothing 
 	const segments = page.locator('.day-timeline button[data-entry-id]');
 	await expect(segments).toHaveCount(1);
 });
+
+// 003-worklog-time-categories, task 12.2: a Leisure_Entry overlapping a Work_Entry is
+// rejected with the same conflict, named, exactly as a Work_Entry-vs-Work_Entry one.
+test('a Leisure_Entry overlapping a Work_Entry is rejected as a conflict', async ({ page }) => {
+	const day = '2024-01-21';
+	await login(page);
+	await createProject(page, PROJECT_NAME);
+	const projectId = await findProjectId(page, PROJECT_NAME);
+
+	await createSessionViaApi(page, `${day}T08:00:00.000Z`, `${day}T12:00:00.000Z`);
+	await createActivityViaApi(page, projectId, `${day}T08:00:00.000Z`, `${day}T09:00:00.000Z`, 'Ticket triage');
+
+	await page.goto(`/day/${day}`);
+
+	// A leisure draft (category "Volno") for 08:30-09:30 — overlaps the 08:00-09:00
+	// Work_Entry above.
+	await page.getByRole('button', { name: 'Přidat úkol', exact: true }).click();
+	const dialog = page.getByRole('dialog', { name: 'Přidat úkol' });
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('radio', { name: 'Volno' }).click();
+	await expect(dialog.getByLabel('projekt', { exact: false })).toHaveCount(0);
+	await dialog.getByLabel('od').fill('08:30');
+	await dialog.getByLabel('do').fill('09:30');
+	await page.waitForTimeout(700);
+
+	await expect(dialog.locator('.change-preview__rejection')).toContainText('Překrývá se se záznamem');
+	await expect(dialog.getByRole('button', { name: 'Uložit úkol', exact: true })).toBeDisabled();
+
+	await dialog.getByRole('button', { name: 'Zrušit', exact: true }).click();
+	await expect(dialog).toBeHidden();
+
+	await page.reload();
+	const segments = page.locator('.day-timeline button[data-entry-id]');
+	await expect(segments).toHaveCount(1);
+});

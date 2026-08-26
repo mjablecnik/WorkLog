@@ -226,15 +226,26 @@ export async function createSessionViaApi(
 	}
 }
 
+/**
+ * `projectId: null` creates a Leisure_Entry (003-worklog-time-categories, Requirement
+ * 2.3) — no `projectId` field is sent at all, exactly as the real dialog's own
+ * relax-category draft omits it.
+ */
 export async function createActivityViaApi(
 	page: Page,
-	projectId: string,
+	projectId: string | null,
 	startedAtIso: string,
 	endedAtIso: string,
 	description = ''
 ): Promise<void> {
 	const res = await page.request.post('/api/activities', {
-		data: { projectId, startedAt: startedAtIso, endedAt: endedAtIso, description, dryRun: false }
+		data: {
+			...(projectId !== null ? { projectId } : {}),
+			startedAt: startedAtIso,
+			endedAt: endedAtIso,
+			description,
+			dryRun: false
+		}
 	});
 	if (!res.ok()) {
 		throw new Error(`createActivityViaApi failed: ${res.status()} ${await res.text()}`);

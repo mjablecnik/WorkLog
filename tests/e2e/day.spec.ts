@@ -109,4 +109,35 @@ test.describe('day timeline reconciliation', () => {
 		const coveredRow = page.locator('.day-summary-panels__row', { hasText: 'Popsáno' });
 		await expect(coveredRow.locator('dd')).toHaveText('2 h 00 min');
 	});
+
+	// 003-worklog-time-categories, task 12.2.
+	test('a Leisure_Entry on a day with no Work_Session renders on the timeline, and survives a session added over it untouched', async ({
+		page
+	}) => {
+		const day = '2024-01-17';
+		await login(page);
+
+		// No Work_Session at all on this day — logging leisure never needs one.
+		await createActivityViaApi(
+			page,
+			null,
+			`${day}T20:00:00.000Z`,
+			`${day}T21:00:00.000Z`,
+			'Evening off'
+		);
+
+		await page.goto(`/day/${day}`);
+		await expect(page.locator('.day-timeline .sb--leisure')).toHaveCount(1);
+		await expect(page.getByText('Evening off')).toBeVisible();
+		// The Day_Gauge lives on the timer page, not here — this only confirms the day
+		// page itself renders leisure rather than the empty state (Requirement 8.5).
+		await expect(page.getByText('Zatím nic')).toHaveCount(0);
+
+		// A Work_Session added well outside the leisure interval — the leisure entry
+		// must remain exactly as it was (Requirement 3.11).
+		await createSessionViaApi(page, `${day}T06:00:00.000Z`, `${day}T07:00:00.000Z`);
+		await page.reload();
+		await expect(page.locator('.day-timeline .sb--leisure')).toHaveCount(1);
+		await expect(page.getByText('Evening off')).toBeVisible();
+	});
 });
