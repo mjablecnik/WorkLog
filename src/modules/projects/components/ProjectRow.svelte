@@ -71,6 +71,8 @@
 		totalCoveredSeconds > 0 ? (project.coveredSeconds / totalCoveredSeconds) * 100 : 0
 	);
 	const archiveActionUrl = $derived(project.archived ? '?/unarchive' : '?/archive');
+	// Requirement 9.4: one named action per operation, mirroring archive/unarchive.
+	const billableActionUrl = $derived(project.billable ? '?/unbillable' : '?/billable');
 
 	/** A submission's own `enhance` callback is the source of truth for this row's UI
 	 * (whether the field stays open, which error shows) — never the page's shared
@@ -240,6 +242,21 @@
 	}
 
 	// ---------------------------------------------------------------------------
+	// Billable — a two-way toggle on the row itself (Requirement 9.1), mirroring
+	// archive/unarchive's own hidden-form/dynamic-action pattern exactly.
+	// ---------------------------------------------------------------------------
+	let togglingBillable = $state(false);
+	let billableFormEl: HTMLFormElement | undefined = $state();
+
+	function handleBillableEnhance() {
+		togglingBillable = true;
+		return async ({ result }: { result: ActionResult }) => {
+			togglingBillable = false;
+			await fallbackHandle(result);
+		};
+	}
+
+	// ---------------------------------------------------------------------------
 	// Mobile overflow sheet — SettingsMenu.svelte's mobile mechanism, ported: the
 	// shared modal stack plus a body-portalled scrim+sheet. Requirement 14.24's
 	// modal surfaces list already names "the mobile Settings_Menu sheet"; this one
@@ -292,6 +309,11 @@
 	function handleSheetRecolor(): void {
 		closeSheet();
 		colorStripOpen = true;
+	}
+
+	function handleSheetBillable(): void {
+		closeSheet();
+		billableFormEl?.requestSubmit();
 	}
 
 	function handleSheetScrimActivate(): void {
@@ -404,6 +426,27 @@
 				{/if}
 			{/if}
 		</div>
+
+		<!-- Requirement 9.3: the classification is never carried by colour alone — a
+		     plain text label, doubling as the toggle control itself. -->
+		<form
+			method="POST"
+			action={billableActionUrl}
+			bind:this={billableFormEl}
+			use:enhance={handleBillableEnhance}
+		>
+			<input type="hidden" name="id" value={project.id} />
+			<button
+				type="submit"
+				class="project-row__billable-badge"
+				class:project-row__billable-badge--unpaid={!project.billable}
+				disabled={togglingBillable}
+				title={project.billable ? m.projects_unbillable() : m.projects_billable()}
+				aria-label={project.billable ? m.projects_unbillable() : m.projects_billable()}
+			>
+				{project.billable ? m.category_paid() : m.category_unpaid()}
+			</button>
+		</form>
 	</div>
 
 	<div class="project-row__meta">
@@ -567,6 +610,10 @@
 					aria-hidden="true"
 				></span>
 				<span>{m.projects_recolor()}</span>
+			</button>
+			<button type="button" class="project-row__sheet-item" onclick={handleSheetBillable}>
+				<Icon name="check" size={17} />
+				<span>{project.billable ? m.projects_unbillable() : m.projects_billable()}</span>
 			</button>
 		</div>
 	</div>
@@ -782,6 +829,37 @@
 
 	.project-row__hidden-form {
 		display: none;
+	}
+
+	/* Requirement 9.3: the paid/unpaid classification as a plain text label — never
+	 * colour alone — doubling as its own toggle control. */
+	.project-row__billable-badge {
+		flex-shrink: 0;
+		height: 22px;
+		padding: 0 9px;
+		border: none;
+		border-radius: var(--radius-9999);
+		background: var(--chip);
+		color: var(--text-dim);
+		font-size: 11px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		cursor: pointer;
+		transition: background-color var(--dur-hover) var(--ease-standard);
+	}
+
+	.project-row__billable-badge:hover:not(:disabled) {
+		background: var(--chip-hover);
+	}
+
+	.project-row__billable-badge:disabled {
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.project-row__billable-badge--unpaid {
+		color: var(--text-faint);
 	}
 
 	/* -----------------------------------------------------------------------

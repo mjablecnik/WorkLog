@@ -48,6 +48,8 @@
 	const noProjectsAtAll = $derived(projects.length === 0);
 
 	let createName = $state('');
+	// Requirement 9.2: choosing billable at creation time, defaulting to paid.
+	let createBillable = $state(true);
 	let creating = $state(false);
 	let createErrors = $state<string[]>([]);
 	let createInputEl: HTMLInputElement | undefined = $state();
@@ -66,6 +68,7 @@
 			if (result.type === 'success') {
 				createErrors = [];
 				createName = '';
+				createBillable = true;
 				await invalidateAll();
 				return;
 			}
@@ -132,6 +135,33 @@
 					aria-describedby={createErrors.length > 0 ? createErrorId : undefined}
 					disabled={creating}
 				/>
+				<input type="hidden" name="billable" value={createBillable ? 'true' : 'false'} />
+				<div
+					class="projects-page__create-billable"
+					role="radiogroup"
+					aria-label={m.projects_billable_label()}
+				>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={createBillable}
+						class="projects-page__create-billable-item"
+						class:projects-page__create-billable-item--active={createBillable}
+						onclick={() => (createBillable = true)}
+					>
+						{m.category_paid()}
+					</button>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={!createBillable}
+						class="projects-page__create-billable-item"
+						class:projects-page__create-billable-item--active={!createBillable}
+						onclick={() => (createBillable = false)}
+					>
+						{m.category_unpaid()}
+					</button>
+				</div>
 				<button type="submit" class="projects-page__create-btn" disabled={creating}>
 					{#if creating}
 						<Spinner size={14} />
@@ -220,6 +250,7 @@
 
 	.projects-page__create {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
 		width: 100%;
@@ -227,7 +258,8 @@
 
 	.projects-page__create-input {
 		width: 100%;
-		flex: 1 1 auto;
+		flex: 1 1 160px;
+		min-width: 0;
 		height: 38px;
 		padding: 0 12px;
 		border: none;
@@ -250,6 +282,34 @@
 
 	.projects-page__create-input--error {
 		box-shadow: inset 0 0 0 1px var(--destructive);
+	}
+
+	.projects-page__create-billable {
+		display: flex;
+		flex-shrink: 0;
+		gap: 2px;
+		padding: 2px;
+		border-radius: var(--radius-9999);
+		background: var(--chip);
+	}
+
+	.projects-page__create-billable-item {
+		height: 34px;
+		padding: 0 12px;
+		border: none;
+		border-radius: var(--radius-9999);
+		background: transparent;
+		color: var(--text-dim);
+		font-size: 12.5px;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+		transition: background-color var(--dur-hover) var(--ease-standard);
+	}
+
+	.projects-page__create-billable-item--active {
+		background: var(--dialog);
+		color: var(--text);
 	}
 
 	.projects-page__create-btn {
