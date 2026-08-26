@@ -139,11 +139,32 @@ That is not an error.
 `GET /api/projects` (add `?include_archived=true` for archived ones too),
 `POST /api/projects`, `PATCH /api/projects/{id}`, `DELETE /api/projects/{id}`.
 
+Every `Project` carries a `billable` boolean, defaulting to `true` — whether a
+`Work_Entry` attributed to it is `paid` or `unpaid`. Renaming, archiving or
+recolouring a project never changes it.
+
+```bash
+curl -X POST https://worklog.fly.dev/api/projects \
+  -H "Authorization: Bearer $WORKLOG_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"name":"Household chores","billable":false}'
+```
+
 ### Activities — the log
 
 `GET /api/activities` (paged, `from`/`to`/`project_id`/`cursor`/`order`/`limit`),
 `GET /api/activities/{id}`, `POST /api/activities`, `PATCH /api/activities/{id}`,
 `DELETE /api/activities/{id}`.
+
+`projectId` is optional on create and nullable on patch: a request with no `projectId`
+at all creates a **Leisure_Entry** — logged time with no `Project`, reconciled against
+its own requested interval (or the whole day, in Duration_Mode) instead of the timer
+frame, so it can be logged whether or not the timer ever ran that day. Every response
+entry carries a derived `category` — `paid`/`unpaid` (from its `Project`'s `billable`
+flag) or `relax` for a `Leisure_Entry` — and a `Leisure_Entry`'s `projectId`,
+`projectName` and `colorIndex` are always `null`. `PATCH` with `projectId: null`
+converts an existing entry to a `Leisure_Entry`; `PATCH` with a project id converts it
+back. `GET /api/activities?project_id=` filters only for a named `Project` — there is
+no way to filter for `Leisure_Entry` rows specifically (see Known Limitations).
 
 Three ways to write an activity, picked by which fields are present:
 
@@ -162,6 +183,11 @@ curl -X POST https://worklog.fly.dev/api/activities \
 curl -X POST https://worklog.fly.dev/api/activities \
   -H "Authorization: Bearer $WORKLOG_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{"projectId":"…","description":"Reviewed the migration"}'
+
+# Leisure — no projectId at all. Reconciled against its own interval, not the timer.
+curl -X POST https://worklog.fly.dev/api/activities \
+  -H "Authorization: Bearer $WORKLOG_API_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"description":"Evening off","startedAt":"2026-06-01T20:00:00Z","endedAt":"2026-06-01T22:00:00Z"}'
 ```
 
 Every write also accepts `untrackedPolicy` (`clip` — the default, `extend` or
@@ -201,11 +227,17 @@ curl -X POST https://worklog.fly.dev/api/activities \
 ### Days, coverage and health
 
 `GET /api/days` (a `DaySummary` per `Logical_Day`; add `?include=intervals` for the
-per-day `tracked`/`covered`/`uncovered` lists, capped at `MAX_INTERVAL_RANGE_DAYS`),
-`GET /api/days/{date}` (everything about one day — sessions, entries, coverage,
-totals and `quickLog`), `GET /api/coverage` (`tracked`/`covered`/`uncovered`/
-`untracked` over a range), `GET /api/health` (no credential; `degraded` and 503 when
-the database is unreachable or a migration is unapplied).
+per-day `tracked`/`covered`/`uncovered`/`leisure` lists, capped at
+`MAX_INTERVAL_RANGE_DAYS`), `GET /api/days/{date}` (everything about one day —
+sessions, entries, coverage, totals and `quickLog`), `GET /api/coverage`
+(`tracked`/`covered`/`uncovered`/`untracked` over a range — `Work_Entry` time only,
+unaffected by any `Leisure_Entry` in the range), `GET /api/health` (no credential;
+`degraded` and 503 when the database is unreachable or a migration is unapplied).
+
+Every day summary also carries `paidSeconds`, `unpaidSeconds` (a split of
+`coveredSeconds` by each `Work_Entry`'s `Project.billable`) and `relaxSeconds` (the
+total `Leisure_Entry` time that day — never part of `coveredSeconds`, and never
+requiring a `Work_Session` to have run).
 
 ## The Clipping worked example
 
@@ -235,7 +267,7 @@ Four screens, reached from the same `Topbar` (desktop) / `BottomNav` (mobile) sh
 | Route          | Screen                                                          |
 | -------------- | ---------------------------------------------------------------- |
 | `/`            | Timer — start/stop, the running session, today's `Day_Gauge`     |
-| `/day/[date]`  | Day timeline — every `Work_Session`/`Activity_Segment` for one day |
+| `/day/[date]`  | Day timeline — every `Work_Session`/`Activity_Segment` and `Leisure_Entry` for one day |
 | `/projects`    | Project management — create, edit, archive                        |
 | `/stats`       | Statistics — aggregated time by project over a range               |
 
@@ -257,10 +289,14 @@ time) via the `ChangePreview` component, and only actually saves on a second,
 explicit confirmation.
 
 **Day timeline geometry.** The visual layout of `Work_Block`/`Uncovered_Marker`/
-`Day_Gauge` is generated, not hand-tuned — `bun run generate:css`
+`Leisure_Block`/`Day_Gauge` is generated, not hand-tuned — `bun run generate:css`
 (`scripts/generate-palette-and-heights.ts`) writes `src/lib/theme/palette.css` and
 `src/lib/theme/timeline-heights.css` from the design tokens, and `bun run check` fails
-if the committed files and a fresh generation disagree.
+if the committed files and a fresh generation disagree. A `Leisure_Block` is a
+top-level unit on the `Day_Timeline`, never nested inside a `Work_Block`, tinted with
+the reserved `pj-relax` palette class — a deliberately low-chroma slot outside the
+eight-project `pj-0`…`pj-7` palette, never reached by the project colour-index
+wraparound.
 
 ### Known Limitations
 
@@ -274,6 +310,18 @@ hard way:
   empty states, skeletons, the login/error/offline pages, the timezone notice, the
   focus ring) have not had their token values independently re-checked against
   `.design/DESIGN.md`'s written description.
+- **`Open_Mode` leisure logging is a dead end on a day in the past with no
+  `Work_Session` at all.** `Open_Mode`'s end for a past `Logical_Day` is that day's
+  last session end; with no session, the day-start fallback anchors at the same
+  instant the end resolves to, so the interval is empty and the write is rejected with
+  `NOTHING_TO_LOG`. `Explicit_Mode` and `Duration_Mode` are the supported ways to log
+  leisure on such a day — this is deliberate (see the design's Requirement 3.12), not a
+  bug to fix.
+- **`GET /api/activities?project_id=` cannot filter for `Leisure_Entry` rows.** The
+  parameter names a `Project` to filter for; there is no sentinel value naming "no
+  project" instead. The day and range responses already carry leisure time separately
+  (`relaxSeconds`, the `leisure` interval list), so no requirement needs this filter,
+  and adding a magic value to a uuid-typed parameter would cost more than it returns.
 
 ## Migrations
 
@@ -282,6 +330,12 @@ Forward-only. `migrations/*.sql` are numbered and applied in order by
 mistake already shipped is corrected by a new migration, never by editing or removing
 one that has run. On Fly, migration is the deploy's `release_command`: a non-zero exit
 aborts the release and the previous version keeps serving.
+
+- `001_init.sql` — the initial schema (spec `001-worklog-domain-api`).
+- `002_leisure_time_categories.sql` — adds `projects.billable` (`NOT NULL DEFAULT
+  true`, itself the backfill for every pre-existing row) and drops `NOT NULL` from
+  `activity_entries.project_id`, so a null `project_id` can mean a `Leisure_Entry`
+  (spec `003-worklog-time-categories`).
 
 **Changing `TIMEZONE` or `DAY_START_HOUR` regroups existing history** — every
 `Logical_Day` boundary moves, so which day a given `Work_Session` or
