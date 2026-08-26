@@ -313,4 +313,171 @@ describe('activities service (scratch verification)', () => {
 		expect(res.entry.segments.length).toBe(1);
 		expect(res.entry.segments[0].startedAt.toISOString()).toBe('2026-06-01T07:00:00.000Z');
 	});
+
+	// --- 003-worklog-time-categories, task 5.6: unrestrictedTracked, the day-start
+	// anchor fallback, and crossesProjectBoundary — exercised through the public
+	// createActivity/patchActivity functions, since the helpers themselves are
+	// module-private.
+
+	it('a Leisure_Entry in Explicit_Mode ignores Tracked_Time entirely — no projectId, no session needed', async () => {
+		const res = await createActivity({
+			description: 'leisure explicit',
+			startedAt: iso('2026-06-20T20:00:00Z'),
+			endedAt: iso('2026-06-20T22:00:00Z'),
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-20T23:00:00Z')
+		});
+		expect(res.entry.projectId).toBeNull();
+		expect(res.entry.category).toBe('relax');
+		expect(res.discarded).toEqual([]);
+		expect(res.entry.segments).toHaveLength(1);
+		expect(res.entry.segments[0].startedAt.toISOString()).toBe('2026-06-20T20:00:00.000Z');
+		expect(res.entry.segments[0].endedAt.toISOString()).toBe('2026-06-20T22:00:00.000Z');
+	});
+
+	it('a Leisure_Entry in Duration_Mode uses the whole Target_Day as its Unrestricted_Window', async () => {
+		const res = await createActivity({
+			description: 'leisure duration',
+			date: '2026-06-21',
+			startedAt: iso('2026-06-21T09:00:00Z'),
+			durationMinutes: 90,
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-21T23:00:00Z')
+		});
+		expect(res.entry.projectId).toBeNull();
+		expect(res.entry.segments).toHaveLength(1);
+		expect(res.entry.segments[0].startedAt.toISOString()).toBe('2026-06-21T09:00:00.000Z');
+		expect(res.unplacedMinutes).toBe(0);
+	});
+
+	it("a Leisure_Entry in Open_Mode on a day with no Work_Session anchors at the Target_Day's start (source: day-start)", async () => {
+		const res = await createActivity({
+			description: 'leisure open',
+			date: '2026-06-22',
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-22T10:00:00Z')
+		});
+		expect(res.anchor?.source).toBe('day-start');
+		expect(res.entry.projectId).toBeNull();
+		expect(res.entry.segments.length).toBeGreaterThan(0);
+	});
+
+	it('a Work_Entry Open_Mode create on a day with no Work_Session still reports NO_PLACEMENT_ANCHOR (day-start fallback is leisure-only)', async () => {
+		const p = await withTx((tx) => createProject(tx, 'No Anchor Project'));
+		await expect(
+			createActivity({
+				projectId: p.id,
+				description: 'work open, no session',
+				date: '2026-06-23',
+				untrackedPolicy: 'clip',
+				dryRun: false,
+				now: iso('2026-06-23T10:00:00Z')
+			})
+		).rejects.toMatchObject({ code: 'NO_PLACEMENT_ANCHOR' });
+	});
+
+	it('Requirement 3.12: Open_Mode leisure on a PAST day with no Work_Session is NOTHING_TO_LOG, not day-start', async () => {
+		await expect(
+			createActivity({
+				description: 'leisure open, past day, no session',
+				date: '2026-06-24',
+				untrackedPolicy: 'clip',
+				dryRun: false,
+				now: iso('2026-06-28T00:00:00Z')
+			})
+		).rejects.toMatchObject({ code: 'NOTHING_TO_LOG' });
+	});
+
+	it('crossesProjectBoundary: converting a Work_Entry to a Leisure_Entry re-clips the existing interval and keeps it', async () => {
+		const p = await seedFrame();
+		const created = await createActivity({
+			projectId: p.id,
+			description: 'will become leisure',
+			startedAt: iso('2026-06-01T09:00:00Z'),
+			endedAt: iso('2026-06-01T10:00:00Z'),
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+
+		const patched = await patchActivity({
+			id: created.entry.id,
+			projectId: null,
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+		expect(patched.entry.projectId).toBeNull();
+		expect(patched.entry.category).toBe('relax');
+		expect(patched.entry.segments).toHaveLength(1);
+		expect(patched.entry.segments[0].startedAt.toISOString()).toBe('2026-06-01T09:00:00.000Z');
+		expect(patched.entry.segments[0].endedAt.toISOString()).toBe('2026-06-01T10:00:00.000Z');
+
+		// And back — the reverse direction re-clips against real Tracked_Time.
+		const revert = await patchActivity({
+			id: created.entry.id,
+			projectId: p.id,
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+		expect(revert.entry.projectId).toBe(p.id);
+		expect(revert.entry.category).toBe('paid');
+		expect(revert.entry.segments).toHaveLength(1);
+	});
+
+	it('a PATCH with projectId absent is not a boundary crossing and stays meta-only', async () => {
+		const p = await seedFrame();
+		const created = await createActivity({
+			projectId: p.id,
+			description: 'unchanged',
+			startedAt: iso('2026-06-01T09:00:00Z'),
+			endedAt: iso('2026-06-01T10:00:00Z'),
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+		const patched = await patchActivity({
+			id: created.entry.id,
+			description: 'renamed only',
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+		expect(patched.entry.projectId).toBe(p.id);
+		expect(patched.entry.description).toBe('renamed only');
+		expect(patched.entry.segments).toHaveLength(1);
+	});
+
+	it('a PATCH crossing the boundary that would leave nothing to log is rejected and leaves the entry untouched', async () => {
+		const p = await seedFrame();
+		// A Work_Entry sitting exactly in the 14:48-15:12 break (Untracked_Time) has no
+		// legitimate way to exist normally, so build the "would empty out" scenario the
+		// other direction instead: a Leisure_Entry whose interval, once treated as a
+		// Work_Entry, would fall entirely in Untracked_Time and vanish.
+		const leisure = await createActivity({
+			description: 'leisure in the gap',
+			startedAt: iso('2026-06-01T14:50:00Z'),
+			endedAt: iso('2026-06-01T15:05:00Z'),
+			untrackedPolicy: 'clip',
+			dryRun: false,
+			now: iso('2026-06-01T19:00:00Z')
+		});
+		expect(leisure.entry.projectId).toBeNull();
+
+		await expect(
+			patchActivity({
+				id: leisure.entry.id,
+				projectId: p.id,
+				dryRun: false,
+				now: iso('2026-06-01T19:00:00Z')
+			})
+		).rejects.toMatchObject({ code: 'NOTHING_TO_LOG' });
+
+		// Untouched: still a Leisure_Entry, same segment.
+		const { getEntry } = await import('../../../../src/lib/server/store/activities');
+		const stillLeisure = await withTx((tx) => getEntry(tx, leisure.entry.id));
+		expect(stillLeisure?.projectId).toBeNull();
+		expect(stillLeisure?.segments).toHaveLength(1);
+	});
 });

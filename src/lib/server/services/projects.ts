@@ -7,13 +7,13 @@ import type { Project } from '$lib/contracts/models';
 import { withTx } from '../store/tx';
 import * as projectsStore from '../store/projects';
 
-export async function createProject(name: string): Promise<Project> {
-	return withTx((tx) => projectsStore.createProject(tx, name));
+export async function createProject(name: string, billable = true): Promise<Project> {
+	return withTx((tx) => projectsStore.createProject(tx, name, billable));
 }
 
 export async function patchProject(
 	id: string,
-	patch: { name?: string; archived?: boolean; colorIndex?: number }
+	patch: { name?: string; archived?: boolean; colorIndex?: number; billable?: boolean }
 ): Promise<Project> {
 	return withTx((tx) => projectsStore.updateProject(tx, id, patch));
 }

@@ -172,14 +172,62 @@ function lastSessionEndWithin(sessions: Interval[], dayBounds: Interval, now: Da
 	return end.getTime() < dayBounds.end.getTime() ? end : dayBounds.end;
 }
 
-type AnchorInfo = { at: string; source: 'explicit' | 'last-segment' | 'first-session' };
+type AnchorInfo = {
+	at: string;
+	source: 'explicit' | 'last-segment' | 'first-session' | 'day-start';
+};
+
+/**
+ * The Unrestricted_Window a Leisure_Entry's Clipping runs against, standing in for
+ * Tracked_Time. Never queries the database — it is exactly the window already being
+ * placed into: `[dayBounds]` in Duration_Mode, `[requested]` otherwise (Explicit_Mode
+ * and Open_Mode alike). See design.md, "The Unrestricted Window, Precisely".
+ */
+function unrestrictedTracked(
+	mode: ActivityMode,
+	requested: Interval | null,
+	dayBounds: Interval | null
+): Interval[] {
+	if (mode === 'duration') return dayBounds !== null ? [dayBounds] : [];
+	return requested !== null ? [requested] : [];
+}
+
+/**
+ * Selects real Tracked_Time (a database query) for a Work_Entry, or the pure
+ * Unrestricted_Window for a Leisure_Entry — the one place every clip() call's
+ * `tracked` argument is resolved, so `resolveCreateWindow`, `clipAndRescue` and
+ * `patchActivity`'s equivalents can never drift from each other on this branch.
+ */
+async function trackedFor(
+	tx: Tx,
+	effectiveProjectId: string | null,
+	window: Interval,
+	now: Date,
+	mode: ActivityMode,
+	requested: Interval | null,
+	dayBounds: Interval | null
+): Promise<Interval[]> {
+	if (effectiveProjectId !== null) return sessionsStore.trackedIntervals(tx, [window], now);
+	return unrestrictedTracked(mode, requested, dayBounds);
+}
+
+/**
+ * True when a PATCH moves the entry across the null / non-null projectId boundary —
+ * i.e. converts a Work_Entry to a Leisure_Entry or the reverse. False when projectId
+ * is absent from the request, and false for a Project-to-Project change.
+ */
+function crossesProjectBoundary(existing: ActivityEntry, args: PatchActivityArgs): boolean {
+	if (args.projectId === undefined) return false;
+	return (existing.projectId === null) !== (args.projectId === null);
+}
 
 // ---------------------------------------------------------------------------
 // create
 // ---------------------------------------------------------------------------
 
 export type CreateActivityArgs = {
-	projectId: string;
+	/** Absent creates a Leisure_Entry (Requirement 2.1, 2.3). */
+	projectId?: string;
 	description: string;
 	date?: string;
 	startedAt?: Date;
@@ -213,7 +261,8 @@ async function resolveCreateWindow(
 	tx: Tx,
 	dayResolver: DayResolver,
 	mode: ActivityMode,
-	args: CreateActivityArgs
+	args: CreateActivityArgs,
+	effectiveProjectId: string | null
 ): Promise<{
 	requested: Interval | null;
 	anchorInfo: AnchorInfo | null;
@@ -241,23 +290,30 @@ async function resolveCreateWindow(
 	const daySegments = await activitiesStore.coveredIntervals(tx, dayBounds);
 	const daySessions = await sessionsStore.trackedIntervals(tx, [dayBounds], args.now);
 	let anchor: Date;
+	// Threaded OUT of the catch: both this function and patchActivity's equivalent
+	// recompute `source` after the try/catch from `daySegments.length > 0`, so
+	// substituting only the anchor value inside the catch would have its 'day-start'
+	// source overwritten a few lines later.
+	let anchorSourceOverride: 'day-start' | null = null;
 	try {
 		anchor = resolveAnchor(args.startedAt ?? null, daySegments, daySessions, targetDate);
 	} catch (err) {
-		if (err instanceof NoPlacementAnchorError) {
+		if (!(err instanceof NoPlacementAnchorError)) throw err;
+		if (effectiveProjectId !== null) {
 			throw apiError('NO_PLACEMENT_ANCHOR', 'There is nothing to place this against on that day.', {
 				date: err.date,
 				dayBounds: toIsoInterval(dayBounds)
 			});
 		}
-		throw err;
+		// A Leisure_Entry does not depend on a Work_Session having ever run that day
+		// (Requirement 3.8) — fall back to the start of the Target_Day itself rather
+		// than reporting NO_PLACEMENT_ANCHOR.
+		anchor = dayBounds.start;
+		anchorSourceOverride = 'day-start';
 	}
-	const source: 'explicit' | 'last-segment' | 'first-session' =
-		args.startedAt !== undefined
-			? 'explicit'
-			: daySegments.length > 0
-				? 'last-segment'
-				: 'first-session';
+	const source: AnchorInfo['source'] =
+		anchorSourceOverride ??
+		(args.startedAt !== undefined ? 'explicit' : daySegments.length > 0 ? 'last-segment' : 'first-session');
 	const anchorInfo: AnchorInfo = { at: anchor.toISOString(), source };
 
 	if (mode === 'open') {
@@ -281,7 +337,10 @@ async function clipAndRescue(
 	window: Interval,
 	first: ClipOutcome,
 	mode: ActivityMode,
-	rerunInput: (tracked: Interval[], covered: Interval[]) => ClipOutcome
+	rerunInput: (tracked: Interval[], covered: Interval[]) => ClipOutcome,
+	effectiveProjectId: string | null,
+	requested: Interval | null,
+	dayBounds: Interval | null
 ): Promise<{
 	result: ClipOutcome;
 	extendedSessions: Awaited<ReturnType<typeof sessionsStore.insertSessions>>;
@@ -290,12 +349,17 @@ async function clipAndRescue(
 	if (first.extend.length === 0) {
 		return { result: first, extendedSessions: [], removedFromRescueMs: 0 };
 	}
+	// `extend` is always empty for a Leisure_Entry (Requirement 3.6 — its
+	// Unrestricted_Window already equals what is being placed into, so `outside` is
+	// always empty), so this branch, `insertSessions` and `openSessionSpan`'s use are
+	// unreachable for one regardless; `effectiveProjectId` is threaded through purely
+	// so `trackedFor` below stays consistent with the rest of this module.
 	const extendedSessions = await sessionsStore.insertSessions(tx, first.extend);
 	const affected = normalize(first.extend);
 	const reclipped = await reclipAffected(reclipPortsFor(tx), affected, now, minIntervalMs);
 	const removedFromRescueMs = reclipped.reduce((sum, o) => sum + o.removedMs, 0);
 
-	const freshTracked = await sessionsStore.trackedIntervals(tx, [window], now);
+	const freshTracked = await trackedFor(tx, effectiveProjectId, window, now, mode, requested, dayBounds);
 	const freshCovered = await activitiesStore.coveredIntervals(tx, window);
 	const rerun = rerunInput(freshTracked, freshCovered);
 
@@ -322,8 +386,12 @@ export async function createActivity(
 	const dayResolver = createDayResolver(config.timezone, config.dayStartHour);
 	const minIntervalMs = config.minIntervalSeconds * 1000;
 
+	// Absent means a Leisure_Entry (Requirement 2.3) — every downstream branch tests
+	// this normalized value, never `args.projectId` directly.
+	const effectiveProjectId = args.projectId ?? null;
+
 	const run = async (tx: Tx): Promise<ActivityResponse & { dryRun: boolean; status: number }> => {
-		await assertProjectUsable(tx, args.projectId);
+		if (effectiveProjectId !== null) await assertProjectUsable(tx, effectiveProjectId);
 
 		// A Dry_Run never creates anything, so it neither consults nor claims an
 		// Idempotency-Key: a client that previews with a key and then confirms with the
@@ -331,7 +399,7 @@ export async function createActivity(
 		let canonicalHash: string | null = null;
 		if (args.idempotencyKey !== undefined && !args.dryRun) {
 			canonicalHash = canonicalRequestHash({
-				projectId: args.projectId,
+				projectId: effectiveProjectId,
 				description: args.description,
 				date: args.date ?? null,
 				startedAt: args.startedAt?.toISOString() ?? null,
@@ -363,7 +431,8 @@ export async function createActivity(
 			tx,
 			dayResolver,
 			mode,
-			args
+			args,
+			effectiveProjectId
 		);
 
 		// Fingerprint the pre-write state over the window this write will touch, and
@@ -377,9 +446,13 @@ export async function createActivity(
 
 		const window: Interval =
 			mode === 'duration' ? (dayBounds as Interval) : (requested as Interval);
-		const tracked = await sessionsStore.trackedIntervals(tx, [window], args.now);
+		const tracked = await trackedFor(tx, effectiveProjectId, window, args.now, mode, requested, dayBounds);
 		const covered = await activitiesStore.coveredIntervals(tx, window);
-		const openSession = await sessionsStore.currentOpenSession(tx);
+		// A Work_Session concept with no meaning against an Unrestricted_Window — and
+		// since `outside` is always empty for a Leisure_Entry, `extend`'s use of it
+		// would never be reached regardless (Requirement 3.1).
+		const openSession =
+			effectiveProjectId !== null ? await sessionsStore.currentOpenSession(tx) : null;
 		const openSessionSpan: Interval | undefined =
 			openSession !== null ? { start: openSession.startedAt, end: args.now } : undefined;
 
@@ -448,7 +521,18 @@ export async function createActivity(
 			extendedSessions,
 			removedFromRescueMs
 		} = args.untrackedPolicy === 'extend'
-			? await clipAndRescue(tx, args.now, minIntervalMs, window, first, mode, rerunClip)
+			? await clipAndRescue(
+					tx,
+					args.now,
+					minIntervalMs,
+					window,
+					first,
+					mode,
+					rerunClip,
+					effectiveProjectId,
+					requested,
+					dayBounds
+				)
 			: { result: first, extendedSessions: [], removedFromRescueMs: 0 };
 
 		if (finalResult.segments.length === 0) {
@@ -472,7 +556,7 @@ export async function createActivity(
 		const entry = await activitiesStore.createEntry(
 			tx,
 			{
-				projectId: args.projectId,
+				projectId: effectiveProjectId,
 				description: args.description,
 				mode,
 				requestedStartedAt: requestedInterval.start,
@@ -527,7 +611,12 @@ export async function createActivity(
 export type PatchActivityArgs = {
 	id: string;
 	description?: string;
-	projectId?: string;
+	/**
+	 * Three states, all meaningful (Requirements 4.1, 4.2): absent leaves it
+	 * unchanged; null clears it, converting to a Leisure_Entry; a string sets/changes
+	 * it, converting to (or keeping) a Work_Entry.
+	 */
+	projectId?: string | null;
 	date?: string;
 	startedAt?: Date;
 	endedAt?: Date;
@@ -577,9 +666,16 @@ export async function patchActivity(
 				id: args.id
 			});
 		}
-		if (args.projectId !== undefined) await assertProjectUsable(tx, args.projectId);
+		// Absent means "not being changed at all"; an explicit null means "convert to a
+		// Leisure_Entry" — the two differ only on this path (create's absent already
+		// means Leisure_Entry outright). Every downstream branch tests this normalized
+		// value, never `args.projectId === undefined` directly (Requirement 4.1, 4.2).
+		const effectiveProjectId = args.projectId === undefined ? existing.projectId : args.projectId;
+		if (args.projectId !== undefined && effectiveProjectId !== null) {
+			await assertProjectUsable(tx, effectiveProjectId);
+		}
 
-		if (kind === 'meta') {
+		if (kind === 'meta' && !crossesProjectBoundary(existing, args)) {
 			const fingerprintWindow = spanBounds(
 				dayResolver,
 				existing.requestedStartedAt,
@@ -607,6 +703,69 @@ export async function patchActivity(
 			};
 		}
 
+		if (kind === 'meta') {
+			// crossesProjectBoundary is true here (the branch above already returned
+			// otherwise): re-apply Clipping to the entry's EXISTING requested interval
+			// under the regime of what it is becoming, even though nothing about the
+			// interval itself was asked to change (Requirement 4.3). Treated as an
+			// Explicit_Mode re-clip over the frozen stored interval — precisely the
+			// same treatment `reclipAffected` gives a Duration_Mode entry being
+			// re-clipped after a session change; no Placement_Anchor is resolved again.
+			const requested: Interval = {
+				start: existing.requestedStartedAt,
+				end: existing.requestedEndedAt
+			};
+			const fingerprintWindow = spanBounds(dayResolver, requested.start, requested.end);
+			const previousToken = await currentFingerprint(tx, fingerprintWindow);
+			assertFreshPreview(previousToken, args.previewToken);
+
+			const tracked = await trackedFor(
+				tx,
+				effectiveProjectId,
+				requested,
+				args.now,
+				'explicit',
+				requested,
+				null
+			);
+			const covered = await activitiesStore.coveredIntervals(tx, requested, args.id);
+			const result = clip({
+				mode: 'explicit',
+				requested,
+				tracked,
+				covered,
+				policy: 'clip',
+				minIntervalMs,
+				now: args.now
+			});
+
+			if (result.segments.length === 0) {
+				// Property 5: all-or-nothing. Nothing has been written yet, so leaving the
+				// entry untouched is simply not writing anything (Requirement 4.4).
+				const reason = classifyNothingToLog(requested, tracked, result);
+				nothingToLogError(reason, null, toIsoInterval(requested), result.slivers);
+			}
+
+			await activitiesStore.updateEntryMeta(tx, args.id, {
+				description: args.description,
+				projectId: effectiveProjectId
+			});
+			await activitiesStore.replaceSegments(tx, args.id, result.segments);
+			const refetched = await activitiesStore.getEntry(tx, args.id);
+			const previewToken = previousToken;
+			return {
+				entry: refetched as ActivityEntry,
+				discarded: [],
+				extendedSessions: [],
+				unplacedMinutes: 0,
+				removedSeconds: 0,
+				slivers: result.slivers,
+				anchor: null,
+				dryRun: args.dryRun,
+				previewToken
+			};
+		}
+
 		const policy = args.untrackedPolicy ?? 'clip';
 		let requested: Interval | null = null;
 		let anchorInfo: AnchorInfo | null = null;
@@ -627,10 +786,12 @@ export async function patchActivity(
 			const daySegments = await activitiesStore.coveredIntervals(tx, dayBounds, args.id);
 			const daySessions = await sessionsStore.trackedIntervals(tx, [dayBounds], args.now);
 			let anchor: Date;
+			let anchorSourceOverride: 'day-start' | null = null;
 			try {
 				anchor = resolveAnchor(null, daySegments, daySessions, targetDate);
 			} catch (err) {
-				if (err instanceof NoPlacementAnchorError) {
+				if (!(err instanceof NoPlacementAnchorError)) throw err;
+				if (effectiveProjectId !== null) {
 					throw apiError(
 						'NO_PLACEMENT_ANCHOR',
 						'There is nothing to place this against on that day.',
@@ -640,11 +801,12 @@ export async function patchActivity(
 						}
 					);
 				}
-				throw err;
+				anchor = dayBounds.start;
+				anchorSourceOverride = 'day-start';
 			}
 			anchorInfo = {
 				at: anchor.toISOString(),
-				source: daySegments.length > 0 ? 'last-segment' : 'first-session'
+				source: anchorSourceOverride ?? (daySegments.length > 0 ? 'last-segment' : 'first-session')
 			};
 		}
 
@@ -657,9 +819,10 @@ export async function patchActivity(
 		const previousToken = await currentFingerprint(tx, fingerprintWindow);
 		assertFreshPreview(previousToken, args.previewToken);
 
-		const tracked = await sessionsStore.trackedIntervals(tx, [window], args.now);
+		const tracked = await trackedFor(tx, effectiveProjectId, window, args.now, kind, requested, dayBounds);
 		const covered = await activitiesStore.coveredIntervals(tx, window, args.id);
-		const openSession = await sessionsStore.currentOpenSession(tx);
+		const openSession =
+			effectiveProjectId !== null ? await sessionsStore.currentOpenSession(tx) : null;
 		const openSessionSpan: Interval | undefined =
 			openSession !== null ? { start: openSession.startedAt, end: args.now } : undefined;
 
@@ -728,7 +891,18 @@ export async function patchActivity(
 			extendedSessions,
 			removedFromRescueMs
 		} = policy === 'extend'
-			? await clipAndRescue(tx, args.now, minIntervalMs, window, first, kind, rerunClip)
+			? await clipAndRescue(
+					tx,
+					args.now,
+					minIntervalMs,
+					window,
+					first,
+					kind,
+					rerunClip,
+					effectiveProjectId,
+					requested,
+					dayBounds
+				)
 			: { result: first, extendedSessions: [], removedFromRescueMs: 0 };
 
 		if (finalResult.segments.length === 0) {
