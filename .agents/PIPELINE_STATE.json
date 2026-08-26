@@ -33,11 +33,11 @@
       "finished_at": "2026-08-26T12:36:05Z"
     },
     "docs": {
-      "status": "pending",
-      "start_sha": null,
-      "end_sha": null,
+      "status": "done",
+      "start_sha": "9d3834e4de5e97438654a9a3dcbc60137bb2c5e7",
+      "end_sha": "7fac57768273ea5a7f95dfcf3008a2625fcfe841",
       "issues_opened": 0,
-      "finished_at": null
+      "finished_at": "2026-08-26T13:00:00Z"
     },
     "report": {
       "status": "pending",
