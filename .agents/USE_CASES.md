@@ -15,7 +15,7 @@ The file is in **three parts**, one per specification:
   `.kiro/specs/002-worklog-ui/`): the browser interface, driven through a real browser.
   It begins after Part I's requirement-coverage table and carries its own conventions
   and fixtures.
-- **Part III — UC-509 … UC-598** covers **time categories** (spec
+- **Part III — UC-509 … UC-599** covers **time categories** (spec
   `.kiro/specs/003-worklog-time-categories/`): `Project.billable`, the `Leisure_Entry`
   and the derived paid/unpaid/relax `Category`, across both layers. It carries its own
   conventions and fixtures and states a `Method:` on every case, because unlike the
@@ -6619,7 +6619,7 @@ helpers), never by clicking through the interface.
 
 ## UC-525 — A leisure interval overlapping another entry's segment is refused
 - Area: leisure, clipping, conflicts
-- Requirement: 3.2, 3.3
+- Requirement: 3.3
 - design Property 2
 - Method: API
 - Preconditions: server running
@@ -6635,7 +6635,7 @@ helpers), never by clicking through the interface.
 
 ## UC-526 — A leisure interval that merely abuts another segment is accepted
 - Area: leisure, clipping
-- Requirement: 3.2
+- Requirement: 3.3
 - design Property 2
 - Method: API
 - Preconditions: server running
@@ -6645,32 +6645,39 @@ helpers), never by clicking through the interface.
   the exclusion rule is half-open exactly as it is for every `Work_Entry`, and the
   `activity_segments_no_overlap` constraint accepts the pair
 
-## UC-527 — A leisure sliver below the floor is discarded
-- Area: leisure, clipping
-- Requirement: 3.4
+## UC-527 — An almost-entirely-claimed leisure interval is refused outright, not trimmed to its sliver
+- Area: leisure, clipping, conflicts
+- Requirement: 3.3
 - Method: API
 - Preconditions: server running, `MIN_INTERVAL_SECONDS=60`
 - Data needed: FIX-CAT-MIXED
 - Steps: `POST` a leisure entry `2026-08-20T18:59:30+02:00 → 20:30+02:00` — its first
   30 s sit before the existing `Leisure_Entry`'s 19:00 start, and the rest is entirely
   claimed by it
-- Expected: 409 `NOTHING_TO_LOG` with `details.reason: "all-slivers"`. The 30 s remnant
-  is below `MIN_INTERVAL_SECONDS` and is discarded rather than stored, by the same rule
-  that governs every `Activity_Entry`. Where a longer remnant survives, it is stored and
-  the sliver appears in `discarded`
+- Expected: 409 `ACTIVITY_OVERLAP`, not `NOTHING_TO_LOG`. `Explicit_Mode` has a fixed
+  requested interval, so criterion 3.3 governs unconditionally: any overlap with
+  `covered` — even a request whose overlap is nearly its entire length, leaving only a
+  30 s non-overlapping remnant — is rejected whole, exactly as for a `Work_Entry`.
+  Criterion 3.4's sliver-discard rule never gets a chance to act here; it has no
+  mechanism to trim a fixed interval down to its non-overlapping remainder. Confirmed
+  live: the running server returns `ACTIVITY_OVERLAP`, not a partial store. See UC-599
+  for where a leisure sliver genuinely arises
 
 ## UC-528 — A leisure write with nothing left to store is refused
-- Area: leisure, clipping
-- Requirement: 3.5
+- Area: leisure, clipping, conflicts
+- Requirement: 3.3
 - Method: API
 - Preconditions: server running
 - Data needed: FIX-CAT-MIXED
 - Steps: `POST` a leisure entry whose interval is exactly the existing `Leisure_Entry`'s
   19:00–20:30
-- Expected: 409. Either `ACTIVITY_OVERLAP` (the whole interval is claimed) or
-  `NOTHING_TO_LOG` — the case is satisfied by a 409 that names one of the two and stores
-  nothing; a 201 creating a zero-segment entry is a failure. Confirm afterwards with
-  `GET /api/activities` that no new entry exists
+- Expected: 409 `ACTIVITY_OVERLAP`, deterministically — `src/lib/server/services/
+  activities.ts` checks `conflicts.length > 0` (criterion 3.3) before it ever checks
+  whether the resulting segments would be empty (criterion 3.5), so a fully-claimed
+  `Explicit_Mode` interval never reaches `NOTHING_TO_LOG`; that code path is reachable
+  only when nothing at all was requested outside `covered` to begin with, which cannot
+  happen once a conflict exists. Confirm afterwards with `GET /api/activities` that no
+  new entry exists
 
 ## UC-529 — `untrackedPolicy` is accepted on a leisure write and does nothing
 - Area: leisure, clipping
@@ -7659,6 +7666,31 @@ helpers), never by clicking through the interface.
   failure must be distinguished from a category failure rather than masking one — if the
   suite is red, this is the first thing to rule out
 
+## UC-599 — A Duration_Mode leisure walk skips a too-short free gap as a sliver, then finishes the request beyond it
+- Area: leisure, clipping
+- Requirement: 3.2, 3.4
+- Method: API
+- Preconditions: server running, `MIN_INTERVAL_SECONDS=60`
+- Data needed: FIX-CAT-MIXED plus two extra `Work_Entry` covered stretches on
+  `2026-08-21` (a day otherwise free): `09:00:00–09:05:00` and `09:05:30–09:07:00` —
+  each on its own comfortably above the 60 s floor, so both are actually stored; the
+  30 s gap between them (09:05:00–09:05:30) is free but below it
+- Steps: `POST` a leisure entry in `Duration_Mode`: `startedAt: 2026-08-21T09:05:00+02:00`,
+  `durationMinutes: 10`
+- Expected: 201. This is the genuine path Requirement 3.2 describes — unlike
+  `Explicit_Mode`/`Open_Mode` (Requirement 3.3, UC-525 through UC-528), `Duration_Mode`
+  has no fixed requested interval to reject outright; it walks forward and simply skips
+  time already claimed by another entry. The walk finds the 09:05:00–09:05:30 gap first,
+  discards it as a sliver (Requirement 3.4 — below `MIN_INTERVAL_SECONDS`, reported in
+  `slivers` as `{start, end}`, not in `discarded`), skips the second `Work_Entry`'s
+  09:05:30–09:07:00, and places the full 600 s requested duration starting at 09:07:00 —
+  one segment, 09:07:00–09:17:00. `discarded: []`, `unplacedMinutes: 0`, `slivers`
+  carries exactly the 30 s gap. Confirmed live (`tests/api/activities.test.ts`,
+  "Requirement 3.2/3.4: a Duration_Mode leisure walk skips a too-short free gap…").
+  This is the only place in Part III where a leisure sliver is discarded while the
+  request still succeeds — UC-527's sliver is not, because `Explicit_Mode`'s fixed
+  interval has no such partial path, only whole rejection
+
 ---
 
 ## Requirement coverage — `003-worklog-time-categories`
@@ -7676,8 +7708,9 @@ that exercise it. Nothing in the specification is left without a home.
 2.6 UC-522 · 2.7 UC-523
 
 **Requirement 3 — Leisure Entry Reconciliation Against the Unrestricted Window**
-3.1 UC-524 · 3.2 UC-525, UC-526 · 3.3 UC-525 · 3.4 UC-527 · 3.5 UC-528 · 3.6 UC-529 ·
-3.7 UC-530 · 3.8 UC-531 · 3.9 UC-532 · 3.10 UC-533 · 3.11 UC-534 · 3.12 UC-535
+3.1 UC-524 · 3.2 UC-599 · 3.3 UC-525, UC-526, UC-527, UC-528 · 3.4 UC-599 · 3.5 UC-528 ·
+3.6 UC-529 · 3.7 UC-530 · 3.8 UC-531 · 3.9 UC-532 · 3.10 UC-533 · 3.11 UC-534 ·
+3.12 UC-535
 
 **Requirement 4 — Leisure Entry Editing, Deletion and Category Transitions**
 4.1 UC-536 · 4.2 UC-537 · 4.3 UC-538 · 4.4 UC-539 · 4.5 UC-540 · 4.6 UC-541 ·

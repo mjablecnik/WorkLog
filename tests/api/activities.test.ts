@@ -651,6 +651,71 @@ describe('activity routes', () => {
 		expect((await bodyOf(res)).error).toBe('ACTIVITY_OVERLAP');
 	});
 
+	it('Requirement 3.2/3.4: a Duration_Mode leisure walk skips a too-short free gap as a sliver, then finishes beyond it', async () => {
+		// Two Work_Entry segments (each comfortably above MIN_INTERVAL_SECONDS, so both
+		// are actually stored) with a 30s free gap between them — below
+		// MIN_INTERVAL_SECONDS (60s). Unlike Explicit_Mode/Open_Mode (Requirement 3.3,
+		// which rejects any overlap outright), Duration_Mode has no fixed requested
+		// interval to reject: it walks forward and simply skips time already claimed,
+		// exactly as 001-worklog-domain-api Requirement 5.8 already does for a
+		// Work_Entry.
+		const first = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId,
+					description: 'first block',
+					startedAt: '2026-06-01T09:00:00Z',
+					endedAt: '2026-06-01T09:05:00Z'
+				}
+			})
+		);
+		expect(first.status).toBe(201);
+		const second = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					projectId,
+					description: 'second block',
+					startedAt: '2026-06-01T09:05:30Z',
+					endedAt: '2026-06-01T09:07:00Z'
+				}
+			})
+		);
+		expect(second.status).toBe(201);
+
+		const res = await activitiesPost(
+			mockEvent({
+				method: 'POST',
+				url: `${BASE}/api/activities`,
+				body: {
+					description: 'leisure walk over the gap',
+					date: '2026-06-01',
+					startedAt: '2026-06-01T09:05:00Z',
+					durationMinutes: 10
+				}
+			})
+		);
+		expect(res.status).toBe(201);
+		const body = await bodyOf(res);
+		const entry = body.entry as Record<string, unknown>;
+		const segments = entry.segments as { startedAt: string; endedAt: string }[];
+
+		// The 30s gap (09:05:00-09:05:30) is skipped and reported as a sliver, not
+		// stored; the full 600s duration is placed starting at 09:07:00, once the walk
+		// clears the second Work_Entry's block.
+		expect(segments.map((s) => ({ startedAt: s.startedAt, endedAt: s.endedAt }))).toEqual([
+			{ startedAt: '2026-06-01T09:07:00.000Z', endedAt: '2026-06-01T09:17:00.000Z' }
+		]);
+		expect(body.slivers).toEqual([
+			{ start: '2026-06-01T09:05:00.000Z', end: '2026-06-01T09:05:30.000Z' }
+		]);
+		expect(body.discarded).toEqual([]);
+		expect(body.unplacedMinutes).toBe(0);
+	});
+
 	it('Requirement 3.12: Open_Mode leisure on a PAST day with no Work_Session is NOTHING_TO_LOG', async () => {
 		const res = await activitiesPost(
 			mockEvent({

@@ -63,7 +63,21 @@
 ## [LOW] Requirements 3.2 and 3.3 disagree on what a *partial* leisure overlap should do
 - Run: 2026-08-26-0758
 - Phase: cases
-- Status: OPEN
+- Status: RESOLVED (2026-08-26-decisions)
+- Resolution: not actually a contradiction — the two criteria govern different modes.
+  Requirement 3.2 is `Duration_Mode`'s forward walk, which has no fixed requested
+  interval and simply skips (does not reject) time already claimed, exactly as
+  `001-worklog-domain-api` Requirement 5.8 already does for a `Work_Entry`. Requirement
+  3.3 is `Explicit_Mode`/`Open_Mode`'s fixed-interval rule — the mode with a "requested
+  interval" to overlap in the first place — where any overlap is rejected outright,
+  exactly as `001` Requirement 4.5. Criterion 3.2 reworded to say so explicitly (no
+  renumbering). `.agents/USE_CASES.md` UC-525/526/527/528 re-cited to 3.3 (all four are
+  `Explicit_Mode` scenarios) and UC-528's "either code" ambiguity resolved to a
+  deterministic `ACTIVITY_OVERLAP` (the service checks conflicts before emptiness — see
+  `src/lib/server/services/activities.ts`'s `first.conflicts.length > 0` check, which
+  runs before its `segments.length === 0` check). New UC-599 added for the genuine
+  `Duration_Mode` sliver path (3.2 skipping a too-short free gap, 3.4 discarding it) that
+  the overlap-mode confusion had obscured.
 - What: `.kiro/specs/003-worklog-time-categories/requirements.md` Requirement 3.2 says a
   `Leisure_Entry`'s `Clipping` "SHALL still exclude from its `Activity_Segment` records
   any stretch already claimed by another `Activity_Entry`" — i.e. a partial overlap is
