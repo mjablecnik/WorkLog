@@ -16,7 +16,7 @@ import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/wor
 import {
 	coveredIntervals,
 	entriesOverlapping,
-	mostRecentEntry
+	mostRecentWorkEntry
 } from '$lib/server/store/activities';
 
 /** GET /api/days/{date} — Requirements 8.1-8.9, 8.24-8.27, 15.2-15.4 (`quickLog`). */
@@ -54,16 +54,21 @@ export const GET: RequestHandler = async (event) => {
 				if (start.getTime() < end.getTime()) {
 					const source: 'last-segment' | 'first-session' =
 						daySegments.length > 0 ? 'last-segment' : 'first-session';
-					const dayLastEntry = entries[entries.length - 1] ?? null;
-					const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
+					// Quick_Log requires a Project and a Leisure_Entry has none — this
+					// exclusion governs the Project resolution only; the anchor above
+					// already consulted `coveredIntervals` unfiltered, so the offered
+					// interval never overlaps a Leisure_Entry (Requirement 6.6).
+					const workEntries = entries.filter((e) => e.projectId !== null);
+					const dayLastEntry = workEntries[workEntries.length - 1] ?? null;
+					const projectSource = dayLastEntry ?? (await mostRecentWorkEntry(tx));
 					if (projectSource !== null) {
 						quickLog = {
 							start: start.toISOString(),
 							end: end.toISOString(),
 							anchorSource: source,
-							projectId: projectSource.projectId,
-							projectName: projectSource.projectName,
-							colorIndex: projectSource.colorIndex
+							projectId: projectSource.projectId as string,
+							projectName: projectSource.projectName as string,
+							colorIndex: projectSource.colorIndex as number
 						};
 					}
 				}
@@ -81,6 +86,9 @@ export const GET: RequestHandler = async (event) => {
 					trackedSeconds: summary.trackedSeconds,
 					coveredSeconds: summary.coveredSeconds,
 					uncoveredSeconds: summary.uncoveredSeconds,
+					paidSeconds: summary.paidSeconds,
+					unpaidSeconds: summary.unpaidSeconds,
+					relaxSeconds: summary.relaxSeconds,
 					byProject: summary.byProject,
 					sessionCount: summary.sessionCount,
 					longestBlockSeconds: summary.longestBlockSeconds,

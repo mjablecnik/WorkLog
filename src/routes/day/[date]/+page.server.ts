@@ -25,7 +25,7 @@
 import { error } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import type { DayResponse } from '$lib/contracts/responses';
-import type { Project } from '$lib/contracts/models';
+import type { Category, Project } from '$lib/contracts/models';
 import { dayDateParam } from '$lib/contracts/schemas';
 import { getConfig } from '$lib/server/core/config';
 import {
@@ -37,7 +37,11 @@ import {
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
-import { coveredIntervals, entriesOverlapping, mostRecentEntry } from '$lib/server/store/activities';
+import {
+	coveredIntervals,
+	entriesOverlapping,
+	mostRecentWorkEntry
+} from '$lib/server/store/activities';
 import { listProjects } from '$lib/server/store/projects';
 import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 import {
@@ -53,8 +57,9 @@ import {
 
 export type DayPageData = DayResponse & {
 	projects: Project[];
-	/** Requirement 6.9's default source — null when the day holds no entry at all. */
-	recentEntry: { projectId: string; description: string } | null;
+	/** Requirement 6.9's default source — null when the day holds no Work_Entry at
+	 *  all. Considers no Leisure_Entry when resolving (Requirement 10.7). */
+	recentEntry: { projectId: string; description: string; category: Category } | null;
 	/**
 	 * The instant this load ran, for `DayTimeline`'s `now` prop (running/capped block
 	 * state). Computed once here rather than freshly in `+page.svelte` — a client-side
@@ -104,30 +109,39 @@ async function loadDayData(date: string, config: ReturnType<typeof getConfig>): 
 		const daySegments = await coveredIntervals(tx, bounds);
 		const daySessions = await trackedIntervals(tx, [bounds], now);
 
+		// Quick_Log requires a Project and a Leisure_Entry has none — this exclusion
+		// governs the Project resolution only (Requirement 6.6); the anchor above
+		// already consulted `coveredIntervals` unfiltered, so the offered interval
+		// never overlaps a Leisure_Entry. `recentEntry` (below) reuses the same
+		// resolution rather than a second query.
+		const workEntries = entries.filter((e) => e.projectId !== null);
+		const dayLastWorkEntry = workEntries[workEntries.length - 1] ?? null;
+		const fallbackWorkEntry = dayLastWorkEntry === null ? await mostRecentWorkEntry(tx) : null;
+		const projectSource = dayLastWorkEntry ?? fallbackWorkEntry;
+
 		let quickLog: DayResponse['quickLog'] = null;
 		const start = resolveQuickLogAnchor(daySegments, daySessions, date);
 		const end = isToday ? now : lastSessionEndWithin(daySessions, bounds, now);
-		if (start !== null && start.getTime() < end.getTime()) {
+		if (start !== null && start.getTime() < end.getTime() && projectSource !== null) {
 			const source: 'last-segment' | 'first-session' = daySegments.length > 0 ? 'last-segment' : 'first-session';
-			const dayLastEntry = entries[entries.length - 1] ?? null;
-			const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
-			if (projectSource !== null) {
-				quickLog = {
-					start: start.toISOString(),
-					end: end.toISOString(),
-					anchorSource: source,
-					projectId: projectSource.projectId,
-					projectName: projectSource.projectName,
-					colorIndex: projectSource.colorIndex
-				};
-			}
+			quickLog = {
+				start: start.toISOString(),
+				end: end.toISOString(),
+				anchorSource: source,
+				projectId: projectSource.projectId as string,
+				projectName: projectSource.projectName as string,
+				colorIndex: projectSource.colorIndex as number
+			};
 		}
 
-		const dayLastEntry = entries[entries.length - 1] ?? null;
 		const recentEntry =
-			dayLastEntry === null
+			projectSource === null
 				? null
-				: { projectId: dayLastEntry.projectId, description: dayLastEntry.description };
+				: {
+						projectId: projectSource.projectId as string,
+						description: projectSource.description,
+						category: projectSource.category
+					};
 
 		const body: DayPageData = {
 			date,
@@ -139,6 +153,9 @@ async function loadDayData(date: string, config: ReturnType<typeof getConfig>): 
 				trackedSeconds: summary.trackedSeconds,
 				coveredSeconds: summary.coveredSeconds,
 				uncoveredSeconds: summary.uncoveredSeconds,
+				paidSeconds: summary.paidSeconds,
+				unpaidSeconds: summary.unpaidSeconds,
+				relaxSeconds: summary.relaxSeconds,
 				byProject: summary.byProject,
 				sessionCount: summary.sessionCount,
 				longestBlockSeconds: summary.longestBlockSeconds,

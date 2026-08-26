@@ -33,7 +33,7 @@ import type {
 	SessionChangePreview,
 	SessionWriteResponse
 } from '$lib/contracts/responses';
-import type { Interval, Project, WorkSession } from '$lib/contracts/models';
+import type { Category, Interval, Project, WorkSession } from '$lib/contracts/models';
 import { startSessionSchema, stopSessionSchema, createActivitySchema } from '$lib/contracts/schemas';
 import { getConfig, FUTURE_TOLERANCE_SECONDS } from '$lib/server/core/config';
 import { ApiError, assertNotTooFarInFuture, messageKeyFor } from '$lib/server/core/errors';
@@ -53,14 +53,19 @@ import {
 import { withReadTx } from '$lib/server/store/tx';
 import { daySummaries, coverageForRange } from '$lib/server/store/aggregates';
 import { listSessionsOverlapping, trackedIntervals } from '$lib/server/store/work-sessions';
-import { coveredIntervals, entriesOverlapping, mostRecentEntry } from '$lib/server/store/activities';
+import {
+	coveredIntervals,
+	entriesOverlapping,
+	mostRecentWorkEntry
+} from '$lib/server/store/activities';
 import { listProjects } from '$lib/server/store/projects';
 import { offlineRedirectOrRethrow } from '$lib/server/services/offline-redirect';
 
 export type TimerPageData = DayResponse & {
 	projects: Project[];
-	/** Requirement 6.9's default source — null when the day holds no entry at all. */
-	recentEntry: { projectId: string; description: string } | null;
+	/** Requirement 6.9's default source — null when the day holds no Work_Entry at
+	 *  all. Considers no Leisure_Entry when resolving (Requirement 10.7). */
+	recentEntry: { projectId: string; description: string; category: Category } | null;
 	/** See the module doc's "Also loads…" paragraph — recomputed from THIS load's
 	 * own `sessions`, overriding the root layout's inherited value. */
 	currentSession: CurrentSessionResponse;
@@ -97,30 +102,39 @@ async function loadTimerData(date: string, bounds: Interval): Promise<TimerPageD
 		// This page's Logical_Day is always the current one, so the Quick_Log window
 		// always ends at `now` — unlike day/[date]'s load, there is no "a day in the
 		// past ends at its last session" branch to consider here.
+		// Quick_Log requires a Project and a Leisure_Entry has none — this exclusion
+		// governs the Project resolution only (Requirement 6.6); the anchor above
+		// already consulted `coveredIntervals` unfiltered, so the offered interval
+		// never overlaps a Leisure_Entry. `recentEntry` (below) reuses the same
+		// resolution rather than a second query.
+		const workEntries = entries.filter((e) => e.projectId !== null);
+		const dayLastWorkEntry = workEntries[workEntries.length - 1] ?? null;
+		const fallbackWorkEntry = dayLastWorkEntry === null ? await mostRecentWorkEntry(tx) : null;
+		const projectSource = dayLastWorkEntry ?? fallbackWorkEntry;
+
 		let quickLog: DayResponse['quickLog'] = null;
 		const start = resolveQuickLogAnchor(daySegments, daySessions, date);
-		if (start !== null && start.getTime() < now.getTime()) {
+		if (start !== null && start.getTime() < now.getTime() && projectSource !== null) {
 			const source: 'last-segment' | 'first-session' =
 				daySegments.length > 0 ? 'last-segment' : 'first-session';
-			const dayLastEntry = entries[entries.length - 1] ?? null;
-			const projectSource = dayLastEntry ?? (await mostRecentEntry(tx));
-			if (projectSource !== null) {
-				quickLog = {
-					start: start.toISOString(),
-					end: now.toISOString(),
-					anchorSource: source,
-					projectId: projectSource.projectId,
-					projectName: projectSource.projectName,
-					colorIndex: projectSource.colorIndex
-				};
-			}
+			quickLog = {
+				start: start.toISOString(),
+				end: now.toISOString(),
+				anchorSource: source,
+				projectId: projectSource.projectId as string,
+				projectName: projectSource.projectName as string,
+				colorIndex: projectSource.colorIndex as number
+			};
 		}
 
-		const dayLastEntry = entries[entries.length - 1] ?? null;
 		const recentEntry =
-			dayLastEntry === null
+			projectSource === null
 				? null
-				: { projectId: dayLastEntry.projectId, description: dayLastEntry.description };
+				: {
+						projectId: projectSource.projectId as string,
+						description: projectSource.description,
+						category: projectSource.category
+					};
 
 		const openSession = sessions.find((s) => s.endedAt === null) ?? null;
 		const currentSession: CurrentSessionResponse = {
@@ -142,6 +156,9 @@ async function loadTimerData(date: string, bounds: Interval): Promise<TimerPageD
 				trackedSeconds: summary.trackedSeconds,
 				coveredSeconds: summary.coveredSeconds,
 				uncoveredSeconds: summary.uncoveredSeconds,
+				paidSeconds: summary.paidSeconds,
+				unpaidSeconds: summary.unpaidSeconds,
+				relaxSeconds: summary.relaxSeconds,
 				byProject: summary.byProject,
 				sessionCount: summary.sessionCount,
 				longestBlockSeconds: summary.longestBlockSeconds,
