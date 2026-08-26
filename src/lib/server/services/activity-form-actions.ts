@@ -266,19 +266,35 @@ export async function patchActivityAction(event: RequestEvent) {
 	const form = await superValidate(formData, zod4(patchActivityFormSchema));
 	if (!form.valid) return fail(400, { form, toastMessage: m.errors_validation_error() });
 
+	// `projectId: z.uuid().nullable().optional()` on a FIELD ABSENT from the raw
+	// FormData does NOT come back as `undefined` here — sveltekit-superforms fills a
+	// missing nullable field in with its schema-inferred blank value, which for a
+	// bare `.nullable()` type is `null`, not `undefined`. Every check below that means
+	// "was projectId actually submitted" therefore has to ask the raw `formData`
+	// directly, never `form.data.projectId !== undefined` — that was always true
+	// whenever the client omits the field, exactly the case a plain `clearProject`
+	// submission relies on, and silently rejected every one of them as "contradictory
+	// outcome" (Requirement 4.11) before this fix, which made editing an existing
+	// Work_Entry into a Leisure_Entry through the real Activity_Dialog fail outright.
+	const projectIdSubmitted = formData.has('projectId');
+
 	// The two name contradictory outcomes — clearProject says "become a
 	// Leisure_Entry", projectId says "set/change the Project" — so silently
 	// preferring either one would discard an instruction the caller gave
 	// (Requirement 4.11).
-	if (form.data.clearProject === true && form.data.projectId !== undefined) {
+	if (form.data.clearProject === true && projectIdSubmitted) {
 		return fail<ActivityActionFailure>(400, { toastMessage: m.errors_validation_error() });
 	}
 
 	// clearProject === true converts to a Leisure_Entry (Requirement 4.9); a FormData
 	// body cannot carry a null directly. Otherwise pass form.data.projectId through
-	// unchanged: absent leaves it unchanged, a uuid sets/changes it.
-	const projectId: string | null | undefined =
-		form.data.clearProject === true ? null : form.data.projectId;
+	// unchanged: absent leaves it unchanged (undefined, not the schema-defaulted
+	// null above), a uuid sets/changes it.
+	const projectId: string | null | undefined = form.data.clearProject
+		? null
+		: projectIdSubmitted
+			? form.data.projectId
+			: undefined;
 
 	try {
 		const result = await patchActivityService({
