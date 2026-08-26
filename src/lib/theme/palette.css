@@ -2,7 +2,8 @@
  * GENERATED — do not hand-edit. Run `bun run generate:css` to regenerate.
  * Source: src/lib/viz/palette.ts (PROJECT_PALETTE), by scripts/generate-palette-and-heights.ts
  *
- * Eight classes, `.pj-0` … `.pj-7` — one per Palette_Slot — each theme-aware through
+ * Eight classes, `.pj-0` … `.pj-7` — one per Palette_Slot — plus one reserved ninth,
+ * `.pj-relax` (LEISURE_SLOT, 003-worklog-time-categories) — each theme-aware through
  * the same `:root` / `[data-theme='dark']` / `[data-theme='light']` selector pattern
  * `theme.css` uses (dark doubles as the `:root` fallback, for anything rendered before
  * `data-theme` is known). `--pj` is the slot's hex for that theme; `--pj-tint` is the
@@ -11,7 +12,8 @@
  *
  * No `.pj-*` class references `--destructive`, and no destructive control references a
  * `.pj-*` class — the pink slot and the destructive colour sit close together and must
- * stay separable.
+ * stay separable. `.pj-relax` is never reached by `projectSlotClass`'s modular wraparound
+ * (`colorIndex % PALETTE_SIZE`) — it is assigned only by `leisureColor`/`LEISURE_SLOT_CLASS`.
  */
 
 :root .pj-0,
@@ -92,4 +94,14 @@
 [data-theme='light'] .pj-7 {
 	--pj: #cb5848;
 	--pj-tint: rgba(203, 88, 72, 0.13);
+}
+
+:root .pj-relax,
+[data-theme='dark'] .pj-relax {
+	--pj: #7c8899;
+	--pj-tint: rgba(124, 136, 153, 0.16);
+}
+[data-theme='light'] .pj-relax {
+	--pj: #5f6b7a;
+	--pj-tint: rgba(95, 107, 122, 0.13);
 }

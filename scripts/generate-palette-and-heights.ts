@@ -23,7 +23,7 @@
  * through each alias and logs the result. A relative import was not needed.
  */
 
-import { PROJECT_PALETTE, PALETTE_SIZE } from '$lib/viz/palette';
+import { PROJECT_PALETTE, PALETTE_SIZE, LEISURE_SLOT, LEISURE_SLOT_CLASS } from '$lib/viz/palette';
 import { MIN_BLOCK_PX, HEIGHT_STEP_PX, FILL_THRESHOLD_PX } from '$modules/day/components/timeline-geometry';
 
 const OUT_DIR = new URL('../src/lib/theme/', import.meta.url);
@@ -53,7 +53,8 @@ function buildPaletteCss(): string {
 	lines.push(` * ${GENERATED_NOTICE}`);
 	lines.push(' * Source: src/lib/viz/palette.ts (PROJECT_PALETTE), by scripts/generate-palette-and-heights.ts');
 	lines.push(' *');
-	lines.push(' * Eight classes, `.pj-0` … `.pj-7` — one per Palette_Slot — each theme-aware through');
+	lines.push(' * Eight classes, `.pj-0` … `.pj-7` — one per Palette_Slot — plus one reserved ninth,');
+	lines.push(' * `.pj-relax` (LEISURE_SLOT, 003-worklog-time-categories) — each theme-aware through');
 	lines.push(" * the same `:root` / `[data-theme='dark']` / `[data-theme='light']` selector pattern");
 	lines.push(' * `theme.css` uses (dark doubles as the `:root` fallback, for anything rendered before');
 	lines.push(" * `data-theme` is known). `--pj` is the slot's hex for that theme; `--pj-tint` is the");
@@ -62,7 +63,8 @@ function buildPaletteCss(): string {
 	lines.push(' *');
 	lines.push(' * No `.pj-*` class references `--destructive`, and no destructive control references a');
 	lines.push(' * `.pj-*` class — the pink slot and the destructive colour sit close together and must');
-	lines.push(' * stay separable.');
+	lines.push(' * stay separable. `.pj-relax` is never reached by `projectSlotClass`\'s modular wraparound');
+	lines.push(' * (`colorIndex % PALETTE_SIZE`) — it is assigned only by `leisureColor`/`LEISURE_SLOT_CLASS`.');
 	lines.push(' */');
 	lines.push('');
 
@@ -82,8 +84,24 @@ function buildPaletteCss(): string {
 		lines.push(`\t--pj: ${lightHex};`);
 		lines.push(`\t--pj-tint: ${lightTint};`);
 		lines.push('}');
-		if (i < PALETTE_SIZE - 1) lines.push('');
+		lines.push('');
 	}
+
+	// The reserved ninth slot, appended after the eight — generated exactly like
+	// `.pj-0`..`.pj-7` above, never hand-written.
+	const leisureDarkHex = LEISURE_SLOT.dark.toLowerCase();
+	const leisureLightHex = LEISURE_SLOT.light.toLowerCase();
+	const leisureDarkTint = rgba(hexToRgb(LEISURE_SLOT.dark), TINT_ALPHA.dark);
+	const leisureLightTint = rgba(hexToRgb(LEISURE_SLOT.light), TINT_ALPHA.light);
+	lines.push(`:root .${LEISURE_SLOT_CLASS},`);
+	lines.push(`[data-theme='dark'] .${LEISURE_SLOT_CLASS} {`);
+	lines.push(`\t--pj: ${leisureDarkHex};`);
+	lines.push(`\t--pj-tint: ${leisureDarkTint};`);
+	lines.push('}');
+	lines.push(`[data-theme='light'] .${LEISURE_SLOT_CLASS} {`);
+	lines.push(`\t--pj: ${leisureLightHex};`);
+	lines.push(`\t--pj-tint: ${leisureLightTint};`);
+	lines.push('}');
 
 	lines.push('');
 	return lines.join('\n');

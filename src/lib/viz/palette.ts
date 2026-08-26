@@ -48,3 +48,21 @@ export function projectColor(colorIndex: number, theme: 'dark' | 'light'): strin
 	const index = ((colorIndex % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE;
 	return PROJECT_PALETTE[index][theme];
 }
+
+/**
+ * A ninth, reserved slot for Leisure_Time — deliberately outside PALETTE_SIZE's
+ * modular wraparound, so `projectSlotClass`/`projectColor` (both keyed by
+ * `colorIndex % PALETTE_SIZE`) can never return it. Not a ninth categorical colour:
+ * `.design/DESIGN.md` § 2 already establishes that eight mutually distinguishable
+ * categorical colours do not exist (measured CVD ΔE 4.6, normal-vision ΔE 7.3 against
+ * targets of 8 and 15), so leisure opts OUT of the scale by being deliberately
+ * low-chroma (OKLCH chroma 0.028-0.029, against the eight project hues' 0.137-0.150)
+ * rather than competing in it. These two values are decided, not placeholders — do
+ * not substitute a "nicer", more saturated hue.
+ */
+export const LEISURE_SLOT: PaletteSlot = { dark: '#7C8899', light: '#5F6B7A' };
+export const LEISURE_SLOT_CLASS = 'pj-relax';
+
+export function leisureColor(theme: 'dark' | 'light'): string {
+	return LEISURE_SLOT[theme];
+}
