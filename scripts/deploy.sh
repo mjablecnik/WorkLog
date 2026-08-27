@@ -54,6 +54,12 @@ ORG_FILE="${PROJECT_ROOT}/.fly-org"
 if [[ -f "${ORG_FILE}" ]]; then
 	FLY_ORG="$(cat "${ORG_FILE}")"
 else
+	if ! command -v jq >/dev/null 2>&1; then
+		echo "deploy.sh: jq is required to choose a Fly organization" >&2
+		echo "  install it, or write the org slug into .fly-org by hand" >&2
+		exit 1
+	fi
+
 	echo "deploy.sh: fetching available organizations..." >&2
 
 	ORG_JSON=$(fly orgs list --json 2>/dev/null || true)
@@ -63,19 +69,17 @@ else
 		exit 1
 	fi
 
-	# The JSON is {"slug": "name", ...} — parse key/value pairs.
+	# The JSON is {"slug": "name", ...}. Parse it with jq, not with sed/awk: an org
+	# name containing a comma ("Acme, Inc.") splits into a phantom entry under any
+	# delimiter-based parse, which then shifts the menu numbering and deploys the
+	# app somewhere other than what the user picked.
 	ORGS=()
 	ORG_NAMES=()
 	while IFS='|' read -r slug name; do
 		[[ -z "$slug" ]] && continue
 		ORGS+=("$slug")
 		ORG_NAMES+=("$name")
-	done < <(echo "$ORG_JSON" | sed 's/[{}]//g' | tr ',' '\n' | sed 's/^ *//;s/ *$//' | awk -F':' '{
-		gsub(/^[ \t]*"/, "", $1); gsub(/"[ \t]*$/, "", $1);
-		val=$2; for(i=3;i<=NF;i++) val=val":"$i;
-		gsub(/^[ \t]*"/, "", val); gsub(/"[ \t]*$/, "", val);
-		if ($1 != "") print $1 "|" val
-	}')
+	done < <(echo "$ORG_JSON" | jq -r 'to_entries[] | "\(.key)|\(.value)"')
 
 	if [[ ${#ORGS[@]} -eq 0 ]]; then
 		echo "deploy.sh: could not parse organizations. Are you logged in? (fly auth login)" >&2
