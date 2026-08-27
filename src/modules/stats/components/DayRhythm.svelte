@@ -272,6 +272,16 @@
 	.day-rhythm__track {
 		fill: var(--track);
 	}
+	/* The pj-N/pj-relax classes (projectSlotClass()/LEISURE_SLOT_CLASS) only set the
+	   --pj/--pj-tint custom properties (palette.css, generated) — this rule is what
+	   actually paints a covered/leisure segment, mirroring ProjectBreakdown.svelte's
+	   own `.bar-fill { fill: var(--pj); }`. Without it every segment fell back to
+	   the SVG default fill (black). Excludes `--uncovered`, which paints itself via
+	   its own `fill="url(#day-rhythm-hatch)"` attribute — a CSS rule targeting it
+	   would out-rank that attribute and blot out the hatch. See .agents/ISSUES.md. */
+	.day-rhythm__segment:not(.day-rhythm__segment--uncovered) {
+		fill: var(--pj);
+	}
 	/* No dedicated gridline token exists (theme.css owns tokens; this component may not
 	   add one) — reuse --text-faint, already themed correctly in both palettes, at a low
 	   opacity so the tick reads as recessive rather than as a second axis. */
