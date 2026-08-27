@@ -84,7 +84,31 @@ echo "test-e2e.sh: migrating"
 # script — see the note above DATABASE_URL's absence from the exports at the top.
 DATABASE_URL="${TEST_DATABASE_URL}" "${SCRIPT_DIR}/migrate.sh" e2e
 
-echo "test-e2e.sh: running Playwright"
-bunx playwright test
+# .agents/ISSUES.md, "Full E2E suite ... still occasionally exceeds the login rate
+# limit" (5 attempts / 15 minutes, Requirement 11.13 — never loosened for tests):
+# auth.spec.ts's own logout-invalidation cycle (3 real logins its cached session
+# cannot survive) plus its deliberate wrong-then-right passphrase pair already spend
+# the whole budget by design, leaving none for a11y.spec.ts's per-theme beforeAll (2
+# more real logins) or anything after it in the same run. Reordering alone cannot
+# fix this — whichever file needs the next real login past the 5th still fails.
+# The login limiter is in-process and resets when the app process restarts, so this
+# runs auth.spec.ts as its own Playwright invocation first: `webServer` starts a
+# fresh `bun run preview`, Playwright tears it down when this invocation ends, and
+# the second invocation's `webServer` starts an equally fresh one with a clean
+# rate-limit slate for everything else.
+echo "test-e2e.sh: running Playwright (auth.spec.ts first, its own server instance)"
+bunx playwright test tests/e2e/auth.spec.ts
+
+# Playwright's --grep/--grep-invert match against the test *title*, not the file
+# path, so excluding auth.spec.ts here needs an explicit file list rather than a
+# grep pattern.
+REST_SPECS=()
+for f in tests/e2e/*.spec.ts; do
+	[[ "$(basename "${f}")" == "auth.spec.ts" ]] && continue
+	REST_SPECS+=("${f}")
+done
+
+echo "test-e2e.sh: running Playwright (everything else, a fresh server instance)"
+bunx playwright test "${REST_SPECS[@]}"
 
 echo "test-e2e.sh: done"
