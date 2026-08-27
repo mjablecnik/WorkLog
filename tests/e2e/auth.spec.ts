@@ -93,6 +93,23 @@ test('a browser-issued request after the session expires redirects with the sess
 	await expect(page.getByText('Přihlášení vypršelo, přihlas se znovu')).toBeVisible();
 });
 
+test('GET /login substitutes the real lang/theme into the rendered HTML', async ({ page, context }) => {
+	// .agents/ISSUES.md, "/login page rendering could not be exercised over HTTP this
+	// phase" — logged before src/routes/login/+page.svelte existed (002-worklog-ui was
+	// not yet started), when GET /login 500'd before substitutePagePlaceholders() ever
+	// ran. The component exists now; this is that re-run, against real rendered HTML,
+	// not a unit test of the substitution function in isolation.
+	await seedNonSystemThemeCookie(context, 'light');
+	await seedLocaleCookie(context, 'en');
+	await page.goto('/login');
+	await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+	await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+	// The literal placeholders must never survive into a real response.
+	const html = await page.content();
+	expect(html).not.toContain('%lang%');
+	expect(html).not.toContain('%theme%');
+});
+
 test('a wrong passphrase shows the generic invalid-credentials message', async ({ page, context }) => {
 	// One wrong attempt only — login is rate limited per Requirement 2.6/UC-039
 	// (confirmed live: two failures in a row from the same client already
