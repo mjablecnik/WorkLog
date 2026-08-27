@@ -98,7 +98,12 @@ test('confirming the shortened session saves through the real confirm step', asy
 	await expect(page.getByText('12:00 – 13:00')).toHaveCount(0);
 });
 
-const DAY3 = '2024-01-19';
+// .agents/ISSUES.md, "gaps.spec.ts and preview.spec.ts both hardcode 2024-01-19" —
+// gaps.spec.ts creates its own Work_Session on that date, and the full suite's
+// single shared database (one reset per whole run, not per file) meant the two
+// collided with 409 SESSION_OVERLAP whichever ran second. 2024-01-25 is unclaimed
+// by any other tests/e2e/*.spec.ts file — grep before reusing this pattern.
+const DAY3 = '2024-01-25';
 
 test('shortening a session over pure Uncovered_Time now shows Confirming instead of auto-saving', async ({
 	page
