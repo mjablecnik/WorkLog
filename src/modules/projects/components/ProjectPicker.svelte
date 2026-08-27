@@ -153,7 +153,7 @@
 	const optionsCount = $derived(filtered.length + (showCreateRow ? 1 : 0));
 	const safeActiveIndex = $derived(Math.min(activeIndex, Math.max(optionsCount - 1, 0)));
 	const activeOptionId = $derived(
-		optionsCount === 0
+		!open || optionsCount === 0
 			? undefined
 			: safeActiveIndex < filtered.length
 				? optionId(safeActiveIndex)
