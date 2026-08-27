@@ -3,7 +3,12 @@
 ## [HIGH] ProjectPicker's `aria-activedescendant` points at a listbox option that does not exist while the popup is closed
 - Run: 2026-08-26-0758
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-decisions)
+- Fix: `activeOptionId` in `ProjectPicker.svelte` now derives `undefined` whenever
+  `open` is `false`, not only when `optionsCount` is `0` — the attribute is omitted
+  from the DOM entirely while the popup is collapsed. Confirmed live: the
+  `Activity_Dialog` axe sweep (both themes, all three categories) reports no
+  `aria-valid-attr-value` violation.
 - What: `src/modules/projects/components/ProjectPicker.svelte`'s search `<input>` always
   carries `aria-activedescendant={activeOptionId}` (line ~396), computed from
   `activeIndex`/`optionsCount` regardless of whether the `<ul role="listbox">` popup is
@@ -35,7 +40,24 @@
 ## [MEDIUM] A shared rust-orange text colour marginally fails WCAG AA in two more places axe never scanned before
 - Run: 2026-08-26-0758
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-decisions)
+- Fix: two distinct causes, both closed. (a) `DayRhythm.svelte`'s
+  `.day-rhythm__total--today` and `ProjectBreakdown.svelte`'s `.uncovered-value`
+  were left on plain `var(--accent)` when the identical light-theme surface's
+  sibling (`.day-rhythm__label--today`) had already been moved to
+  `var(--accent-on-tint)` for exactly this reason — both switched to
+  `--accent-on-tint`, now 5.52:1+ on that panel background. (b)
+  `ActivityDialog.svelte`'s `.activity-dialog__seg-item--active` hardcoded
+  `--segment-active`'s value instead of referencing the token, and used plain
+  `--accent` for its text; switched to the shared tokens. This exposed that dark
+  theme's `--accent-on-tint` (aliased to plain `--accent`) was never actually
+  4.5:1-clean against `--dialog`'s `--segment-active` composite (measured
+  4.34-4.35:1) — the "already clears 4.5:1" claim in `theme.css`'s comment had
+  never been exercised by an axe pass with the tinted state rendered. Dark's
+  `--accent-on-tint` now aliases `--accent-hover` (5.89:1 on that composite),
+  mirroring the light theme's own already-established pattern. Confirmed live via
+  the full `a11y.spec.ts` run (23/23 passing, including the light-theme 390px
+  `/stats` pass and the dark-theme `Activity_Dialog`-open pass).
 - What: an `@axe-core/playwright` sweep this run added (light theme at a 390px mobile
   viewport for `/stats`; the `Activity_Dialog`'s segmented controls in dark theme) finds
   `color-contrast` violations on: (a) light theme, `.day-rhythm__total--today` and the
