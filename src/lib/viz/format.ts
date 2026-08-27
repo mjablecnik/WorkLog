@@ -146,6 +146,14 @@ function dayIndex(date: string): { y: number; m: number; d: number; weekday: num
 	return { y, m, d, weekday };
 }
 
+/** The weekday name alone, no date — for a caller that wants only that (`RhythmPanel`'s
+ * observation line), unlike `formatDayLabel`'s three forms, which all pair it with one. */
+export function weekdayName(date: string, locale: string): string {
+	const lang = localeKey(locale);
+	const { weekday } = dayIndex(date);
+	return WEEKDAY_LONG[lang][weekday];
+}
+
 /**
  * `relative` gives `dnes` / `včera` and otherwise falls through to `long`; `long`
  * gives `pátek 21. srpna`; `short` gives `pá 21.` — three call sites that each wanted

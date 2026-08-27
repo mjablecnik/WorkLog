@@ -25,7 +25,7 @@
 	import type { DaySummary } from '$lib/contracts/responses';
 	import * as m from '$lib/paraglide/messages';
 	import { getCurrentLocale } from '$lib/core/i18n';
-	import { formatDuration } from '$lib/viz/format';
+	import { formatDuration, weekdayName } from '$lib/viz/format';
 	import { computeRhythmFigures, selectObservationTemplate } from '../aggregate';
 
 	interface Props {
@@ -49,27 +49,6 @@
 		return `${String(hour).padStart(2, '0')}:00`;
 	}
 
-	/**
-	 * Weekday names for `stats_observation_longest`'s `weekday` variable only ("the date
-	 * of the day holding that maximum, formatted as a weekday name" — design.md's
-	 * observation-template table). A small independent copy of the same data
-	 * `src/lib/viz/format.ts` keeps in its own private `WEEKDAY_LONG` (not exported —
-	 * `formatDayLabel`'s three call sites all want a weekday *plus* a date), exactly the
-	 * pattern `rhythm-geometry.ts` and `gauge-geometry.ts` already follow for small time
-	 * helpers neither may import from the other.
-	 */
-	const WEEKDAY_NAMES: Record<'cs' | 'en', string[]> = {
-		cs: ['neděle', 'pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota'],
-		en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-	};
-
-	function weekdayName(date: string): string {
-		const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-		if (!match) throw new RangeError(`invalid date: ${JSON.stringify(date)}`);
-		const weekday = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay();
-		const lang = getCurrentLocale().startsWith('cs') ? 'cs' : 'en';
-		return WEEKDAY_NAMES[lang][weekday];
-	}
 </script>
 
 <div class="rhythm-panel {className}">
@@ -111,7 +90,7 @@
 			{:else if observation.template === 2}
 				{m.stats_observation_longest({
 					duration: fmtDuration(observation.variables.durationSeconds),
-					weekday: weekdayName(observation.variables.date)
+					weekday: weekdayName(observation.variables.date, getCurrentLocale())
 				})}
 			{:else}
 				{m.stats_observation_idle({ idleDays: observation.variables.idleDays })}
