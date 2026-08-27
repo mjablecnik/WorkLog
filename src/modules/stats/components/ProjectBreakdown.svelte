@@ -277,7 +277,10 @@
 	.uncovered-value {
 		font-size: 14px;
 		font-weight: 300;
-		color: var(--accent);
+		/* Plain --accent measured 4.31:1 on this panel's light-theme background, under
+		   4.5:1 — confirmed via axe-core (tests/e2e/a11y.spec.ts). Covers both the
+		   Uncovered_Time row and the leisure total row below it, one shared class. */
+		color: var(--accent-on-tint);
 	}
 
 	.breakdown-empty {

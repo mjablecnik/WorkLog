@@ -1056,12 +1056,16 @@
 		color: var(--text);
 	}
 	.activity-dialog__seg-item--active {
-		background: rgba(209, 138, 106, 0.16);
-		color: var(--accent);
+		/* Shared tokens, not a hardcoded duplicate of --segment-active's value — plain
+		   --accent measured 4.34:1 here in dark theme, under 4.5:1; --accent-on-tint
+		   exists exactly for this (see theme.css). Confirmed via axe-core
+		   (tests/e2e/a11y.spec.ts). */
+		background: var(--segment-active);
+		color: var(--accent-on-tint);
 		font-weight: 500;
 	}
 	.activity-dialog__seg-item--active:hover {
-		color: var(--accent);
+		color: var(--accent-on-tint);
 	}
 	.activity-dialog__seg-item:focus-visible {
 		outline: none;

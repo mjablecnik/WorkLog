@@ -189,11 +189,15 @@
 	/* Text colour for accent-coloured copy drawn on a tinted/row surface rather than
 	   directly on --bg/--dialog, where plain --accent's contrast runs thinner —
 	   SettingsMenu's .seg-item--active, ChangePreview's .change-preview__policy-item--active,
-	   DataTable's .data-table__bulk-bar and StatsPage's .stats-page__range-item--active
-	   (all on --segment-active) and DayRhythm's .day-rhythm__label--today. Plain --accent
-	   already clears 4.5:1 in every one of these spots in the dark theme (e.g. 4.81:1 at
-	   0.16 alpha on --bg) — the light theme's pairings do not, see below. */
-	--accent-on-tint: var(--accent);
+	   DataTable's .data-table__bulk-bar, StatsPage's .stats-page__range-item--active and
+	   ActivityDialog's .activity-dialog__seg-item--active (all on --segment-active), plus
+	   DayRhythm's .day-rhythm__label--today/.day-rhythm__total--today. Confirmed live via
+	   axe-core (tests/e2e/a11y.spec.ts, run 2026-08-27) that plain --accent on --dialog's
+	   --segment-active composite (#3C3435) measures only 4.34-4.35:1 — under 4.5:1 — so
+	   dark now reuses --accent-hover here exactly as the light theme already did (5.89:1 on
+	   that same composite); the "already clears 4.5:1" reading this comment previously
+	   stated was never actually exercised by an axe pass with the tinted state rendered. */
+	--accent-on-tint: var(--accent-hover);
 	--ink-on-accent: #1a0f0a;
 	--panel: rgba(255, 255, 255, 0.043);
 	--dialog: #171b22;

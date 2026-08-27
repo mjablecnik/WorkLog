@@ -292,7 +292,9 @@
 		text-align: right;
 	}
 	.day-rhythm__total--today {
-		color: var(--accent);
+		/* Same row, same background as .day-rhythm__label--today above — plain --accent
+		   was left here by oversight and failed the same 4.31:1-in-light measurement. */
+		color: var(--accent-on-tint);
 	}
 
 	.day-rhythm__axis-row {
