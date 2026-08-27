@@ -204,7 +204,18 @@
 ## [LOW] `DayRhythm.svelte`'s covered/leisure segment rects have no `fill` CSS rule at all
 - Run: 2026-08-26-0758
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — added `.day-rhythm__segment:not(.day-rhythm__segment--uncovered)
+  { fill: var(--pj); }`, mirroring `ProjectBreakdown.svelte`'s own `.bar-fill` rule
+  (excludes `--uncovered`, which paints itself via its own `fill="url(#...)"`
+  attribute — a CSS rule matching it would out-rank that attribute and blot out
+  the hatch). The jsdom component test could not be meaningfully strengthened
+  (`getComputedStyle` doesn't resolve real CSS cascade/custom properties in this
+  project's jsdom test environment — confirmed by grepping for any existing use of
+  it outside `tests/e2e/*.spec.ts`, finding none), so a new Playwright regression
+  test was added instead: `tests/e2e/stats.spec.ts`, against a real browser.
+  Verified live twice — once via the automated E2E run, once again visually via a
+  manual checkpoint screenshot of `/stats` showing the segment in its real project
+  colour (blue), not black.
 - What: `src/modules/stats/components/DayRhythm.svelte` draws each day's covered
   interval as `<rect class="day-rhythm__segment {projectSlotClass(interval.colorIndex)}">`
   (and, as of this run, each leisure interval as `<rect class="day-rhythm__segment
@@ -248,7 +259,10 @@
 ## [LOW] `gaps.spec.ts` and `preview.spec.ts` both hardcode `2024-01-19` for an unrelated `Work_Session`, and collide when run together
 - Run: 2026-08-26-0758
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — moved `preview.spec.ts`'s `DAY3` off
+  `2024-01-19` to `2024-01-25` (grepped every other `tests/e2e/*.spec.ts` first —
+  unclaimed). Confirmed live: both files' relevant tests pass in the same run
+  (they did not before).
 - What: `tests/e2e/gaps.spec.ts` (`DAY = '2024-01-19'`) creates a session
   `2024-01-19T08:00-11:00Z`; `tests/e2e/preview.spec.ts`'s third test (`DAY3 =
   '2024-01-19'`, added in 002-worklog-ui) tries to create its own session on the exact
@@ -385,7 +399,15 @@
 ## [LOW] Three spec-001 property tests failed once under this run's heavy sandbox load, passed clean on retry
 - Run: 2026-08-24-0659
 - Phase: verify
-- Status: OPEN (informational — likely not a real defect, flagged for visibility only)
+- Status: OPEN (informational — likely not a real defect, flagged for visibility
+  only). Recurred once more, 2026-08-27: two overlapping `run-vitest.sh` invocations
+  (this session's own mistake, not a product defect) produced the identical
+  `deadlock detected` signature on `TRUNCATE ... CASCADE`, this time hitting six
+  tests in `overlap.property.test.ts`. Re-ran clean, single-instance, twice in a
+  row afterward — 621/621 both times, no failures. Confirms the original
+  diagnosis: real Postgres contention under concurrent load, not a bug in the
+  properties themselves. Nothing to change; still worth a real look if it ever
+  recurs under genuinely ordinary (non-concurrent) load.
 - What: a full `bun run test` (run as a general sanity check beyond this phase's UI
   scope, after several hours of heavy concurrent Docker/Postgres/Playwright activity
   in the same sandbox session) failed 6 tests across three spec-001 domain/store
@@ -817,7 +839,20 @@
 ## [LOW] Full E2E suite (all ten spec files, one process) still occasionally exceeds the login rate limit
 - Run: 2026-08-24-0659
 - Phase: build
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — reordering alone (running `auth.spec.ts`
+  first) was tried and does NOT work: `auth.spec.ts`'s own logout-invalidation
+  cycle plus its wrong/right passphrase pair already spend the entire 5-attempt
+  budget by design, so whichever file needs the next real login (`a11y.spec.ts`'s
+  per-theme `beforeAll`) just fails instead — confirmed live, this moved the
+  failure rather than fixing it. The login limiter is in-process and resets when
+  the app restarts, so the real fix is `scripts/test-e2e.sh` running
+  `auth.spec.ts` as its own `bunx playwright test` invocation first (a genuinely
+  fresh server, clean budget), then everything else as a second invocation
+  against an equally fresh server (`webServer` tears down and restarts between
+  the two — Playwright's own file-path CLI args, not `--grep`, since `--grep`
+  matches test titles, not file paths). Verified live, twice: `auth.spec.ts` alone
+  (6/6), then the other 45 (45/45) — no rate-limit failures anywhere, including
+  the a11y/settings tests that failed under the reorder-only attempt.
 - What: even after moving the database reset to run exactly once for the whole
   run (`tests/e2e/global-setup.ts`, see the MEMORY.md entry) and adding a
   file-based session cache (`tests/e2e/fixtures.ts`'s `login()`), a handful of
@@ -1002,7 +1037,16 @@
 ## [LOW] Two page-assembly judgment calls in the statistics components, need a page to confirm
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — (1) `StatsPage.svelte` (built since this
+  entry was opened) confirms the anticipated split: `.stats-page__panel`
+  (`background: var(--panel)`, its own label) wraps both `ProjectBreakdown` and
+  `RhythmPanel` in the shared `1.4fr 1fr` grid, exactly as `ProjectBreakdown`'s own
+  header comment predicted. Verified live against the real page, both themes. (2)
+  The weekday-name duplication was consolidated: added `weekdayName(date, locale)`
+  to `src/lib/viz/format.ts` (reusing its existing `WEEKDAY_LONG`/`dayIndex`/
+  `localeKey`), and `RhythmPanel.svelte` now imports it instead of carrying its own
+  copy of the same lookup table. `bun run check`/`lint` clean, full `bun run test`
+  (621/621) green.
 - What: (1) `ProjectBreakdown.svelte` and `RhythmPanel.svelte` (tasks 8.2/8.3, built
   concurrently by different agents who independently converged on the same pattern)
   both omit their own panel background/padding/heading, deferring that chrome to
@@ -1056,7 +1100,14 @@
 ## [LOW] gauge-geometry.ts's arc() is scoped to single-calendar-day spans only
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog, already fixed by task 6.5, never marked) —
+  `DayGauge.svelte` (built since this entry was opened) does exactly what this
+  entry's own `Next` prescribed: it detects a ≥24h/degenerate span itself
+  (`spansFullDayOrMore`) and emits a `<circle>` directly instead of delegating to
+  `arc()`, with its own header comment explicitly citing this ISSUES.md entry.
+  `arc()` itself is unchanged, correctly, since the fix belongs at the caller.
+  Confirmed via `tests/modules/timer/components/day-gauge.test.ts` and
+  `gauge-geometry.test.ts`, part of the green 621-test suite.
 - What: `arc(from, to, radius)` throws `RangeError` for an inverted/wrapping span and,
   for a span of exactly or more than 24 hours at the same wall-clock start/end time,
   silently returns a near-invisible 1.5°-floored arc (via the cosmetic minimum-arc
@@ -1106,7 +1157,14 @@
 ## [LOW] Two different mechanisms for hover/active surface-alpha derivation
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — `Button.svelte`, `Checkbox.svelte`,
+  `Select.svelte` and `Input.svelte`'s relative-color-syntax rules converted to the
+  existing `theme.css` named tokens (`--chip-hover`/`--chip-active`,
+  `--field-hover`/`--field-active`), per this entry's own recommendation. Confirmed
+  the tokens compute the identical value before converting (`--chip-hover:
+  rgba(255,255,255,0.1)` = `--chip`'s own `rgba(255,255,255,0.07)` + 0.03, exactly
+  what the relative-color rule computed). `bun run check`/`lint` clean, full `bun
+  run test` (621/621) green.
 - What: task 1.4 (`src/lib/theme/theme.css`) computed explicit hand-derived tokens
   (`--chip-hover`, `--panel-hover`, etc., alpha +0.03/+0.06 with the arithmetic shown
   in comments) for the "one interaction-state rule" design.md requires. Task 1.3's
@@ -1191,7 +1249,14 @@
 ## [LOW] Paraglide plural/select messages use the plugin's native array form, not literal ICU
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — this is a deliberate consequence of the
+  installed plugin's format, not a bug to fix (the "Next" was a warning for future
+  call sites, not a task). All ten keys now have real call sites (specs 002 and 003
+  are both complete) — grepped every one of `timer_gauge_label`'s `running` and
+  `day_segment_label`'s `part` (the two boolean-style selectors this entry warned
+  about): `DayGauge.svelte`, `SegmentBlock.svelte` and `LeisureBlock.svelte` all
+  correctly pass the string `'true'`/`'false'`, never a JS boolean. The risk this
+  entry flagged never materialised. Still worth remembering for any new call site.
 - What: design.md's Message Catalogue writes plural/select messages in classic ICU
   MessageFormat syntax (`{count, plural, one {...} other {...}}`). The actually
   installed `@inlang/plugin-message-format` does not parse that syntax from a plain
@@ -1420,7 +1485,12 @@
 ## [LOW] /login page rendering could not be exercised over HTTP this phase
 - Run: 2026-08-23-2200
 - Phase: verify
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — `src/routes/login/+page.svelte` has existed
+  since `002-worklog-ui`; re-ran this exact check against real rendered HTML. New
+  regression test `tests/e2e/auth.spec.ts` ("GET /login substitutes the real
+  lang/theme into the rendered HTML"): seeds non-default `light`/`en` cookies,
+  confirms `<html lang="en" data-theme="light">` on the real response and that
+  neither literal placeholder (`%lang%`/`%theme%`) survives. Passing.
 - What: `src/routes/login/+page.svelte` does not exist yet — by design, spec
   `002-worklog-ui` (not started) owns it; `001` owns only `+page.server.ts`. `GET
   /login` therefore 500s with SvelteKit's own "Missing +page.svelte component for
@@ -1720,7 +1790,13 @@ and marked accordingly.
 ## [LOW] The login passphrase behind the stored hash is not recorded anywhere
 - Run: 2026-08-23-2200
 - Phase: cases
-- Status: OPEN
+- Status: OPEN (re-confirmed 2026-08-27-backlog) — this is Martin's own credential;
+  an agent cannot know or invent it. Every live verification pass since this entry
+  (including this one) has minted its own throwaway hash via
+  `./scripts/hash-passphrase.sh` for a scratch environment, exactly as this entry's
+  own `Next` prescribes, and left `.env` untouched. Needs Martin to record the real
+  passphrase in his own password manager if he ever wants to log in as himself
+  rather than via a throwaway test credential — not something to close from here.
 - What: `.env` holds a real argon2id `WORKLOG_PASSPHRASE_HASH`, but the passphrase that
   produced it appears nowhere in the repository, `.agents/`, the docs or the run
   reports.
@@ -1769,7 +1845,10 @@ and marked accordingly.
 ## [LOW] bun audit reports two transitive vulnerabilities blocked upstream
 - Run: 2026-08-23-2200
 - Phase: impl
-- Status: OPEN
+- Status: OPEN (re-confirmed 2026-08-27-backlog) — `bun audit` still reports exactly
+  these same two, same versions, still blocked by the same dependents'
+  ranges (`@sveltejs/kit@2.70.3` pinning `cookie@^0.6.0`, `drizzle-kit`'s transitive
+  `esbuild@~0.18.20`). Nothing to do until an upstream release moves either pin.
 - What: `bun audit` (checkpoint task 12) reports two: `cookie@0.6.0` (low —
   GHSA-pxg6-pf52-xh8x, out-of-bounds characters accepted in a cookie name/path/
   domain, fixed in cookie >=0.7.0) via `@sveltejs/kit@2.70.3 > cookie`; and
@@ -1800,7 +1879,20 @@ and marked accordingly.
 ## [LOW] Task 10.5 (gauge window / suggested window property tests) not written
 - Run: 2026-08-23-2200
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — `tests/api/days.property.test.ts` written:
+  Property 19 (`overtimeSeconds + total(intersect(tracked, gaugeWindowOfDay)) ===
+  trackedSeconds`) swept over an ordinary day plus this config's real 23-hour and
+  25-hour Logical_Day (2024's DST transitions — 2024's, not 2026's as this entry's
+  own `Next` suggested, since this test posts real `Work_Session` rows through
+  `/api/sessions`, which rejects a too-far-future `startedAt`/`endedAt`; 2026-10-24
+  would fail until real time reaches it). Property 21 (`suggestedWindow` covers
+  ≥`SUGGESTED_WINDOW_COVERAGE` of tracked time when non-null) re-materialises the
+  wire shape's `{start: "HH:MM", end: "HH:MM"}` onto every day in range first,
+  mirroring `gaugeWindowFor`'s own wrap rule — the wire shape is a recurring
+  wall-clock band, not a single absolute instant, and treating it as one silently
+  produced a false failure while writing this test. Both run against the real
+  database (`numRuns: 8`), confirmed passing on three separate runs with different
+  random seeds, ~20-75s total. Full `bun run test` (621/621) still green alongside it.
 - What: `tests/api/days.property.test.ts` (Property 19: overtime and in-window time
   partition the day; Property 21: the suggested window brackets the bulk of the work),
   marked optional (`*`) in `tasks.md`, was not written. Tasks 10.1 (required) and
@@ -1823,7 +1915,14 @@ and marked accordingly.
 ## [LOW] aggregates.ts computes day summaries in TypeScript, not SQL
 - Run: 2026-08-23-2200
 - Phase: impl
-- Status: OPEN
+- Status: OPEN (re-affirmed 2026-08-27-backlog) — not attempted. This is
+  correctness-critical aggregation logic, and this entry's own `Tried` note already
+  weighed a raw-SQL rewrite against the existing, thoroughly property-tested
+  `domain/interval.ts` algebra and judged the rewrite the worse risk trade at the
+  realistic single-user scale `MAX_RANGE_DAYS` caps every request to. Nothing
+  changed that analysis; rushing it now to close a LOW-severity backlog item would
+  be exactly the wrong trade it already warned against. Left for a dedicated,
+  separately-scoped effort if usage ever grows enough to matter.
 - What: Design component 6 / task 4.7 specify that `daySummaries`, `dayIntervals` and
   `suggestedWindow` in `src/lib/server/store/aggregates.ts` must be computed "in SQL
   over the requested day windows... the database is never asked to reason about the
@@ -2655,7 +2754,22 @@ and marked accordingly.
 ## [LOW] Checkpoints 2, 4, 10 and 12 have not been walked by hand
 - Run: 2026-08-24-0659
 - Phase: impl
-- Status: OPEN
+- Status: RESOLVED (2026-08-27-backlog) — walked live against a real `bun run
+  preview` build over `worklog-pg`. Checkpoint 2: shell renders correctly in both
+  themes; `data-theme` is already correct at `domcontentloaded` on reload (no
+  flash); switching language leaves the navigation-entries count unchanged (no
+  reload) and updates `<html lang>` immediately. Checkpoint 4: a seeded day
+  (session + paid activity + leisure entry) renders on `/day/<date>` with correct
+  blocks, correct descriptions and correct colours (confirms the `DayRhythm` fill
+  fix above, visually, on `/stats`'s rhythm strip too — a real blue swatch, not
+  black). Checkpoint 10: all four pages walked at desktop and 375px, both themes
+  (16 combinations) — no horizontal overflow anywhere. Checkpoint 12: `bun run
+  check`, the full `bun run test` (621/621) and the full `bun run test:e2e:local`
+  equivalent (two Playwright invocations per the rate-limit fix below, 51/51) all
+  green; a compressed simulated-usage flow (timer start/stop, billable toggle,
+  stats view, theme switch, logout) completed with no errors. The "one real
+  working day" half of checkpoint 12 is inherently something only Martin's own
+  use can satisfy — not something an automated pass can stand in for.
 - What: `tasks.md`'s four Checkpoint tasks each call for a live, human-paced
   pass beyond what this run's automated verification covered — checkpoint 2
   ("confirm the application starts, login works, the shell renders in both
