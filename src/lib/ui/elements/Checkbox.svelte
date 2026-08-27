@@ -93,11 +93,11 @@
 	}
 
 	.checkbox:not(.checkbox--disabled):hover .checkbox__box {
-		background-color: rgb(from var(--field) r g b / calc(alpha + 0.03));
+		background-color: var(--field-hover);
 	}
 
 	.checkbox:not(.checkbox--disabled):active .checkbox__box {
-		background-color: rgb(from var(--field) r g b / calc(alpha + 0.06));
+		background-color: var(--field-active);
 	}
 
 	.checkbox__box--checked {

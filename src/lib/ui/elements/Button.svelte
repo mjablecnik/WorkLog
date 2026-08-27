@@ -157,12 +157,12 @@
 	}
 
 	.button--secondary:not(:disabled):hover {
-		background-color: rgb(from var(--chip) r g b / calc(alpha + 0.03));
+		background-color: var(--chip-hover);
 		color: var(--text);
 	}
 
 	.button--secondary:not(:disabled):active {
-		background-color: rgb(from var(--chip) r g b / calc(alpha + 0.06));
+		background-color: var(--chip-active);
 		color: var(--text);
 		transform: none;
 	}

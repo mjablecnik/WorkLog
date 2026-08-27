@@ -61,7 +61,7 @@
 	}
 
 	.select:hover:not(:disabled):not(:focus-visible) {
-		background-color: rgb(from var(--field) r g b / calc(alpha + 0.03));
+		background-color: var(--field-hover);
 	}
 
 	.select:focus-visible {
