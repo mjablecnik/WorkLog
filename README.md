@@ -22,6 +22,13 @@ The entry keeps its original request for auditing, while the stored segments fol
 
 Every project is marked billable or not, so each entry's time counts as paid or unpaid work. An entry can also skip a project entirely to log leisure time instead — a day off, an evening, a lunch walk — reconciled against the day itself rather than the timer, so it can be recorded whether or not the timer ever ran that day.
 
+## Screenshots
+
+| | | |
+|---|---|---|
+| ![Timer](screenshots/timer.png) | ![Day](screenshots/day.png) | ![Add a task](screenshots/day-add-task.png) |
+| ![Statistics](screenshots/statistics.png) | ![Projects](screenshots/projects.png) | ![New project](screenshots/projects-new-project.png) |
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) 1.2.15 or newer
