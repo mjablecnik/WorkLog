@@ -167,10 +167,10 @@ export function formatDayLabel(
 ): string {
 	const lang = localeKey(locale);
 	if (form === 'relative') {
-		if (date === today) return lang === 'cs' ? 'dnes' : 'today';
+		if (date === today) return lang === 'cs' ? 'dnes' : 'Today';
 		const { y, m, d } = dayIndex(today);
 		const yesterday = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
-		if (date === yesterday) return lang === 'cs' ? 'včera' : 'yesterday';
+		if (date === yesterday) return lang === 'cs' ? 'včera' : 'Yesterday';
 		return formatDayLabel(date, locale, today, 'long');
 	}
 	const { d, weekday } = dayIndex(date);
