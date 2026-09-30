@@ -58,12 +58,6 @@
 		return formatTimeOfDay(at, '', timeZone);
 	}
 
-	const rangeStartLabel = $derived(axisHourLabel(0));
-	// Same instant as rangeStartLabel — the axis runs dayStartHour to dayStartHour, one
-	// full 24h turn — kept as its own derived value so the two ends never drift apart
-	// if this component is ever asked to show a different span.
-	const rangeEndLabel = $derived(axisHourLabel(24));
-
 	const AXIS_TICKS: { offsetHours: number; percent: number; interior: boolean }[] = [
 		{ offsetHours: 0, percent: 0, interior: false },
 		{ offsetHours: 6, percent: 25, interior: true },
@@ -80,11 +74,7 @@
 	}
 </script>
 
-<div class="day-rhythm">
-	<div class="day-rhythm__head">
-		<span class="day-rhythm__title">{m.stats_rhythm_title()}</span>
-		<span class="day-rhythm__sub">{m.stats_rhythm_sub({ from: rangeStartLabel, to: rangeEndLabel })}</span>
-	</div>
+<div class="day-rhythm" aria-label={m.stats_rhythm_title()}>
 
 	<!-- Declares the uncovered hatch once; every row's own <svg> below references it by
 	     id, which resolves across sibling <svg> elements in the same document. -->
@@ -123,8 +113,6 @@
 							width="{widthPercent(interval.start, interval.end)}%"
 							y="0"
 							height="100%"
-							rx="4"
-							ry="4"
 						/>
 					{/each}
 					{#each uncovered as interval, i (i)}
@@ -134,8 +122,6 @@
 							width="{widthPercent(interval.start, interval.end)}%"
 							y="0"
 							height="100%"
-							rx="4"
-							ry="4"
 							fill="url(#day-rhythm-hatch)"
 						/>
 					{/each}
@@ -148,8 +134,6 @@
 							width="{widthPercent(interval.start, interval.end)}%"
 							y="0"
 							height="100%"
-							rx="4"
-							ry="4"
 						/>
 					{/each}
 					{#if isToday}
@@ -193,26 +177,12 @@
 
 <style>
 	.day-rhythm {
+		position: relative;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
 		padding: 20px 22px;
 		background: var(--panel);
 		border-radius: var(--radius-14);
-	}
-
-	.day-rhythm__head {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-	}
-	.day-rhythm__title {
-		font-size: 14px;
-		font-weight: 500;
-	}
-	.day-rhythm__sub {
-		font-size: 11.5px;
-		color: var(--text-faint);
 	}
 
 	.day-rhythm__defs {
@@ -233,7 +203,7 @@
 
 	.day-rhythm__row {
 		display: grid;
-		grid-template-columns: 40px 1fr 46px;
+		grid-template-columns: 54px 1fr 64px;
 		align-items: center;
 		gap: 14px;
 		padding: 0;
@@ -256,6 +226,7 @@
 	.day-rhythm__label {
 		font-size: 12px;
 		color: var(--text-faint);
+		white-space: nowrap;
 	}
 	.day-rhythm__label--today {
 		/* Confirmed via axe-core (tests/e2e/a11y.spec.ts): plain --accent on this row's
@@ -300,6 +271,7 @@
 		font-variant-numeric: tabular-nums;
 		color: var(--text-dim);
 		text-align: right;
+		white-space: nowrap;
 	}
 	.day-rhythm__total--today {
 		/* Same row, same background as .day-rhythm__label--today above — plain --accent
@@ -309,7 +281,7 @@
 
 	.day-rhythm__axis-row {
 		display: grid;
-		grid-template-columns: 40px 1fr 46px;
+		grid-template-columns: 54px 1fr 64px;
 		align-items: center;
 		gap: 14px;
 		padding-top: 4px;
@@ -332,7 +304,7 @@
 	@media (min-width: 768px) {
 		.day-rhythm__row,
 		.day-rhythm__axis-row {
-			grid-template-columns: 58px 1fr 62px;
+			grid-template-columns: 58px 1fr 70px;
 		}
 		.day-rhythm__strip {
 			height: 22px;
