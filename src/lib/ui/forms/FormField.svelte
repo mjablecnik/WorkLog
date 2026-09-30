@@ -54,7 +54,7 @@
 	.form-field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
+		gap: 0.5rem;
 	}
 
 	.form-field__label {
