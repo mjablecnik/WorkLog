@@ -11,7 +11,6 @@
 	"common_yesterday": "včera",
 	"common_none": "—",
 	"common_of_total": "{value} z {total}",
-	"common_esc_hint": "Esc zavře · nic se neuloží, dokud nepotvrdíš",
 	"common_server_computed": "Počítá to server, ne prohlížeč — co vidíš, to se stane",
 	"category_label": "kategorie",
 	"category_paid": "Placeno",
@@ -168,7 +167,7 @@
 			}
 		}
 	],
-	"activity_submit": "Uložit úkol",
+	"activity_submit": "Uložit",
 	"activity_delete_title": "Smazat úkol?",
 	"activity_delete_body": "{project}, {from} – {to} · {duration}. Zmizí z výkazu.",
 	"activity_leisure_label": "Volno",

@@ -776,7 +776,7 @@
 
 	{#snippet footer()}
 		<p class="modal__footer-hint">{m.common_server_computed()}</p>
-		<div class="modal__footer-actions">
+		<div class="modal__footer-actions session-dialog__footer-actions">
 			{#if phase === 'editing'}
 				<Button variant="ghost" disabled={submitting} onclick={onClose}>{m.common_cancel()}</Button>
 				<Button disabled={submitting} loading={submitting} onclick={() => formEl?.requestSubmit()}>
@@ -849,6 +849,16 @@
 		display: flex;
 		flex-direction: column;
 		gap: 18px;
+	}
+
+	/* Overrides Modal.svelte's fullscreen-mobile default (column-reverse, one
+	   button per row) — see ActivityDialog.svelte's identical override for why:
+	   two buttons read better side by side even on a narrow screen. */
+	.modal__footer-actions.session-dialog__footer-actions {
+		flex-direction: row;
+		justify-content: flex-end;
+		width: 100%;
+		gap: 12px;
 	}
 
 	.session-dialog__grid {

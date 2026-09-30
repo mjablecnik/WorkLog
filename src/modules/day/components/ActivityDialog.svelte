@@ -931,8 +931,7 @@
 	</form>
 
 	{#snippet footer()}
-		<p class="modal__footer-hint">{m.common_esc_hint()}</p>
-		<div class="modal__footer-actions">
+		<div class="modal__footer-actions activity-dialog__footer-actions">
 			{#if mode === 'edit' && entry}
 				<Button
 					variant="ghost"
@@ -1017,6 +1016,17 @@
 		display: flex;
 		flex-direction: column;
 		gap: 18px;
+	}
+
+	/* Overrides Modal.svelte's fullscreen-mobile default (column-reverse, one
+	   button per row) — Save/Cancel read better side by side even on a narrow
+	   screen; only the three-button edit-mode footer (Delete/Cancel/Save) would
+	   have been the reason to stack, and it still fits a row fine at 390px. */
+	.modal__footer-actions.activity-dialog__footer-actions {
+		flex-direction: row;
+		justify-content: flex-end;
+		width: 100%;
+		gap: 12px;
 	}
 
 	/* --------------------------------------------------------------------

@@ -11,7 +11,6 @@
 	"common_yesterday": "yesterday",
 	"common_none": "—",
 	"common_of_total": "{value} of {total}",
-	"common_esc_hint": "Esc closes · nothing is saved until you confirm",
 	"common_server_computed": "The server computes this, not the browser — what you see is what happens",
 	"category_label": "category",
 	"category_paid": "Paid",
@@ -166,7 +165,7 @@
 			}
 		}
 	],
-	"activity_submit": "Save the task",
+	"activity_submit": "Save",
 	"activity_delete_title": "Delete this task?",
 	"activity_delete_body": "{project}, {from} – {to} · {duration}. It will disappear from the log.",
 	"activity_leisure_label": "Leisure",
