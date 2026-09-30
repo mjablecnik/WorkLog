@@ -222,7 +222,7 @@
 	.stats-page {
 		display: flex;
 		justify-content: center;
-		padding: 24px 48px;
+		padding: 16px 16px 24px;
 	}
 
 	.stats-page__inner {
@@ -235,9 +235,10 @@
 
 	.stats-page__header {
 		display: flex;
-		flex-wrap: wrap;
+		flex-direction: column;
 		align-items: center;
-		gap: 14px;
+		gap: 10px;
+		text-align: center;
 	}
 
 	.stats-page__title {
@@ -338,6 +339,18 @@
 	}
 
 	@media (min-width: 768px) {
+		.stats-page {
+			padding: 24px 48px;
+		}
+
+		.stats-page__header {
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: flex-start;
+			text-align: left;
+			gap: 14px;
+		}
+
 		.stats-page__breakdown-row:not(.stats-page__breakdown-row--solo) {
 			grid-template-columns: 1.4fr 1fr;
 			gap: 18px;
