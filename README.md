@@ -24,7 +24,7 @@ Every project is marked billable or not, so each entry's time counts as paid or 
 
 ## Screenshots
 
-<img src="screenshots/timer.png" width="32%" alt="Timer"> <img src="screenshots/day.png" width="32%" alt="Day"> <img src="screenshots/statistics.png" width="32%" alt="Statistics">
+<img src="screenshots/timer.png" width="31%" alt="Timer">&nbsp;&nbsp;&nbsp;<img src="screenshots/day.png" width="31%" alt="Day">&nbsp;&nbsp;&nbsp;<img src="screenshots/statistics.png" width="31%" alt="Statistics">
 
 ## Prerequisites
 
