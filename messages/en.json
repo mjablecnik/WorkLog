@@ -237,20 +237,6 @@
 	],
 	"preview_no_change": "Nothing is lost.",
 	"projects_title": "Projects",
-	"projects_meta": [
-		{
-			"declarations": [
-				"local countPlural = count: plural"
-			],
-			"selectors": [
-				"countPlural"
-			],
-			"match": {
-				"countPlural=one": "{count} active · over the last 30 days",
-				"countPlural=other": "{count} active · over the last 30 days"
-			}
-		}
-	],
 	"projects_new": "New project",
 	"projects_show_archived": "Show archived",
 	"projects_hide_archived": "Hide archived",

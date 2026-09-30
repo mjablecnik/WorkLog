@@ -121,8 +121,7 @@ async function loadProjectsData(today: string) {
 
 	return {
 		projects: projectsWithCoverage,
-		totalCoveredSeconds,
-		activeCount: projects.filter((p) => !p.archived).length
+		totalCoveredSeconds
 	};
 }
 

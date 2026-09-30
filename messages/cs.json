@@ -242,21 +242,6 @@
 	],
 	"preview_no_change": "Nic se neztratí.",
 	"projects_title": "Projekty",
-	"projects_meta": [
-		{
-			"declarations": [
-				"local countPlural = count: plural"
-			],
-			"selectors": [
-				"countPlural"
-			],
-			"match": {
-				"countPlural=one": "{count} aktivní · za posledních 30 dní",
-				"countPlural=few": "{count} aktivní · za posledních 30 dní",
-				"countPlural=other": "{count} aktivních · za posledních 30 dní"
-			}
-		}
-	],
 	"projects_new": "Nový projekt",
 	"projects_show_archived": "Zobrazit archivované",
 	"projects_hide_archived": "Skrýt archivované",

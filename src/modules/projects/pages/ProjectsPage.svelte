@@ -25,19 +25,21 @@
 	import * as m from '$lib/paraglide/messages';
 	import Icon from '$lib/ui/elements/Icon.svelte';
 	import Spinner from '$lib/ui/elements/Spinner.svelte';
+	import Button from '$lib/ui/elements/Button.svelte';
+	import Input from '$lib/ui/elements/Input.svelte';
+	import FormField from '$lib/ui/forms/FormField.svelte';
 	import EmptyState from '$lib/ui/components/EmptyState.svelte';
+	import Fab from '$lib/ui/layout/Fab.svelte';
+	import Modal from '$lib/ui/overlays/Modal.svelte';
 	import ProjectRow from '$modules/projects/components/ProjectRow.svelte';
 	import { addErrorToast } from '$lib/ui/overlays/toast-store.svelte';
 
 	interface Props {
 		projects: (Project & { coveredSeconds: number })[];
 		totalCoveredSeconds: number;
-		/** Count of non-archived projects — Requirement 11.1's `projects_meta`, always
-		 * the active count regardless of the "show archived" toggle. */
-		activeCount: number;
 	}
 
-	let { projects, totalCoveredSeconds, activeCount }: Props = $props();
+	let { projects, totalCoveredSeconds }: Props = $props();
 
 	// Requirement 11.5: archived projects hidden by default.
 	let showArchived = $state(false);
@@ -55,10 +57,28 @@
 	let createInputEl: HTMLInputElement | undefined = $state();
 	let createFormEl: HTMLFormElement | undefined = $state();
 
+	// Mobile create flow: a FAB opens this instead of the desktop inline form
+	// (Fab.svelte already hides itself at >=768px, so this only ever opens from
+	// the mobile trigger) — one input plus the Paid/Unpaid toggle plus a submit,
+	// same shape as the desktop inline form, just in a Modal instead of a row.
+	let createModalOpen = $state(false);
+	let createModalFormEl: HTMLFormElement | undefined = $state();
+
 	const createErrorId = 'projects-page-create-error';
 
+	/** Below 768px there is no visible inline input to focus — the desktop
+	 * create form is hidden by CSS there — so this opens the mobile modal
+	 * instead. Matches the `min-width: 768px` breakpoint the CSS below uses. */
 	function focusCreateInput(): void {
+		if (typeof window !== 'undefined' && window.innerWidth < 768) {
+			createModalOpen = true;
+			return;
+		}
 		createInputEl?.focus();
+	}
+
+	function closeCreateModal(): void {
+		createModalOpen = false;
 	}
 
 	function handleCreateEnhance() {
@@ -69,6 +89,7 @@
 				createErrors = [];
 				createName = '';
 				createBillable = true;
+				createModalOpen = false;
 				await invalidateAll();
 				return;
 			}
@@ -87,7 +108,7 @@
 			// navigate to `+error.svelte` and lose it) is skipped for this outcome.
 			addErrorToast(m.errors_internal_error({ requestId: '—' }), {
 				label: m.common_retry(),
-				onclick: () => createFormEl?.requestSubmit()
+				onclick: () => (createModalOpen ? createModalFormEl : createFormEl)?.requestSubmit()
 			});
 		};
 	}
@@ -101,7 +122,6 @@
 	<div class="projects-page__inner">
 		<div class="projects-page__header">
 			<h1 class="projects-page__title">{m.projects_title()}</h1>
-			<span class="projects-page__meta">{m.projects_meta({ count: activeCount })}</span>
 			<div class="projects-page__header-spacer"></div>
 
 			{#if !noProjectsAtAll}
@@ -179,6 +199,83 @@
 			</p>
 		{/if}
 
+		<!-- Mobile create flow — the desktop inline form above is hidden below
+		     768px (see .projects-page__create's media query); this FAB (already
+		     self-hidden at >=768px) is the mobile entry point instead. -->
+		<Fab icon="plus" label={m.projects_new()} onclick={() => (createModalOpen = true)} />
+
+		<Modal open={createModalOpen} title={m.projects_new()} size="sm" onclose={closeCreateModal}>
+			<form
+				method="POST"
+				action="?/create"
+				id="projects-create-modal-form"
+				class="projects-page__create-modal-form"
+				bind:this={createModalFormEl}
+				use:enhance={handleCreateEnhance}
+			>
+				<FormField
+					label={m.projects_name_label()}
+					error={createErrors.length > 0 ? createErrors[0] : undefined}
+				>
+					{#snippet children({ id, describedBy })}
+						<Input
+							{id}
+							name="name"
+							bind:value={createName}
+							error={createErrors.length > 0}
+							aria-describedby={describedBy}
+							disabled={creating}
+						/>
+					{/snippet}
+				</FormField>
+
+				<input type="hidden" name="billable" value={createBillable ? 'true' : 'false'} />
+
+				<div
+					class="projects-page__create-billable"
+					role="radiogroup"
+					aria-label={m.projects_billable_label()}
+				>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={createBillable}
+						class="projects-page__create-billable-item"
+						class:projects-page__create-billable-item--active={createBillable}
+						onclick={() => (createBillable = true)}
+					>
+						{m.category_paid()}
+					</button>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={!createBillable}
+						class="projects-page__create-billable-item"
+						class:projects-page__create-billable-item--active={!createBillable}
+						onclick={() => (createBillable = false)}
+					>
+						{m.category_unpaid()}
+					</button>
+				</div>
+			</form>
+
+			{#snippet footer()}
+				<div class="modal__footer-actions">
+					<Button variant="ghost" disabled={creating} onclick={closeCreateModal}>
+						{m.common_cancel()}
+					</Button>
+					<Button
+						disabled={creating}
+						loading={creating}
+						icon="plus"
+						onclick={() => createModalFormEl?.requestSubmit()}
+					>
+						{m.projects_new()}
+					</Button>
+				</div>
+			{/snippet}
+		</Modal>
+
 		{#if noProjectsAtAll}
 			<div class="projects-page__empty">
 				<EmptyState
@@ -227,11 +324,6 @@
 		color: var(--text);
 	}
 
-	.projects-page__meta {
-		font-size: 13px;
-		color: var(--text-faint);
-	}
-
 	.projects-page__header-spacer {
 		flex: 1 1 auto;
 	}
@@ -248,18 +340,21 @@
 		color: var(--text);
 	}
 
+	/* Desktop-only inline create form — hidden below 768px in favour of the
+	   Fab + Modal flow (Requirement-free UX call: the row+wrap layout this used
+	   to fall back to on narrow screens read as broken, not compact). */
 	.projects-page__create {
+		display: none;
+	}
+
+	.projects-page__create-modal-form {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 8px;
-		width: 100%;
+		flex-direction: column;
+		gap: 16px;
 	}
 
 	.projects-page__create-input {
 		width: 100%;
-		flex: 1 1 160px;
-		min-width: 0;
 		height: 38px;
 		padding: 0 12px;
 		border: none;
@@ -286,7 +381,7 @@
 
 	.projects-page__create-billable {
 		display: flex;
-		flex-shrink: 0;
+		width: 100%;
 		gap: 2px;
 		padding: 2px;
 		border-radius: var(--radius-9999);
@@ -294,6 +389,7 @@
 	}
 
 	.projects-page__create-billable-item {
+		flex: 1;
 		height: 34px;
 		padding: 0 12px;
 		border: none;
@@ -315,6 +411,8 @@
 	.projects-page__create-btn {
 		display: inline-flex;
 		align-items: center;
+		justify-content: center;
+		width: 100%;
 		gap: 8px;
 		height: 38px;
 		padding: 0 18px;
@@ -365,12 +463,27 @@
 			padding: 24px 48px;
 		}
 
+		.projects-page__create {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 8px;
+			width: auto;
+		}
+
 		.projects-page__create-input {
 			width: 160px;
+		}
+
+		.projects-page__create-billable {
+			width: auto;
+		}
+
+		.projects-page__create-billable-item {
 			flex: initial;
 		}
 
-		.projects-page__create {
+		.projects-page__create-btn {
 			width: auto;
 		}
 	}

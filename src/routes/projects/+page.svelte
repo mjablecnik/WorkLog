@@ -15,8 +15,4 @@
 	let { data }: Props = $props();
 </script>
 
-<ProjectsPage
-	projects={data.projects}
-	totalCoveredSeconds={data.totalCoveredSeconds}
-	activeCount={data.activeCount}
-/>
+<ProjectsPage projects={data.projects} totalCoveredSeconds={data.totalCoveredSeconds} />
