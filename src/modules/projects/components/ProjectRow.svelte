@@ -452,24 +452,31 @@
 	<div class="project-row__meta">
 		<span class="project-row__duration tabular">{fmtDuration(project.coveredSeconds)}</span>
 
-		<svg
-			class="project-row__bar"
-			viewBox="0 0 100 6"
-			preserveAspectRatio="none"
-			role="presentation"
-			aria-hidden="true"
-		>
-			<rect class="project-row__bar-track" x="0" y="0" width="100" height="6" rx="3" ry="3" />
-			<rect
-				class="project-row__bar-fill {projectSlotClass(project.colorIndex)}"
-				x="0"
-				y="0"
-				width="{sharePercent}%"
-				height="6"
-				rx="3"
-				ry="3"
-			/>
-		</svg>
+		<!-- Both ends round the same way: the outer container clips to a real CSS
+		     `border-radius` (Track), and the fill is plain HTML sized by a
+		     `foreignObject` (percent width set as an SVG attribute, never
+		     `style=`, so this stays clear of the CSP note above) rather than an
+		     SVG `rect` with `rx`/`ry` — a rect's corner radius rides along with
+		     the SVG's own width scaling, so at this ~200px-wide/8px-tall aspect
+		     it flattens into a barely-there ellipse instead of a clean
+		     semicircle. `foreignObject` content is laid out by the HTML engine,
+		     not the SVG coordinate transform, so its own `border-radius` stays a
+		     true circle regardless of how wide the bar gets. -->
+		<div class="project-row__bar">
+			<svg class="project-row__bar-fill-svg" role="presentation" aria-hidden="true">
+				<foreignObject
+					class="project-row__bar-fill-wrap"
+					x="0"
+					y="0"
+					width="{sharePercent}%"
+					height="100%"
+				>
+					<div
+						class="project-row__bar-fill {projectSlotClass(project.colorIndex)}"
+					></div>
+				</foreignObject>
+			</svg>
+		</div>
 
 		<div class="project-row__actions">
 			<button
@@ -762,17 +769,29 @@
 	.project-row__bar {
 		flex: 1 1 auto;
 		min-width: 40px;
-		height: 6px;
+		height: 8px;
+		border-radius: var(--radius-9999);
+		overflow: hidden;
+		background: var(--track);
 		order: 2;
 	}
 
-	.project-row__bar-track {
-		fill: var(--track);
+	.project-row__bar-fill-svg {
+		display: block;
+		width: 100%;
+		height: 100%;
+		overflow: visible;
+	}
+
+	.project-row__bar-fill-wrap {
+		transition: width var(--dur-panel) var(--ease-standard);
 	}
 
 	.project-row__bar-fill {
-		fill: var(--pj);
-		transition: width var(--dur-panel) var(--ease-standard);
+		width: 100%;
+		height: 100%;
+		border-radius: var(--radius-9999);
+		background: var(--pj);
 	}
 
 	.project-row__actions {
