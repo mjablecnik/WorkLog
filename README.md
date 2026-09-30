@@ -26,8 +26,7 @@ Every project is marked billable or not, so each entry's time counts as paid or 
 
 | | | |
 |---|---|---|
-| ![Timer](screenshots/timer.png) | ![Day](screenshots/day.png) | ![Add a task](screenshots/day-add-task.png) |
-| ![Statistics](screenshots/statistics.png) | ![Projects](screenshots/projects.png) | ![New project](screenshots/projects-new-project.png) |
+| ![Timer](screenshots/timer.png) | ![Day](screenshots/day.png) | ![Statistics](screenshots/statistics.png) |
 
 ## Prerequisites
 
